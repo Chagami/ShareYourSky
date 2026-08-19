@@ -1,0 +1,83 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Is It Real?</title>
+<link rel="stylesheet" href="css/app.css">
+</head>
+<body data-stage="live">
+
+<div class="sky" aria-hidden="true"></div>
+
+<!-- The one photo that travels through every stage: full frame, then aside, then up top,
+     then back to the middle as the finished composite. -->
+<img id="shot" class="shot" alt="The photo you took" hidden>
+
+<!-- ─────────── 1. LIVE ─────────── -->
+<section class="stage stage-live" data-for="live">
+  <div class="live-frame">
+    <video id="feed" class="framed" playsinline muted autoplay></video>
+    <div class="live-glow" aria-hidden="true"></div>
+    <button id="shutter" class="shutter" aria-label="Take photo" disabled><span class="shutter-dot"></span></button>
+  </div>
+  <p class="live-hint">Step into frame</p>
+  <p class="err" id="camError" hidden></p>
+</section>
+
+<!-- ─────────── 2. IS IT REAL? ─────────── -->
+<section class="stage stage-ask" data-for="ask">
+  <div class="ask-panel">
+    <h1 class="ask-title pop" data-d="0">Is It Real?</h1>
+    <div class="cloud">
+      <p class="bubble pop" style="--rot:-1.6deg" data-d="520">Does it look exactly how you would see it in real life?</p>
+      <p class="bubble pop" style="--rot:1.2deg"  data-d="900">Is there anything different?</p>
+      <p class="bubble pop" style="--rot:-0.9deg" data-d="1280">Are these the true colors?</p>
+      <p class="bubble pop" style="--rot:1.7deg"  data-d="1660">What did the camera decide for you?</p>
+      <p class="bubble pop" style="--rot:-1.2deg" data-d="2040">Would your eyes have seen it this way?</p>
+    </div>
+    <button id="toProcess" class="btn rise" data-d="2560">Take it apart</button>
+  </div>
+</section>
+
+<!-- ─────────── 3. PROCESSING ─────────── -->
+<section class="stage stage-process" data-for="process">
+  <p class="caption pop" id="greyCaption">
+    Your camera never saw color.
+    <small>A sensor only measures brightness. It does that three times — behind a red, a green and a blue filter.</small>
+  </p>
+
+  <div class="beams" id="beams" aria-hidden="true"></div>
+
+  <div class="channels" id="channels"></div>
+
+  <p class="caption tight pop" id="mixCaption">
+    This is the light measured behind each filter. Turn the dials.
+    <small>All three at 100% rebuilds the <em>exact</em> photo you took. Anything else is a
+    choice — the same choice made for every picture of space you have ever seen.</small>
+  </p>
+
+  <div class="result pop" id="resultPanel">
+    <span class="label">Live composite</span>
+    <canvas id="compositeCanvas" class="composite"></canvas>
+  </div>
+
+  <button id="publish" class="btn rise" disabled>Publish to the wall</button>
+</section>
+
+<!-- ─────────── 4. IS THIS PHOTO REAL? ─────────── -->
+<section class="stage stage-final" data-for="final">
+  <h1 class="final-title pop" id="finalTitle">Is this photo real?</h1>
+  <p class="final-note pop" id="finalNote">
+    The light was real. The color was yours.
+    <small id="finalWeights"></small>
+  </p>
+  <p class="final-sent pop" id="finalSent">Added to the gallery wall.</p>
+  <button id="restart" class="btn ghost rise">Start over</button>
+</section>
+
+<div class="flash" id="flash" aria-hidden="true"></div>
+
+<script type="module" src="js/main.js"></script>
+</body>
+</html>

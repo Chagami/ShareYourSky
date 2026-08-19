@@ -1,0 +1,112 @@
+/* Gallery wall — a second display, no controls at all. Loads app.css first for the
+   palette, the ambient background and the type treatment. */
+
+/* app.css pins the interaction screen to exactly one viewport; the wall grows instead. */
+html:has(body.wall), body.wall {
+  height: auto;
+  min-height: 100%;
+  overflow-y: auto;
+}
+body.wall { padding: 6vh 4vw 8vh; }
+
+/* Sized in px, not ch: `ch` here would resolve against this element's own 16px font and
+   clamp the much larger h1 inside it to about half the width it needs. */
+.wall-head {
+  max-width: min(1100px, 92vw);
+  margin: 0 auto 5vh;
+  text-align: center;
+}
+.wall-head h1 {
+  margin: 0 0 0.5em;
+  font-size: clamp(1.8rem, 3.4vw, 3.2rem);
+  font-weight: 700;
+  letter-spacing: -0.03em;
+  line-height: 1.05;
+}
+.wall-head p {
+  max-width: 52ch;
+  margin: 0 auto;
+  color: var(--muted);
+  font-size: clamp(0.9rem, 1.2vw, 1.15rem);
+}
+
+.wall-empty {
+  margin: 12vh auto;
+  text-align: center;
+  color: var(--muted);
+  font-size: clamp(0.75rem, 1vw, 1rem);
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+}
+.wall-empty[hidden] { display: none; }
+
+/* auto-fit with a bounded track (rather than 1fr) so empty columns collapse and
+   justify-content can centre them — the wall spends most of its day holding two or three
+   images, and a left-aligned pair on a 1920px display reads as a bug. */
+.wall-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(340px, 440px));
+  justify-content: center;
+  gap: 2vw;
+  max-width: 1800px;
+  margin: 0 auto;
+}
+
+.piece {
+  border-radius: 14px;
+  overflow: hidden;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  box-shadow: 0 20px 50px rgba(0, 0, 0, 0.5);
+}
+.piece img {
+  display: block;
+  width: 100%;
+  height: auto;
+  background: #0c0e12;
+}
+
+/* Newly published pieces animate in, so the wall visibly reacts while a visitor watches. */
+@keyframes land {
+  from { opacity: 0; transform: translateY(24px) scale(0.96); }
+  to   { opacity: 1; transform: none; }
+}
+.piece.fresh { animation: land 700ms var(--ease) both; }
+
+.piece-meta {
+  display: flex;
+  align-items: center;
+  gap: 0.9em;
+  padding: 0.9em 1.1em 1em;
+}
+
+/* Three stacked bars, one per channel, showing the mix that visitor chose. */
+.mix {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  flex: 1;
+}
+.mix-row {
+  height: 5px;
+  border-radius: 99px;
+  background: rgba(255, 255, 255, 0.12);
+  overflow: hidden;
+}
+.mix-row i {
+  display: block;
+  height: 100%;
+  border-radius: 99px;
+  background: var(--acc);
+}
+.piece-when {
+  color: var(--muted);
+  font-size: 0.78rem;
+  letter-spacing: 0.1em;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .piece.fresh { animation-duration: 200ms; }
+}

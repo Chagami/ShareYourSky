@@ -1,0 +1,498 @@
+/* Is It Real? — kiosk interaction.
+   Deliberately chrome-free: no nav, no header, no controls that aren't part of the
+   experience. Every stage is a fixed full-screen layer; only one is active at a time. */
+
+:root {
+  --bg: #07080b;
+  --ink: #f3f4f6;
+  --muted: #969ca8;
+  --panel: rgba(255, 255, 255, 0.045);
+  --line: rgba(255, 255, 255, 0.10);
+
+  --ch-r: #ff4d4d;
+  --ch-g: #3ddc6b;
+  --ch-b: #4d94ff;
+
+  --ease: cubic-bezier(0.16, 1, 0.3, 1);
+  --shot-ar: 1.3333; /* set from the camera's real aspect ratio on first frame */
+
+  /* One base box for the live feed and the captured photo, so the photo appears
+     exactly where the feed was. Bounded on both axes to survive 4:3 and 16:9 cameras. */
+  --frame-h: min(60vh, calc(56vw / var(--shot-ar)));
+}
+
+* { box-sizing: border-box; }
+
+html, body {
+  height: 100%;
+  margin: 0;
+  overflow: hidden;
+}
+
+body {
+  background: var(--bg);
+  color: var(--ink);
+  font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+  -webkit-font-smoothing: antialiased;
+  cursor: default;
+  user-select: none;
+}
+
+.sky {
+  position: fixed;
+  inset: 0;
+  background:
+    radial-gradient(70vw 60vh at 20% 10%, rgba(77, 148, 255, 0.10), transparent 70%),
+    radial-gradient(60vw 55vh at 85% 85%, rgba(255, 77, 77, 0.07), transparent 70%),
+    radial-gradient(50vw 50vh at 60% 40%, rgba(61, 220, 107, 0.045), transparent 70%);
+  pointer-events: none;
+}
+
+/* ─── stages ─── */
+
+.stage {
+  position: fixed;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  opacity: 0;
+  visibility: hidden;
+  transition: opacity 480ms var(--ease), visibility 480ms;
+}
+.stage.active {
+  opacity: 1;
+  visibility: visible;
+}
+
+/* ─── reveal animations ───
+   Entrances are driven from main.js with the Web Animations API rather than CSS classes:
+   the choreography is a long timed sequence, and WAAPI lets a restart cancel every
+   in-flight animation at once instead of unwinding a pile of classes. These rules only
+   hold the elements hidden until their animation claims them. */
+
+.pop, .rise { opacity: 0; }
+
+/* ─── the travelling photo ─── */
+
+.shot {
+  position: fixed;
+  left: 50%;
+  top: 50%;
+  height: var(--frame-h);
+  width: auto;
+  border-radius: 14px;
+  box-shadow: 0 30px 90px rgba(0, 0, 0, 0.65), 0 0 0 1px var(--line);
+  transform: translate(-50%, -50%);
+  transform-origin: 50% 50%;
+  will-change: transform, filter;
+  transition:
+    transform 950ms var(--ease),
+    filter 1250ms linear,
+    opacity 420ms ease;
+  z-index: 3;
+}
+.shot[hidden] { display: none; }
+
+/* one class per resting place */
+.shot.at-frame   { transform: translate(-50%, -50%); }
+.shot.at-aside   { transform: translate(-50%, -50%) translateX(-26vw) scale(0.80); }
+.shot.at-top     { transform: translate(-50%, -50%) translateY(-36.5vh) scale(0.25); }
+.shot.at-result  { transform: translate(-50%, -50%) translateY(2vh) scale(0.76); }
+.shot.bw         { filter: grayscale(1); }
+.shot.fade       { opacity: 0; }
+
+/* ─── 1. live ─── */
+
+.live-frame {
+  position: fixed;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  line-height: 0;
+}
+.framed {
+  height: var(--frame-h);
+  width: auto;
+  border-radius: 14px;
+  transform: scaleX(-1); /* mirror, so standing in front of it feels like a mirror */
+  background: #101216;
+  box-shadow: 0 30px 90px rgba(0, 0, 0, 0.65), 0 0 0 1px var(--line);
+}
+.live-glow {
+  position: absolute;
+  inset: -1px;
+  border-radius: 15px;
+  box-shadow: inset 0 0 90px rgba(0, 0, 0, 0.55);
+  pointer-events: none;
+}
+
+.shutter {
+  position: absolute;
+  left: 50%;
+  bottom: 30px;
+  transform: translateX(-50%);
+  width: 92px;
+  height: 92px;
+  padding: 0;
+  border: 4px solid rgba(255, 255, 255, 0.9);
+  border-radius: 50%;
+  background: rgba(0, 0, 0, 0.25);
+  backdrop-filter: blur(6px);
+  cursor: pointer;
+  transition: transform 180ms var(--ease), border-color 180ms ease;
+}
+.shutter-dot {
+  display: block;
+  width: 66px;
+  height: 66px;
+  margin: 7px;
+  border-radius: 50%;
+  background: #fff;
+  transition: transform 180ms var(--ease);
+}
+.shutter::after {
+  content: "";
+  position: absolute;
+  inset: -14px;
+  border-radius: 50%;
+  border: 1px solid rgba(255, 255, 255, 0.35);
+  animation: halo 2.6s ease-in-out infinite;
+}
+@keyframes halo {
+  0%, 100% { opacity: 0.25; transform: scale(1); }
+  50%      { opacity: 0.7;  transform: scale(1.06); }
+}
+.shutter:hover { transform: translateX(-50%) scale(1.05); }
+.shutter:active .shutter-dot { transform: scale(0.86); }
+.shutter:disabled { opacity: 0.4; cursor: default; }
+
+.live-hint {
+  position: fixed;
+  top: calc(50% - var(--frame-h) / 2 - 8.5vh);
+  margin: 0;
+  font-size: clamp(1.1rem, 1.9vw, 1.7rem);
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--muted);
+  animation: breathe 3.4s ease-in-out infinite;
+}
+@keyframes breathe {
+  0%, 100% { opacity: 0.45; }
+  50%      { opacity: 1; }
+}
+
+.err {
+  position: fixed;
+  bottom: 4vh;
+  max-width: 60ch;
+  text-align: center;
+  color: #ff8f8f;
+  font-size: 0.95rem;
+}
+
+.flash {
+  position: fixed;
+  inset: 0;
+  background: #fff;
+  opacity: 0;
+  pointer-events: none;
+  z-index: 9;
+}
+.flash.go { animation: flash 460ms ease-out; }
+@keyframes flash {
+  0%   { opacity: 0.9; }
+  100% { opacity: 0; }
+}
+
+/* ─── 2. is it real? ─── */
+
+.stage-ask { justify-content: center; }
+
+.ask-panel {
+  position: absolute;
+  left: 51vw;
+  right: 4vw;
+  top: 50%;
+  transform: translateY(-50%);
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2.4vh;
+}
+
+.ask-title {
+  margin: 0;
+  font-size: clamp(3rem, 6.4vw, 6rem);
+  font-weight: 700;
+  letter-spacing: -0.035em;
+  line-height: 0.95;
+}
+
+.cloud {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 1.5vh;
+  width: 100%;
+}
+.bubble {
+  margin: 0;
+  padding: 0.85em 1.15em;
+  max-width: 30ch;
+  border-radius: 18px;
+  border: 1px solid var(--line);
+  background: var(--panel);
+  backdrop-filter: blur(4px);
+  color: #e4e7ec;
+  font-size: clamp(0.95rem, 1.35vw, 1.3rem);
+  line-height: 1.35;
+}
+.bubble:nth-child(2) { margin-left: 8%; }
+.bubble:nth-child(3) { margin-left: 3%; }
+.bubble:nth-child(4) { margin-left: 11%; }
+.bubble:nth-child(5) { margin-left: 5%; }
+
+/* ─── 3. processing ─── */
+
+/* The top ~27vh is reserved for the photo, which is a fixed-position element and so takes
+   no part in this flow. overflow-y is a safety valve for displays shorter than the design. */
+.stage-process {
+  padding: 27vh 4vw 3vh;
+  gap: 1.6vh;
+  justify-content: flex-start;
+  overflow-y: auto;
+}
+
+.caption {
+  margin: 0;
+  max-width: 62ch;
+  text-align: center;
+  font-size: clamp(1rem, 1.5vw, 1.45rem);
+  line-height: 1.4;
+}
+.caption small {
+  display: block;
+  margin-top: 0.5em;
+  color: var(--muted);
+  font-size: 0.78em;
+  line-height: 1.4;
+}
+.caption em { font-style: normal; text-decoration: underline; text-decoration-thickness: 1px; text-underline-offset: 4px; }
+
+/* Sits in the gap between the photo and the channel cards, and is faded out again once
+   the channels arrive — so it costs no vertical space in the layout below. Centred with
+   auto margins, not a transform, because the reveal animation owns `transform`. */
+#greyCaption {
+  position: absolute;
+  top: 22.5vh;
+  left: 0;
+  right: 0;
+  margin-inline: auto;
+}
+
+.beams {
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 2;
+}
+.beam {
+  position: absolute;
+  width: 2px;
+  margin-left: -1px;
+  transform-origin: 50% 0;
+  border-radius: 2px;
+  opacity: 0;
+  background: linear-gradient(to bottom, currentColor, transparent);
+}
+
+.channels {
+  display: flex;
+  gap: 1.6vw;
+  align-items: flex-start;
+}
+/* Deliberately thumbnail-sized: the channels are evidence, the composite is the hero. */
+.channel {
+  width: 11.5vw;
+  max-width: 215px;
+  padding: 0.9vh 0.9vw 1.2vh;
+  border-radius: 12px;
+  border: 1px solid var(--line);
+  background: var(--panel);
+  opacity: 0; /* held until the pull-out animation in main.js claims it */
+}
+.channel canvas {
+  display: block;
+  width: 100%;
+  height: auto;
+  border-radius: 7px;
+  background: #0c0e12;
+  filter: grayscale(1);
+  transition: filter 900ms ease;
+}
+.channel.tinted canvas { filter: grayscale(0); }
+
+.channel-head {
+  display: flex;
+  align-items: center;
+  gap: 0.5em;
+  margin-bottom: 0.8vh;
+  font-size: clamp(0.68rem, 0.85vw, 0.85rem);
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+.swatch {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: var(--acc);
+  box-shadow: 0 0 12px var(--acc);
+}
+.channel-head .val {
+  margin-left: auto;
+  color: var(--ink);
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.06em;
+}
+
+.slider {
+  -webkit-appearance: none;
+  appearance: none;
+  display: block;
+  width: 100%;
+  height: 26px;
+  margin: 1vh 0 0;
+  background: transparent;
+  cursor: pointer;
+}
+.slider::-webkit-slider-runnable-track {
+  height: 6px;
+  border-radius: 99px;
+  background: linear-gradient(to right, var(--acc) var(--fill, 50%), rgba(255, 255, 255, 0.14) var(--fill, 50%));
+}
+.slider::-moz-range-track {
+  height: 6px;
+  border-radius: 99px;
+  background: linear-gradient(to right, var(--acc) var(--fill, 50%), rgba(255, 255, 255, 0.14) var(--fill, 50%));
+}
+.slider::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  width: 22px;
+  height: 22px;
+  margin-top: -8px;
+  border-radius: 50%;
+  background: #fff;
+  border: 3px solid var(--acc);
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.6);
+}
+.slider::-moz-range-thumb {
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  background: #fff;
+  border: 3px solid var(--acc);
+}
+
+.result {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.9vh;
+}
+.label {
+  font-size: clamp(0.68rem, 0.85vw, 0.85rem);
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+.composite {
+  display: block;
+  height: 26vh;
+  width: auto;
+  max-width: 46vw;
+  border-radius: 12px;
+  background: #0c0e12;
+  box-shadow: 0 24px 60px rgba(0, 0, 0, 0.6), 0 0 0 1px var(--line);
+}
+
+/* ─── 4. is this photo real? ─── */
+
+.stage-final {
+  padding: 9vh 4vw 4.5vh;
+  gap: 1.2vh;
+}
+.final-title {
+  margin: 0;
+  font-size: clamp(2.6rem, 5.4vw, 5rem);
+  font-weight: 700;
+  letter-spacing: -0.03em;
+}
+.final-note {
+  margin: auto 0 0;
+  text-align: center;
+  font-size: clamp(1rem, 1.5vw, 1.4rem);
+}
+.final-note small {
+  display: block;
+  margin-top: 0.6em;
+  color: var(--muted);
+  font-size: 0.74em;
+  letter-spacing: 0.1em;
+  font-variant-numeric: tabular-nums;
+}
+.final-sent {
+  margin: 0;
+  font-size: clamp(0.72rem, 0.95vw, 0.95rem);
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+/* ─── buttons ─── */
+
+.btn {
+  padding: 1em 2.2em;
+  border: 0;
+  border-radius: 99px;
+  background: #f3f4f6;
+  color: #0a0b0e;
+  font: inherit;
+  font-size: clamp(0.95rem, 1.25vw, 1.2rem);
+  font-weight: 600;
+  letter-spacing: 0.01em;
+  cursor: pointer;
+  transition: transform 200ms var(--ease), background 200ms ease, opacity 200ms ease;
+}
+.btn:hover { transform: translateY(-2px); background: #fff; }
+.btn:active { transform: translateY(0) scale(0.98); }
+.btn:disabled { opacity: 0.35; cursor: default; transform: none; }
+/* Publish is disabled *and* not yet revealed for most of the process stage. This has to
+   outrank .btn:disabled or the button sits there greyed out during the whole B&W step. */
+.btn.rise:disabled { opacity: 0; }
+.btn.ghost {
+  background: transparent;
+  color: var(--ink);
+  border: 1px solid rgba(255, 255, 255, 0.35);
+}
+.btn.ghost:hover { background: rgba(255, 255, 255, 0.08); }
+#publish { margin-top: 0.6vh; }
+
+/* ─── smaller / shorter displays ─── */
+
+@media (max-height: 860px) {
+  .stage-process { padding-top: 25vh; gap: 1.2vh; }
+  .composite { height: 22vh; }
+  #greyCaption { top: 20vh; }
+}
+@media (max-width: 1100px) {
+  .channel { width: 17vw; }
+  .ask-panel { left: 46vw; }
+}
+
+/* Scripted animations read this too — see PACE in main.js. */
+@media (prefers-reduced-motion: reduce) {
+  .shot, .channel canvas { transition-duration: 220ms; }
+  .shutter::after, .live-hint { animation: none; }
+}
