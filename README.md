@@ -1,4 +1,9 @@
-# Is It Real?
+# Is It Real? — experiment
+
+> Forked from [Chagami/IsItReal](https://github.com/Chagami/IsItReal) at `27729d8`, with that
+> repo's full history. The two are independent from here: nothing merges back automatically.
+>
+> **What this fork is for:** _(fill this in — it's the first thing you'll want to know later.)_
 
 A single-visitor exhibit interaction about where the color in an astronomical image comes
 from. The visitor is shown in black and white before they touch anything, takes one exposure,
