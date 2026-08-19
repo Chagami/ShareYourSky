@@ -75,7 +75,16 @@ export function drawHistogram(canvas, bins, accent, black, white) {
  * `get()` returns { black, white } for this channel; `set(next)` writes it back.
  * Returns { refresh } so the owner can redraw after changing state elsewhere.
  */
-export function createLevels({ mount, channelIndex, bins, get, set, compact = false, onInput }) {
+export function createLevels({
+  mount,
+  channelIndex,
+  bins,
+  get,
+  set,
+  compact = false,
+  onInput,
+  onFirstTouch,
+}) {
   const channel = CHANNELS[channelIndex]
 
   const root = document.createElement('div')
@@ -120,8 +129,23 @@ export function createLevels({ mount, channelIndex, bins, get, set, compact = fa
     readWhite.textContent = String(white)
   }
 
+  // Whether this instance has ever been moved by the visitor. Only real input reaches commit()
+  // — the opening slide writes the levels directly — so this is a true first-touch flag.
+  let touched = false
+
+  /** Start or stop the pulse. A no-op once the visitor has found the handles. */
+  function setPulsing(on) {
+    if (touched) return
+    root.classList.toggle('pulsing', on)
+  }
+
   /** Keep at least one unit of range, so the levels curve can never divide by zero. */
   function commit(kind, value) {
+    if (!touched) {
+      touched = true
+      root.classList.remove('pulsing')
+      onFirstTouch?.()
+    }
     const cur = get()
     const v = Math.max(0, Math.min(255, Math.round(value)))
     const next =
@@ -178,5 +202,5 @@ export function createLevels({ mount, channelIndex, bins, get, set, compact = fa
   })
 
   refresh()
-  return { refresh, root }
+  return { refresh, root, setPulsing }
 }

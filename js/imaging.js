@@ -54,7 +54,45 @@ export function captureFrame(video, maxW = 900) {
     luma[p] = LUMA[0] * r + LUMA[1] * g + LUMA[2] * b
   }
 
-  return { width, height, planes, luma, histograms: planes.map(histogram) }
+  const histograms = planes.map(histogram)
+  return { width, height, planes, luma, histograms, rest: histograms.map(restingLevels) }
+}
+
+/* Never let a resting handle sit flush with the end of the track: there it reads as part of
+   the chart's frame rather than as an object on it, and the slide-in that introduces it has
+   nowhere to travel from. Sixteen levels out of 255 is about 33px in on the walkthrough chart,
+   which clearly detaches the handle from the corner; ten looked flush. The exhibit camera sees
+   a lit room, so this floor binds on the dark end fairly often — but crushing the bottom 6% of
+   the shadows is exactly what an auto-levels would do anyway, and it is invisible on screen. */
+const MIN_INSET = 16
+const MIN_SPAN = 40
+
+/**
+ * Where this channel's light actually sits, as a black and white point to open on.
+ *
+ * Resting at 0 and 255 costs more than it looks. The handles sit half off each end of the
+ * chart, so they read as end-caps; and a visitor's first exploratory drag of the white point
+ * can travel a long way before it touches a single pixel, which reads as a broken control.
+ * Opening on the 0.5th and 99.5th percentile means the very first movement does something.
+ */
+export function restingLevels(bins) {
+  let total = 0
+  for (let v = 0; v < 256; v++) total += bins[v]
+  if (!total) return { black: MIN_INSET, white: 255 - MIN_INSET }
+
+  const percentile = (fraction) => {
+    const target = total * fraction
+    let seen = 0
+    for (let v = 0; v < 256; v++) {
+      seen += bins[v]
+      if (seen >= target) return v
+    }
+    return 255
+  }
+
+  const black = Math.min(Math.max(percentile(0.005), MIN_INSET), 255 - MIN_INSET - MIN_SPAN)
+  const white = Math.max(Math.min(percentile(0.995), 255 - MIN_INSET), black + MIN_SPAN)
+  return { black, white }
 }
 
 /** How many pixels sit at each value — the shape the levels chart draws. */
