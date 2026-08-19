@@ -2,6 +2,7 @@
 // interaction screen publishes something, so a visitor can walk from one display to the
 // other and find their image already there.
 
+import { CHANNELS } from './imaging.js'
 import { list, subscribe } from './store.js'
 
 const grid = document.getElementById('grid')
@@ -25,16 +26,21 @@ function piece(item) {
 
   const img = document.createElement('img')
   img.src = item.image
-  img.alt = 'A visitor’s composite'
+  img.alt = 'A visitor’s sky'
   root.append(img)
 
   const meta = document.createElement('figcaption')
   meta.className = 'piece-meta'
 
-  // The palette is the whole point of the card: same measurement, authored colour.
+  // The levels are the authored part: same captured light, different choices about it.
   const name = document.createElement('span')
-  name.className = 'piece-palette'
-  name.textContent = item.palette || 'Grayscale'
+  name.className = 'piece-levels'
+  ;(item.levels || []).forEach((lv, i) => {
+    const tag = document.createElement('i')
+    tag.style.setProperty('--acc', CHANNELS[i].accent)
+    tag.textContent = `${lv.black}–${lv.white}`
+    name.append(tag)
+  })
 
   const when = document.createElement('span')
   when.className = 'piece-when'

@@ -5,8 +5,8 @@
 // arrangement FiltersNew used. Swap these two functions for a fetch to a server if the wall
 // ever needs to live on a different device.
 
-const KEY = 'isitreal_gallery_v1'
-const CHANNEL = 'isitreal'
+const KEY = 'shareyoursky_gallery_v1'
+const CHANNEL = 'shareyoursky'
 const MAX_ITEMS = 24
 
 const bc = typeof BroadcastChannel !== 'undefined' ? new BroadcastChannel(CHANNEL) : null
@@ -26,8 +26,8 @@ export function list() {
  * a quota error the oldest entries are dropped until the write fits rather than losing the
  * image the visitor just made.
  */
-export function publish({ image, palette }) {
-  const entry = { id: newId(), image, palette, ts: Date.now() }
+export function publish({ image, levels }) {
+  const entry = { id: newId(), image, levels, ts: Date.now() }
   let items = [entry, ...list()].slice(0, MAX_ITEMS)
 
   while (items.length) {

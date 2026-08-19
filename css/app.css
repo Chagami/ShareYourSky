@@ -1,124 +1,123 @@
-/* Is It Real? — kiosk interaction.
-   Chrome-free on purpose: no nav, no menus, nothing on screen that isn't part of the
-   experience or a description of it.
-
-   Two sections only. `approach` holds the live grayscale feed; `study` holds the frozen
-   exposure and stays put through the hinge, map and send-off beats, which are switched
-   entirely by body[data-stage] below. That way the visitor's portrait never has to be
-   re-positioned mid-flow. */
+/* Share Your Sky — kiosk interaction.
+   Chrome-free: no nav, no menus. Two sections — the camera, and one workbench that holds the
+   didactic beats, the per-channel levels walkthrough and the final touches. Which beat is on
+   screen is decided entirely by body[data-stage] at the bottom of this file. */
 
 :root {
-  --bg: #07080b;
-  --ink: #f3f4f6;
-  --muted: #969ca8;
+  --bg: #06070a;
+  --ink: #f4f5f7;
+  --muted: #949aa6;
   --panel: rgba(255, 255, 255, 0.045);
   --line: rgba(255, 255, 255, 0.10);
-  --accent: #8fb6ff;
+
+  --ch-r: #ff5252;
+  --ch-g: #3ddc6b;
+  --ch-b: #4d94ff;
+  --ir: #b3421f;
 
   --ease: cubic-bezier(0.16, 1, 0.3, 1);
-  --shot-ar: 1.3333; /* real camera aspect ratio, set from JS on the first frame */
+  --shot-ar: 1.3333;
 
-  /* The live feed and the frozen portrait share one box, so the freeze lands exactly where
-     the preview was. Bounded on both axes to survive 4:3 and 16:9 cameras. */
-  --frame-h: min(46vh, calc(46vw / var(--shot-ar)));
-  /* Both study panes: smaller, because two of them sit side by side. */
-  --pane-h: min(38vh, calc(30vw / var(--shot-ar)));
+  --live-h: min(62vh, calc(58vw / var(--shot-ar)));
+  --bay-h: min(52vh, calc(44vw / var(--shot-ar)));
 }
 
 * { box-sizing: border-box; }
 
-html, body {
-  height: 100%;
-  margin: 0;
-  overflow: hidden;
-}
+html, body { height: 100%; margin: 0; overflow: hidden; }
 
 body {
   background: var(--bg);
   color: var(--ink);
   font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
   -webkit-font-smoothing: antialiased;
-  cursor: default;
   user-select: none;
 }
 
 .sky {
   position: fixed;
   inset: 0;
-  background:
-    radial-gradient(70vw 60vh at 20% 12%, rgba(120, 150, 210, 0.09), transparent 70%),
-    radial-gradient(60vw 55vh at 84% 86%, rgba(180, 160, 220, 0.06), transparent 70%);
   pointer-events: none;
+  background:
+    radial-gradient(72vw 62vh at 18% 10%, rgba(94, 132, 214, 0.11), transparent 70%),
+    radial-gradient(62vw 56vh at 86% 88%, rgba(196, 118, 96, 0.07), transparent 70%);
 }
-
-/* ─── sections ─── */
 
 .stage {
   position: fixed;
   inset: 0;
+  opacity: 0;
+  visibility: hidden;
+  transition: opacity 460ms var(--ease), visibility 460ms;
+}
+.stage.active { opacity: 1; visibility: visible; }
+
+/* Entrances run from main.js via the Web Animations API so a reset can cancel them all at
+   once. These rules only hold elements hidden until their animation claims them. */
+.pop, .rise { opacity: 0; }
+
+/* ─── 1–2. camera ─── */
+
+.stage-live {
   display: flex;
   flex-direction: column;
   align-items: center;
-  opacity: 0;
-  visibility: hidden;
-  transition: opacity 480ms var(--ease), visibility 480ms;
-}
-.stage.active {
-  opacity: 1;
-  visibility: visible;
+  justify-content: center;
+  gap: 3vh;
 }
 
-/* Entrances are driven from main.js with the Web Animations API; a restart cancels them all
-   at once. These rules only hold elements hidden until their animation claims them. */
-.pop, .rise { opacity: 0; }
-
-/* ─── 1. approach — black and white before they touch anything ─── */
-
-.stage-approach { justify-content: center; gap: 3.5vh; }
-
-.setup {
+.title {
   margin: 0;
-  max-width: 46ch;
-  text-align: center;
-  font-size: clamp(1.1rem, 1.75vw, 1.7rem);
-  line-height: 1.4;
-}
-.setup em {
-  font-style: normal;
-  color: #fff;
-  text-decoration: underline;
-  text-decoration-thickness: 1px;
-  text-underline-offset: 5px;
+  font-size: clamp(2rem, 4.4vw, 4rem);
+  font-weight: 700;
+  letter-spacing: -0.035em;
 }
 
 .live-frame { position: relative; line-height: 0; }
 
 .framed {
-  height: var(--frame-h);
+  height: var(--live-h);
   width: auto;
-  border-radius: 14px;
+  border-radius: 16px;
   background: #101216;
   box-shadow: 0 30px 90px rgba(0, 0, 0, 0.65), 0 0 0 1px var(--line);
-  /* The whole premise: the visitor is never shown a colour image of themselves. Rec. 709,
-     matching the luma the capture computes, so the freeze is seamless. */
-  filter: grayscale(1);
   transform: scaleX(-1); /* mirror, so standing in front of it feels like a mirror */
 }
-.live-glow {
+
+/* Viewfinder corners — camera UI without any actual controls. */
+.reticle { position: absolute; inset: 3%; pointer-events: none; }
+.reticle i {
   position: absolute;
-  inset: -1px;
-  border-radius: 15px;
-  box-shadow: inset 0 0 90px rgba(0, 0, 0, 0.55);
+  width: 34px;
+  height: 34px;
+  border: 3px solid rgba(255, 255, 255, 0.75);
+  border-radius: 3px;
+}
+.reticle i:nth-child(1) { top: 0; left: 0; border-right: 0; border-bottom: 0; }
+.reticle i:nth-child(2) { top: 0; right: 0; border-left: 0; border-bottom: 0; }
+.reticle i:nth-child(3) { bottom: 0; right: 0; border-left: 0; border-top: 0; }
+.reticle i:nth-child(4) { bottom: 0; left: 0; border-right: 0; border-top: 0; }
+
+.countdown {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  font-size: clamp(6rem, 18vh, 14rem);
+  font-weight: 800;
+  line-height: 1;
+  color: #fff;
+  text-shadow: 0 8px 60px rgba(0, 0, 0, 0.7);
   pointer-events: none;
 }
 
 .shutter {
   position: absolute;
   left: 50%;
-  bottom: 28px;
+  bottom: 26px;
   transform: translateX(-50%);
-  width: 92px;
-  height: 92px;
+  width: 88px;
+  height: 88px;
   padding: 0;
   border: 4px solid rgba(255, 255, 255, 0.9);
   border-radius: 50%;
@@ -129,46 +128,32 @@ body {
 }
 .shutter-dot {
   display: block;
-  width: 66px;
-  height: 66px;
-  margin: 7px;
+  width: 64px;
+  height: 64px;
+  margin: 6px;
   border-radius: 50%;
   background: #fff;
   transition: transform 180ms var(--ease);
 }
-.shutter::after {
-  content: "";
-  position: absolute;
-  inset: -14px;
-  border-radius: 50%;
-  border: 1px solid rgba(255, 255, 255, 0.35);
-  animation: halo 2.6s ease-in-out infinite;
-}
-@keyframes halo {
-  0%, 100% { opacity: 0.25; transform: scale(1); }
-  50%      { opacity: 0.7;  transform: scale(1.06); }
-}
 .shutter:hover { transform: translateX(-50%) scale(1.05); }
 .shutter:active .shutter-dot { transform: scale(0.86); }
-.shutter:disabled { opacity: 0.4; cursor: default; }
+.shutter:disabled { opacity: 0.35; cursor: default; }
+/* No shutter during the countdown — the photo is already on its way. */
+body[data-stage="countdown"] .shutter { opacity: 0; pointer-events: none; }
 
 .live-hint {
   margin: 0;
-  font-size: clamp(1rem, 1.6vw, 1.4rem);
-  letter-spacing: 0.16em;
+  font-size: clamp(0.8rem, 1.15vw, 1.05rem);
+  letter-spacing: 0.14em;
   text-transform: uppercase;
   color: var(--muted);
-  animation: breathe 3.4s ease-in-out infinite;
 }
-@keyframes breathe {
-  0%, 100% { opacity: 0.45; }
-  50%      { opacity: 1; }
-}
+body[data-stage="countdown"] .live-hint { opacity: 0; }
 
 .err {
   position: fixed;
   bottom: 4vh;
-  max-width: 60ch;
+  left: 0; right: 0;
   text-align: center;
   color: #ff8f8f;
   font-size: 0.95rem;
@@ -183,275 +168,244 @@ body {
   z-index: 9;
 }
 .flash.go { animation: flash 460ms ease-out; }
-@keyframes flash {
-  0%   { opacity: 0.9; }
-  100% { opacity: 0; }
-}
+@keyframes flash { 0% { opacity: 0.92; } 100% { opacity: 0; } }
 
-/* ─── 2–4. the study section ─── */
+/* ─── 3–7. the workbench ─── */
 
-.stage-study {
+.stage-work {
+  display: grid;
+  grid-template-columns: auto minmax(420px, 44vw);
+  align-items: center;
   justify-content: center;
-  padding: 3vh 4vw 28vh;
-  gap: 2.2vh;
+  gap: 3.5vw;
+  padding: 4vh 4vw;
 }
 
-/* The dial and the prompt beneath it are pinned to the bottom, so they occupy the same
-   pixels in the hinge beat and the map beat. The portrait shrinks by ~20vh when the sky pane
-   joins it, and if the control cluster were in that flow it would leap upward out from under
-   the hand that is already dragging it. Centred with auto margins rather than a transform,
-   because the rise() entrance animation owns `transform`. */
-.stage-study > .dial-bay,
-.stage-study > .turn-hint,
-.stage-study > #keepBtn {
+.photo-bay { display: flex; flex-direction: column; gap: 1.2vh; }
+
+/* Two stacked canvases so any change of state can crossfade rather than cut. */
+.photo-stack {
+  position: relative;
+  height: var(--bay-h);
+  aspect-ratio: var(--shot-ar);
+  border-radius: 14px;
+  overflow: hidden;
+  box-shadow: 0 26px 70px rgba(0, 0, 0, 0.6), 0 0 0 1px var(--line);
+  transition: height 700ms var(--ease);
+}
+.photo {
   position: absolute;
-  left: 0;
-  right: 0;
-  margin-inline: auto;
-  width: fit-content;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  display: block;
+  background: #0b0d11;
 }
-.stage-study > .dial-bay { bottom: 15vh; width: min(560px, 60vw); }
-.stage-study > .turn-hint { bottom: 7vh; }
-.stage-study > #keepBtn { bottom: 5vh; }
+#photoB { opacity: 0; }
 
-/* Nothing is pinned in the send-off, so the resolving text gets the full height. */
-body[data-stage="sendoff"] .stage-study { padding-bottom: 4vh; }
-
-/* --- the hinge beat --- */
-
-.hinge { text-align: center; }
-.hinge-title {
-  margin: 0 0 0.5em;
-  font-size: clamp(2.6rem, 5.6vw, 5.2rem);
-  font-weight: 700;
-  letter-spacing: -0.035em;
-  line-height: 0.95;
-}
-.hinge-note {
+.photo-tag {
   margin: 0;
-  font-size: clamp(1rem, 1.6vw, 1.5rem);
+  text-align: center;
+  font-size: clamp(0.68rem, 0.9vw, 0.86rem);
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
   color: var(--muted);
 }
 
-/* --- the map beat heading --- */
-
-.map-head { text-align: center; }
-.map-title {
-  margin: 0;
-  font-size: clamp(1.5rem, 3vw, 2.8rem);
-  font-weight: 700;
-  letter-spacing: -0.025em;
-}
-
-/* --- the two panes --- */
-
-.pair {
+.panel {
   display: flex;
-  align-items: flex-start;
-  gap: 3vw;
-  transition: transform 720ms var(--ease);
+  flex-direction: column;
+  gap: 2vh;
+  min-width: 0;
 }
 
-.pane { margin: 0; }
-.pane canvas {
-  display: block;
-  height: var(--pane-h);
-  width: auto;
-  /* Canvas is a replaced element, so width: auto tracks the intrinsic ratio as the height
-     animates — the portrait shrinks to make room for the sky without distorting. */
-  transition: height 720ms var(--ease);
-  border-radius: 12px;
-  background: #0c0e12;
-  box-shadow: 0 22px 60px rgba(0, 0, 0, 0.6), 0 0 0 1px var(--line);
+.beat {
+  margin: 0;
+  font-size: clamp(1.15rem, 2.1vw, 2rem);
+  font-weight: 600;
+  line-height: 1.3;
+  letter-spacing: -0.015em;
 }
-.pane figcaption {
-  margin-top: 1vh;
+
+/* R / G / B chips — dim until the beat lights them, then they hold their colour. */
+.chip {
+  display: inline-block;
+  min-width: 1.6em;
+  padding: 0.05em 0.3em;
+  border-radius: 6px;
   text-align: center;
-  font-size: clamp(0.68rem, 0.9vw, 0.88rem);
+  background: rgba(255, 255, 255, 0.07);
+  color: var(--muted);
+  transition: color 420ms ease, background 420ms ease, box-shadow 420ms ease, transform 420ms var(--ease);
+}
+.chip-r.lit { color: #fff; background: var(--ch-r); box-shadow: 0 0 26px var(--ch-r); }
+.chip-g.lit { color: #06240f; background: var(--ch-g); box-shadow: 0 0 26px var(--ch-g); }
+.chip-b.lit { color: #04142e; background: var(--ch-b); box-shadow: 0 0 26px var(--ch-b); }
+.chip.lit { transform: translateY(-1px) scale(1.06); }
+
+/* ─── the levels editor ─── */
+
+.editor { display: flex; flex-direction: column; gap: 1.4vh; }
+
+/* Three across, so the final touch-ups are visibly smaller than the guided editor and leave
+   the essay room to breathe. Stacked full-width copies ate 690px of the panel. */
+.touchups {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0.7vw;
+  align-items: start;
+}
+
+.levels {
+  padding: 1.1vh 1vw 1.5vh;
+  border-radius: 12px;
+  border: 1px solid var(--line);
+  background: var(--panel);
+}
+.levels-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 0.8vh;
+  font-size: clamp(0.68rem, 0.9vw, 0.86rem);
   letter-spacing: 0.13em;
   text-transform: uppercase;
   color: var(--muted);
 }
+.levels-name { display: flex; align-items: center; gap: 0.55em; }
+.levels-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: var(--acc);
+  box-shadow: 0 0 12px var(--acc);
+}
+.levels-read { font-variant-numeric: tabular-nums; }
+.levels-read b { color: var(--ink); font-weight: 600; }
 
-/* --- the one dial --- */
-
-.dial-bay {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 1vh;
-  width: min(560px, 60vw);
-}
-.dial-readout {
-  display: flex;
-  align-items: baseline;
-  gap: 0.7em;
-}
-.palette-name {
-  font-size: clamp(1.1rem, 1.9vw, 1.7rem);
-  font-weight: 700;
-  letter-spacing: -0.015em;
-}
-.palette-note {
-  font-size: clamp(0.75rem, 1vw, 0.98rem);
-  color: var(--muted);
-}
-
-.swatch {
+.levels-plot { position: relative; }
+.levels-chart {
   display: block;
   width: 100%;
-  height: 14px;
-  border-radius: 99px;
-  box-shadow: 0 0 0 1px var(--line);
+  height: auto;
+  aspect-ratio: 520 / 150;
+  border-radius: 6px;
+  background: rgba(0, 0, 0, 0.35);
 }
 
-.knob {
-  -webkit-appearance: none;
-  appearance: none;
-  width: 100%;
-  height: 30px;
-  margin: 0;
-  background: transparent;
+/* The handles sit on the chart's own baseline, so the control and the data it acts on read as
+   one object rather than a chart with a slider bolted underneath. */
+.levels-track {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: -9px;
+  height: 20px;
   cursor: pointer;
 }
-.knob::-webkit-slider-runnable-track {
-  height: 6px;
-  border-radius: 99px;
-  background: linear-gradient(to right, var(--accent) var(--fill, 0%), rgba(255, 255, 255, 0.14) var(--fill, 0%));
+.levels-handle {
+  position: absolute;
+  top: 0;
+  width: 18px;
+  height: 18px;
+  margin-left: -9px;
+  padding: 0;
+  border: 2px solid rgba(255, 255, 255, 0.9);
+  border-radius: 4px;
+  cursor: grab;
+  transition: transform 140ms var(--ease), box-shadow 140ms ease;
 }
-.knob::-moz-range-track {
-  height: 6px;
-  border-radius: 99px;
-  background: linear-gradient(to right, var(--accent) var(--fill, 0%), rgba(255, 255, 255, 0.14) var(--fill, 0%));
+.levels-handle:hover { transform: scale(1.14); }
+.levels-handle:active { cursor: grabbing; transform: scale(1.05); }
+.levels-handle:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 3px rgba(143, 182, 255, 0.55);
 }
-.knob::-webkit-slider-thumb {
-  -webkit-appearance: none;
-  width: 28px;
-  height: 28px;
-  margin-top: -11px;
-  border-radius: 50%;
-  background: #fff;
-  border: 3px solid var(--accent);
-  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.6);
-}
-.knob::-moz-range-thumb {
-  width: 28px;
-  height: 28px;
-  border-radius: 50%;
-  background: #fff;
-  border: 3px solid var(--accent);
-}
+.handle-black { background: #0b0d11; }
+.handle-white { background: #fff; }
 
-.dial-caption {
-  margin: 0.4vh 0 0;
-  text-align: center;
-  font-size: clamp(0.85rem, 1.15vw, 1.1rem);
-  color: var(--muted);
-}
+.levels-compact { padding: 0.7vh 0.7vw 1.1vh; }
+.levels-compact .levels-chart { aspect-ratio: 280 / 110; }
+.levels-compact .levels-head { font-size: clamp(0.58rem, 0.72vw, 0.72rem); letter-spacing: 0.08em; }
+.levels-compact .levels-dot { width: 8px; height: 8px; }
+.levels-compact .levels-track { bottom: -7px; height: 16px; }
+.levels-compact .levels-handle { width: 14px; height: 14px; margin-left: -7px; }
 
-/* --- the nudge, faded in by JS adding a class to <body> ---
-   The breathe animation is gated behind .invite-dial rather than sitting on .turn-hint: a
-   running animation outranks a normal `opacity` declaration, so an always-on breathe would
-   override the opacity:0 and show the hint immediately, collapsing the held hinge beat. */
+/* ─── step 7: the essay, with the words that earn animation ─── */
 
-.turn-hint {
+.finale { display: flex; flex-direction: column; gap: 2vh; }
+
+.essay {
   margin: 0;
-  font-size: clamp(0.85rem, 1.15vw, 1.1rem);
-  letter-spacing: 0.16em;
-  text-transform: uppercase;
-  color: var(--accent);
-  opacity: 0;
-  transition: opacity 700ms ease;
-}
-body.invite-dial .turn-hint {
-  opacity: 1;
-  animation: breathe-bright 3s ease-in-out infinite;
-}
-@keyframes breathe-bright {
-  0%, 100% { opacity: 0.62; }
-  50%      { opacity: 1; }
+  font-size: clamp(0.9rem, 1.2vw, 1.12rem);
+  line-height: 1.55;
+  color: #dfe3ea;
 }
 
-/* --- the send-off --- */
+.w-astro { font-weight: 700; color: #fff; }
 
-/* Sized in px, not ch: this is a 16px div wrapping much larger text, so `ch` here resolves
-   against the wrong font and chops the verdict into four lines. */
-.sendoff { text-align: center; max-width: min(780px, 86vw); }
-.verdict {
-  margin: 0 0 1em;
-  font-size: clamp(1.15rem, 2.1vw, 2rem);
-  line-height: 1.35;
-}
-.verdict em {
-  font-style: normal;
+/* infrared: sits just outside what you can see, so it glows rather than lights. */
+.w-ir {
   font-weight: 700;
-  color: #fff;
+  color: #ff8a5c;
+  animation: ir-glow 3.4s ease-in-out infinite;
 }
-.takeaway {
-  margin: 0;
-  font-size: clamp(0.85rem, 1.15vw, 1.1rem);
-  letter-spacing: 0.1em;
-  text-transform: uppercase;
-  color: var(--muted);
+@keyframes ir-glow {
+  0%, 100% { text-shadow: 0 0 6px rgba(179, 66, 31, 0.55); filter: brightness(0.92); }
+  50%      { text-shadow: 0 0 22px rgba(255, 138, 92, 0.95); filter: brightness(1.15); }
 }
-.takeaway b { color: var(--ink); }
 
-/* ─── which beat is on screen ───
-   Everything in the study section is present in the DOM the whole time; these rules decide
-   what is visible. `display: none` rather than opacity, so hidden beats claim no layout. */
-
-.stage-study > .map-head,
-.stage-study > .dial-bay,
-.stage-study > .sendoff,
-.stage-study > .turn-hint,
-.stage-study > #keepBtn,
-.stage-study > #restart { display: none; }
-
-/* the hinge: question above, the frozen exposure alone and centred. It holds the live
-   preview's exact size so the freeze lands in place rather than jumping smaller. */
-body[data-stage="hinge"] .pane-sky { display: none; }
-body[data-stage="hinge"] .pane-you canvas { height: var(--frame-h); }
-body[data-stage="hinge"] .stage-study > .turn-hint { display: block; }
-/* The slider has to be ON SCREEN here, not just in the map beat: moving it is the only way
-   out of the hinge, so hiding it strands the visitor in front of an instruction they cannot
-   follow. It fades in with the invitation, after the hold, so it doesn't compete with the
-   question. The caption belongs to the map beat and stays back. */
-body[data-stage="hinge"] .stage-study > .dial-bay {
-  display: flex;
-  opacity: 0;
-  transition: opacity 700ms ease;
+/* wavelengths: each letter rides a sine wave, phase-shifted along the word so the wiggle
+   travels through it. Most of the cycle is flat, so it only kicks in occasionally. */
+.w-wave { display: inline-block; font-weight: 700; color: #fff; white-space: nowrap; }
+.w-wave span {
+  display: inline-block;
+  animation: wave 5.5s ease-in-out infinite;
 }
-body[data-stage="hinge"].invite-dial .stage-study > .dial-bay { opacity: 1; }
-body[data-stage="hinge"] .dial-caption { display: none; }
-
-/* the map: heading, both panes, the dial */
-body[data-stage="map"] .stage-study > .hinge { display: none; }
-body[data-stage="map"] .stage-study > .map-head,
-body[data-stage="map"] .stage-study > #keepBtn { display: block; }
-body[data-stage="map"] .stage-study > .dial-bay { display: flex; }
-
-/* the send-off: both panes stay as evidence, the label resolves it */
-body[data-stage="sendoff"] .stage-study > .hinge,
-body[data-stage="sendoff"] .stage-study > .map-head { display: none; }
-body[data-stage="sendoff"] .stage-study > .sendoff,
-body[data-stage="sendoff"] .stage-study > #restart { display: block; }
+.w-wave span:nth-child(1)  { animation-delay: 0.00s; }
+.w-wave span:nth-child(2)  { animation-delay: 0.06s; }
+.w-wave span:nth-child(3)  { animation-delay: 0.12s; }
+.w-wave span:nth-child(4)  { animation-delay: 0.18s; }
+.w-wave span:nth-child(5)  { animation-delay: 0.24s; }
+.w-wave span:nth-child(6)  { animation-delay: 0.30s; }
+.w-wave span:nth-child(7)  { animation-delay: 0.36s; }
+.w-wave span:nth-child(8)  { animation-delay: 0.42s; }
+.w-wave span:nth-child(9)  { animation-delay: 0.48s; }
+.w-wave span:nth-child(10) { animation-delay: 0.54s; }
+.w-wave span:nth-child(11) { animation-delay: 0.60s; }
+@keyframes wave {
+  0%, 62%, 100% { transform: translateY(0); }
+  66%  { transform: translateY(-0.32em); }
+  70%  { transform: translateY(0); }
+  74%  { transform: translateY(0.32em); }
+  78%  { transform: translateY(0); }
+  82%  { transform: translateY(-0.22em); }
+  86%  { transform: translateY(0); }
+  90%  { transform: translateY(0.14em); }
+  94%  { transform: translateY(0); }
+}
 
 /* ─── buttons ─── */
 
+.actions { display: flex; gap: 1vw; }
+
 .btn {
-  padding: 0.95em 2.2em;
+  padding: 0.9em 2.1em;
   border: 0;
   border-radius: 99px;
-  background: #f3f4f6;
+  background: #f4f5f7;
   color: #0a0b0e;
   font: inherit;
-  font-size: clamp(0.9rem, 1.2vw, 1.15rem);
+  font-size: clamp(0.9rem, 1.2vw, 1.12rem);
   font-weight: 600;
   cursor: pointer;
   transition: transform 200ms var(--ease), background 200ms ease;
 }
 .btn:hover { transform: translateY(-2px); background: #fff; }
 .btn:active { transform: translateY(0) scale(0.98); }
+.btn:disabled { opacity: 0.35; cursor: default; transform: none; }
+/* A button that hasn't been revealed yet stays invisible even while disabled. */
+.btn.rise:disabled { opacity: 0; }
 .btn.ghost {
   background: transparent;
   color: var(--ink);
@@ -459,18 +413,63 @@ body[data-stage="sendoff"] .stage-study > #restart { display: block; }
 }
 .btn.ghost:hover { background: rgba(255, 255, 255, 0.08); }
 
-/* ─── smaller / shorter displays ─── */
+/* ─── 8. send-off ─── */
 
-@media (max-height: 860px) {
-  .stage-study { gap: 1.4vh; }
-  :root { --pane-h: min(32vh, calc(28vw / var(--shot-ar))); }
+.stage-thanks {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 2vh;
 }
-@media (max-width: 1100px) {
-  .pair { gap: 2vw; }
-  .dial-bay { width: 78vw; }
+.thanks-title {
+  margin: 0;
+  text-align: center;
+  font-size: clamp(2rem, 5vw, 4.4rem);
+  font-weight: 700;
+  letter-spacing: -0.035em;
+}
+.thanks-note { margin: 0 0 2vh; color: var(--muted); font-size: clamp(0.95rem, 1.4vw, 1.3rem); }
+
+/* ─── which beat is on screen ───
+   Everything in the workbench is in the DOM the whole time; these rules decide what shows.
+   display:none rather than opacity, so a hidden beat claims no layout. */
+
+.editor > .levels, .finale, #nextBtn, #submitBtn { display: none; }
+
+/* step 3: photo lands in the bay, first sentence only. visibility, not display, so the
+   second sentence already occupies its space and nothing shifts when it arrives. */
+body[data-stage="intro"] #beat2 { visibility: hidden; }
+
+/* steps 4–5: one channel's editor at a time, with Next */
+body[data-stage="tuneR"] .editor > .levels:nth-child(1),
+body[data-stage="tuneG"] .editor > .levels:nth-child(2),
+body[data-stage="tuneB"] .editor > .levels:nth-child(3) { display: block; }
+body[data-stage="tuneR"] #nextBtn,
+body[data-stage="tuneG"] #nextBtn,
+body[data-stage="tuneB"] #nextBtn { display: block; }
+
+/* step 6: the reveal — the editors step back so the image has the attention */
+body[data-stage="reveal"] #beat1 { visibility: hidden; }
+
+/* step 7: the essay, the three compact editors, and Share */
+body[data-stage="finale"] #beat1,
+body[data-stage="finale"] #beat2 { display: none; }
+body[data-stage="finale"] .finale { display: flex; }
+body[data-stage="finale"] #submitBtn { display: block; }
+
+/* ─── shorter displays ─── */
+
+@media (max-height: 880px) {
+  :root { --bay-h: min(44vh, calc(40vw / var(--shot-ar))); }
+  .stage-work { gap: 2.5vw; }
+  .panel { gap: 1.4vh; }
+}
+@media (max-width: 1240px) {
+  .stage-work { grid-template-columns: auto minmax(360px, 46vw); }
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .shutter::after, .live-hint, body.invite-dial .turn-hint { animation: none; }
-  .pair { transition-duration: 200ms; }
+  .w-wave span, .w-ir { animation: none; }
+  .photo-stack { transition-duration: 200ms; }
 }

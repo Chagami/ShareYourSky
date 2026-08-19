@@ -3,87 +3,91 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Is It Real?</title>
+<title>Share Your Sky</title>
 <link rel="stylesheet" href="css/app.css">
 </head>
-<body data-stage="approach">
+<body data-stage="live">
 
 <div class="sky" aria-hidden="true"></div>
 
-<!-- ─────────── 1. APPROACH — already black and white, before they touch anything ─────────── -->
-<section class="stage stage-approach" data-for="approach">
-  <p class="setup pop" data-d="300">
-    This is what the camera actually measures — <em>how much light</em>, not what color.
-  </p>
+<!-- ─────────── 1–2. LIVE + COUNTDOWN ─────────── -->
+<section class="stage stage-live" data-for="live">
+  <h1 class="title">Share Your Sky</h1>
 
   <div class="live-frame">
     <video id="feed" class="framed" playsinline muted autoplay></video>
-    <div class="live-glow" aria-hidden="true"></div>
-    <button id="shutter" class="shutter" aria-label="Take one exposure" disabled>
+    <div class="reticle" aria-hidden="true"><i></i><i></i><i></i><i></i></div>
+    <div class="countdown" id="countdown" aria-live="polite"></div>
+    <button id="shutter" class="shutter" aria-label="Take a photo" disabled>
       <span class="shutter-dot"></span>
     </button>
   </div>
 
-  <p class="live-hint">Step into frame</p>
+  <p class="live-hint">Step into frame · press to start the countdown</p>
   <p class="err" id="camError" hidden></p>
 </section>
 
-<!-- ─────────── 2. HINGE · 3. MAP · 4. SEND-OFF — one section, so the portrait never moves ─────────── -->
-<section class="stage stage-study" data-for="study">
+<!-- ─────────── 3–7. THE WORKBENCH ───────────
+     One section for the didactic beats, the per-channel levels walkthrough and the final
+     touches, so the photo is anchored in place and never re-positioned mid-flow. -->
+<section class="stage stage-work" data-for="work">
 
-  <!-- the hinge beat: held, not rushed -->
-  <div class="hinge">
-    <h1 class="hinge-title pop">Where's the color?</h1>
-    <p class="hinge-note pop" data-d="700">The camera only recorded brightness at each point.</p>
-  </div>
-
-  <!-- the map beat: their portrait and real telescope data, one dial for both -->
-  <div class="map-head">
-    <h2 class="map-title">You chose a color map.</h2>
-  </div>
-
-  <div class="pair">
-    <figure class="pane pane-you">
-      <canvas id="portraitCanvas"></canvas>
-      <figcaption>Your exposure</figcaption>
-    </figure>
-    <figure class="pane pane-sky">
-      <canvas id="nebulaCanvas"></canvas>
-      <figcaption id="nebulaCaption">Real telescope data</figcaption>
-    </figure>
-  </div>
-
-  <div class="dial-bay">
-    <div class="dial-readout">
-      <span class="palette-name" id="paletteName">Grayscale</span>
-      <span class="palette-note" id="paletteNote">the raw measurement</span>
+  <div class="photo-bay">
+    <div class="photo-stack">
+      <canvas id="photoA" class="photo"></canvas>
+      <canvas id="photoB" class="photo"></canvas>
     </div>
-    <canvas id="swatch" class="swatch" width="512" height="14"></canvas>
-    <input id="knob" class="knob" type="range" min="0" max="4" step="1" value="0"
-           aria-label="Color map">
-    <p class="dial-caption">
-      The brightness is locked. Only the color encoding changes.
-    </p>
+    <p class="photo-tag" id="photoTag">Your photo</p>
   </div>
 
-  <!-- Reads "Turn the dial" once the plinth's rotary control is wired up. -->
-  <p class="turn-hint" id="turnHint">Drag the slider</p>
+  <div class="panel">
 
-  <!-- On the plinth this is what the physical button does; on screen it IS the button. -->
-  <button id="keepBtn" class="btn rise">Keep this one</button>
+    <!-- step 3 -->
+    <p class="beat pop" id="beat1">When you took a photo, the camera captured light.</p>
 
-  <!-- the send-off: the fixed label that resolves the question -->
-  <div class="sendoff">
-    <p class="verdict pop">
-      The brightness is real — it's what the light did.<br>
-      <em>The color is a choice</em>, made to show what's there.
+    <!-- step 4 -->
+    <p class="beat pop" id="beat2">
+      That light was filtered into
+      <b class="chip chip-r">R</b>
+      <b class="chip chip-g">G</b>
+      <b class="chip chip-b">B</b>.
     </p>
-    <p class="takeaway pop" data-d="500">
-      Yours is on the wall in <b id="chosenPalette">Grayscale</b>.
-    </p>
+
+    <!-- steps 4–5: one editor per channel, revealed in turn -->
+    <div class="editor" id="editor"></div>
+
+    <!-- step 7 -->
+    <div class="finale" id="finale">
+      <div class="touchups" id="touchups"></div>
+      <p class="essay">
+        This is what <span class="w-astro">astrophotographers</span> do. Their cameras capture
+        light — including invisible light like <span class="w-ir">infrared</span>! — with or
+        without specific filters, and the astrophotographers do their best to highlight areas of
+        interest by increasing or decreasing how certain
+        <span class="w-wave" aria-label="wavelengths"><span aria-hidden="true">w</span><span
+          aria-hidden="true">a</span><span aria-hidden="true">v</span><span
+          aria-hidden="true">e</span><span aria-hidden="true">l</span><span
+          aria-hidden="true">e</span><span aria-hidden="true">n</span><span
+          aria-hidden="true">g</span><span aria-hidden="true">t</span><span
+          aria-hidden="true">h</span><span aria-hidden="true">s</span></span>
+        of light (like <b class="chip chip-r">R</b>, <b class="chip chip-g">G</b>,
+        <b class="chip chip-b">B</b>) show up in the final image.
+      </p>
+    </div>
+
+    <div class="actions">
+      <button id="nextBtn" class="btn rise">Next</button>
+      <button id="submitBtn" class="btn rise">Share my sky</button>
+    </div>
   </div>
+</section>
 
-  <button id="restart" class="btn ghost rise">Start over</button>
+<!-- ─────────── 8. SEND-OFF ─────────── -->
+<section class="stage stage-thanks" data-for="thanks">
+  <h1 class="thanks-title pop">Thanks for sharing your sky</h1>
+  <p class="thanks-note pop" data-d="400">It's on the gallery wall now.</p>
+  <!-- data-hold: revealed on its own 3s timer, not with the rest of this section -->
+  <button id="resetBtn" class="btn ghost rise" data-hold>Start again</button>
 </section>
 
 <div class="flash" id="flash" aria-hidden="true"></div>

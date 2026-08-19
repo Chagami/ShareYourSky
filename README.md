@@ -1,26 +1,22 @@
-# Is It Real? — experiment
+# Share Your Sky
 
-> Forked from [Chagami/IsItReal](https://github.com/Chagami/IsItReal) at `27729d8`, with that
-> repo's full history. The two are independent from here: nothing merges back automatically.
->
-> **What this fork is for:** _(fill this in — it's the first thing you'll want to know later.)_
+> Forked from [Chagami/IsItReal](https://github.com/Chagami/IsItReal) at `27729d8`, carrying that
+> repo's history. The two have since diverged: `IsItReal` is the one-dial colormap piece, this is
+> the guided per-channel levels piece.
 
-A single-visitor exhibit interaction about where the color in an astronomical image comes
-from. The visitor is shown in black and white before they touch anything, takes one exposure,
-is asked where the color went — and then turns one dial that recolors both their own portrait
-and a real telescope frame through a set of colormaps. The brightness never changes. Only the
-color encoding does.
+A single-visitor exhibit interaction about how an astronomical image gets made. The visitor takes
+a photo on a countdown, then is walked through what the camera actually did with the light: it
+was filtered into red, green and blue, and each of those can be stretched or crushed
+independently. They set the black and white point for each channel, watch their version emerge
+out of the camera's original, and share it to a gallery wall.
 
-The interaction is the physics: acquisition produces an intensity map, processing chooses how
-to show it.
-
-Deliberately chrome-free. No nav bar, no menus, no settings. Everything on screen is either
-part of the interaction or a description of it.
+Deliberately chrome-free. No nav bar, no menus, no settings. Everything on screen is either part
+of the interaction or a description of it.
 
 ## Run
 
 ```bash
-cd IsItReal
+cd IsItReal-experiment
 npm install
 npm run dev
 ```
@@ -28,12 +24,12 @@ npm run dev
 - Interaction screen → `http://localhost:5173/`
 - Gallery wall → `http://localhost:5173/gallery.html`
 
-Open the two in separate windows and drag each to its display. Chrome or Edge, full screen
-(F11). `localhost` counts as a secure context, so the camera works without HTTPS — serving
-the interaction screen to another device over the LAN would need a certificate.
+Chrome or Edge, full screen (F11). `localhost` counts as a secure context, so the camera works
+without HTTPS. Vanilla JS, no framework — Vite is here for the dev server, HMR and a bundled
+build, not for a component model.
 
-Vanilla JS, no framework: Vite is here for the dev server, HMR and a bundled build, not for
-a component model. `vite.config.js` lists both HTML files as build inputs.
+> **Watch the port.** If another Vite server is already running, Vite silently takes the next
+> free one and prints it. Read the terminal output rather than assuming 5173.
 
 ### For the exhibit
 
@@ -42,144 +38,112 @@ npm run build     # -> dist/
 npm run preview   # serve dist/ to check it before deploying
 ```
 
-`base` is `'./'`, so `dist/` runs from any folder — a subdirectory, a USB stick, any static
-host — without rewriting paths. Verified: the full flow passes identically against `dev` and
-against the built output.
+`base` is `'./'`, so `dist/` runs from any folder without rewriting paths.
 
 ### Picking the camera
 
-The exhibit PC has more than one video input, and a dropdown has no place on a visitor
-screen, so the choice lives in the URL of the kiosk shortcut:
+The exhibit PC has more than one video input, and a dropdown has no place on a visitor screen, so
+the choice lives in the URL of the kiosk shortcut:
 
 ```
-http://localhost:5173/?cam=1          second video input, by order
-http://localhost:5173/?cam=Logitech   first input whose label contains "Logitech"
+?cam=1          second video input, by order
+?cam=Logitech   first input whose label contains "Logitech"
 ```
-
-With no parameter it uses the browser's default.
 
 ## The flow
 
 | Stage | What the visitor sees |
 | --- | --- |
-| `approach` | Live feed, **already grayscale**. "This is what the camera actually measures — how much light, not what color." |
-| `hinge` | One exposure freezes in place at the same size. **"Where's the color?"** Held for 3.4s before anything else is offered — this is the fulcrum, don't shorten it. |
-| `map` | The first turn of the dial opens this beat. Their portrait and a real telescope frame sit side by side and recolor together as one knob sweeps the colormaps. |
-| `sendoff` | Both panes stay on screen as evidence while the label resolves it. Restart at 5s, automatic restart at 30s. |
+| `live` | **Share Your Sky**, live feed, viewfinder corners, one shutter button. |
+| `countdown` | 5 · 4 · 3 · 2 · 1, each number scaling through, then a flash. |
+| `intro` | The photo drops out of full-frame into the bay — still large, no longer the whole screen. "When you took a photo, the camera captured light." |
+| `tuneR` / `tuneG` / `tuneB` | "That light was filtered into **R G B**", one chip lit at a time. A levels editor for that channel, and the photo shows **that channel alone**. `Next` advances. |
+| `reveal` | Brightness only → as the camera captured it → your version. Three crossfades, the last one slow. |
+| `finale` | Three compact editors for final touches, plus the essay. `Share my sky`. |
+| `thanks` | The photo is blown off to a random edge, spinning. "Thanks for sharing your sky." Reset button after 3s. |
 
-### Two inputs, matching the plinth
+Two decisions worth knowing, because they aren't obvious from the spec:
 
-The whole piece runs on **one button and one rotary control**, and nothing else:
+- **While tuning one channel, the photo shows that channel alone**, tinted. Showing the full
+  composite there would spoil the `reveal` beat, which is the first time the visitor sees their
+  three choices combined.
+- **The photo never moves between `intro` and `finale`.** One anchored bay, one swapping
+  right-hand panel. Moving an image while someone is dragging a handle beside it reads as a bug.
 
-| Input | `approach` | `hinge` | `map` |
-| --- | --- | --- | --- |
-| Button | take the exposure | — | keep it |
-| Dial | — | first turn advances | choose the colormap |
+## The levels editor
 
-**Both have full on-screen equivalents, and no hardware is required:** the shutter, the
-slider, and a `Keep this one` button. Space/Enter and the arrow keys drive the same two
-actions. Real hardware is opt-in with `?plinth` — see below.
+`js/levels.js`. A histogram with the black-point and white-point handles built into its baseline,
+rather than a chart with a slider bolted underneath.
 
-Two layout rules exist because of the on-screen slider, and both matter:
+- **Log-scaled bins.** A photo's histogram is dominated by a few huge bins; a linear plot
+  flattens everything else into an unreadable line along the axis.
+- **The clipped shoulders are dimmed** and the levels ramp is drawn over the top, so the visitor
+  can see what they are throwing away.
+- **Custom handles, not range inputs.** Two overlaid full-width ranges fight for the same pointer
+  when the values get close. These are focusable `role="slider"` widgets with arrow-key support
+  (shift for ×10), so they stay keyboard- and test-drivable.
+- **The backing store is sized to the on-screen size × DPR** on every draw. The chart is laid out
+  `width: 100%` with a fixed `aspect-ratio`, so it is routinely displayed far wider than its
+  authored size and would otherwise be a blurry upscale.
 
-- The slider is **visible during the hinge**, faded in after the hold. Moving it is the only
-  way out of that stage, so hiding it strands the visitor in front of an instruction they
-  cannot follow.
-- The slider and the button under it are **pinned to the bottom** of the study section. The
-  portrait shrinks by ~20vh when the sky pane joins it, and if the control cluster sat in that
-  flow it would leap upward out from under the hand already dragging it. Verified: 0px drift
-  across the beat change.
+The large walkthrough editors and the three compact ones are **separate instances over shared
+state** (`get`/`set` closures into one `levels` array), so they can never disagree.
 
-The hint reads "Drag the slider". Change that one word in `index.html` to "Turn the dial" when
-the plinth's rotary is wired up.
+## Image pipeline
 
-## Color science
+`js/imaging.js`. The capture is split into its real R, G and B planes once, plus a luma plane.
+Everything after that is a per-channel levels curve applied as a 256-entry lookup table:
 
-`js/imaging.js` and `js/colormaps.js` are the whole of it, and the split between them is the
-argument.
+```
+out = clamp((in - black) / (white - black)) * 255
+```
 
-`captureIntensity()` reduces the frame to **one brightness value per pixel** (Rec. 709 luma —
-the same coefficients CSS `filter: grayscale()` uses, so the live preview and the frozen
-exposure are the same image and the freeze is seamless). That array is written once and then
-only ever read.
-
-`drawMapped()` is the only thing the dial does: a 256-entry lookup table over that untouched
-array. The measurement is provably fixed — verified by sweeping every palette and confirming
-the recovered intensity is bit-identical to the original (drift 0).
-
-Grayscale is deliberately **first** on the dial. It is the un-chosen option, the raw
-measurement, so every turn away from it is visibly an authored decision. To add or retune a
-palette, edit the `PALETTES` anchors in `js/colormaps.js` — they are plain hex control points,
-interpolated linearly, no colour-science dependency to fight.
+The planes are written once and only ever read, so the underlying measurement survives no matter
+how far the levels are pushed — `reveal` can always go back to the camera's original because it
+is still there.
 
 ## Where to change things
 
 - `index.html` — **every word the visitor reads.**
-- `js/colormaps.js` — the palettes, as editable hex anchors.
-- `js/main.js` — the `TIMELINE` object at the top is the entire pacing of the piece in one
-  block, including `hingeHold` (how long the fulcrum is held) and the restart timings.
-- `css/app.css` — `--frame-h` and `--pane-h` are the two image sizes; the beat-switching
-  rules at the bottom (`body[data-stage="..."]`) decide what is on screen when.
-- `js/nebula.js` — the telescope panel, and how to drop in real data.
+- `js/main.js` — the `TIMELINE` object at the top is the entire pacing of the piece in one block:
+  countdown cadence, the didactic beats, the three reveal crossfades, the reset timings.
+- `css/app.css` — `--live-h` and `--bay-h` are the two photo sizes; the beat-switching rules at
+  the bottom (`body[data-stage="..."]`) decide what is on screen when.
+- `js/levels.js` — the editor and the histogram drawing.
 - `js/store.js` — the gallery store (`MAX_ITEMS`, quota handling).
-- `vite.config.js` — dev port, LAN host, the two build inputs.
 
 ### Animation approach
 
-Entrances are driven from `main.js` with the Web Animations API rather than CSS classes.
-The flow is one long timed sequence, and a restart has to be able to abort it from any
-point: `cancelAll()` bumps a generation counter, which cancels every in-flight animation and
-leaves any pending `wait()` unresolved forever. Nothing from an abandoned turn can bleed
-into the next visitor's. CSS keeps only the always-on decoration (shutter halo, flash) and
-the rules that hold elements hidden until an animation claims them.
+Entrances run from `main.js` with the Web Animations API rather than CSS classes. The flow is one
+long timed sequence and a reset has to abort it from any point: `cancelAll()` bumps a generation
+counter, cancelling every in-flight animation and leaving any pending `wait()` unresolved forever.
+Nothing from an abandoned turn can bleed into the next visitor's.
 
-## The telescope panel — before this ships
+Two guards to keep in mind if you add elements:
 
-`js/nebula.js` currently renders a **synthetic placeholder** and captions it
-"Simulated frame — placeholder". It must not go in front of visitors claiming to be real data,
-and the transfer beat only lands if the sky panel genuinely is a telescope measurement.
+- `revealAll()` skips anything marked `[data-hold]`. The reset button carries `.rise` but is
+  revealed on its own 3-second timer; without the guard it fires early *and* ends up with two
+  competing animations on the same element.
+- `.btn.rise:disabled { opacity: 0 }` has to outrank `.btn:disabled { opacity: .35 }`, or a
+  not-yet-revealed button sits on screen greyed out.
 
-To fix, before the exhibit opens:
+### The animated words
 
-1. Drop a monochrome single-filter frame at `public/nebula.png` — one filter's exposure, e.g.
-   an Hα frame from hubblesite.org, or an SDSS/DSS plate. It is picked up automatically.
-2. Set `REAL_LABEL` in `js/nebula.js` to name the object, instrument and filter
-   (e.g. `'M16 · Hubble/WFC3 · Ha'`). A real exhibit must caption real data.
-
-The placeholder is seeded, so it looks identical every session rather than changing each
-morning.
-
-## Hardware
-
-`?plinth` asks for the USB serial device on load (Chrome/Edge). One line per reading at
-115200 baud:
-
-```
-pot\n          rotary position, 0..1023
-pot,btn\n      plus the button, 0/1 — a rising edge fires the button action
-```
-
-Same shape as the FiltersNew firmware, minus two pots. **Untested against real hardware** —
-the on-screen dial and shutter drive the same two actions, so the piece runs fully without it.
-
-## Still open
-
-- **The QR takeaway.** The send-off currently sends the image to the gallery wall with its
-  palette name. An ephemeral-QR handoff needs a URL a phone can reach, which means a real
-  server — `localStorage` cannot do it. That is an architecture decision, not a small addition:
-  see the upgrade path below.
+`.w-ir` (infrared) glows on a slow cycle, sitting just outside the visible range. `.w-wave`
+(wavelengths) is split into per-letter spans, each running the same `wave` keyframe with a
+staggered `animation-delay`, so the wiggle travels through the word as a sine wave. Most of the
+5.5s cycle is flat, so it kicks in occasionally rather than jittering constantly.
 
 ## Exhibit-grade upgrade path
 
-The wall is fed through `localStorage` plus `BroadcastChannel`, which means one machine, one
-browser, and a 24-image cap (`js/store.js` drops the oldest entries rather than losing the
-image a visitor just made when quota is hit). To run the wall on a different device, keep
-images permanently, **or hand a visitor a QR code**, replace `list()` and `publish()` with
-calls to a small server — the rest of the app never touches storage directly.
+The wall is fed through `localStorage` plus `BroadcastChannel`: one machine, one browser, a
+24-image cap (`js/store.js` drops the oldest rather than losing the image a visitor just made). To
+run the wall on a different device, keep images permanently, or hand a visitor a QR code, replace
+`list()` and `publish()` with calls to a small server — nothing else touches storage.
 
 ## Lineage
 
-Fourth prototype in `AstroProto/`. The intensity-plus-lookup-table pipeline comes from
-`FiltersGreyscale/web/index.html`, the multi-display + `BroadcastChannel` arrangement and the
-serial protocol from `FiltersNew/`, and the mirrored-capture and camera-selection lessons from
-`Filters/`.
+Fifth prototype in `AstroProto/`, forked from `IsItReal`. The levels/histogram reasoning goes back
+to `FiltersGreyscale/web/index.html` (black point, contrast and brightness as a shared tone LUT),
+the multi-display + `BroadcastChannel` arrangement to `FiltersNew/`, and the mirrored-capture and
+camera-selection lessons to `Filters/`.

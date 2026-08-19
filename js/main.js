@@ -1,40 +1,49 @@
-// Is It Real? — stage machine and choreography.
+// Share Your Sky — stage machine and choreography.
 //
-//   approach --button--> hinge --dial--> map --button--> sendoff --30s--> approach
+//   live --shutter--> countdown --> work[ intro | R | G | B | reveal | finale ] --> thanks
 //
-// Two physical inputs drive the whole piece, matching the plinth: one button and one rotary
-// control. The button takes the exposure, then later keeps it; the dial does everything in
-// between. The on-screen shutter and slider fire the same two actions, so it runs without
-// hardware attached.
+// The work stage is one screen with an anchored photo and a swapping right-hand panel, so the
+// image never jumps and the controls never move out from under the visitor's hand.
 //
-// Every wait and animation is tagged with a generation number. restart() bumps it, which
-// cancels in-flight animations and leaves pending waits unresolved, so an abandoned turn can
-// never bleed into the next visitor's.
+// Every wait and animation carries a generation number. reset() bumps it, cancelling in-flight
+// animations and leaving pending waits unresolved, so an abandoned turn cannot bleed into the
+// next visitor's.
 
 import { startCamera } from './camera.js'
-import { captureIntensity, drawMapped, mappedURL } from './imaging.js'
-import { COLORMAPS, drawSwatch } from './colormaps.js'
-import { loadNebula, NEBULA_CREDIT } from './nebula.js'
-import { connectPlinth, serialSupported } from './serial.js'
+import {
+  CHANNELS, captureFrame, levelsLut, IDENTITY_LUT,
+  drawComposite, drawChannel, drawGrey, compositeURL,
+} from './imaging.js'
+import { createLevels } from './levels.js'
 import { publish as publishToWall } from './store.js'
 
 // ── the knobs you'll actually want to turn ──────────────────────────────────
 
 const TIMELINE = {
-  freezeHold: 160, // beat between the flash and the hinge, so the freeze registers
-  hingeHold: 3400, // the fulcrum. Deliberately long — do not rush this one.
-  mapCrossfade: 520,
-  nebulaIn: 260,
-  keepHint: 2400, // how long they explore before being told they can keep it
-  verdict: 300,
-  restartButtonAt: 5000,
-  autoRestartAt: 30000,
+  countdownFrom: 5,
+  countdownTick: 900, // 5-4-3-2-1 at this cadence
+  freezeHold: 420,
+
+  beat1: 500, // "the camera captured light"
+  beat2: 2600, // "that light was filtered into R G B"
+  chipStagger: 260, // R, then G, then B lighting up
+  editorIn: 900, // the levels editor arriving after beat 2
+
+  channelSwap: 420, // between one channel's editor appearing and the Next button
+
+  revealGrey: 700, // reveal: greyscale holds...
+  revealOriginal: 1500, // ...crossfades to what the camera actually captured...
+  revealUser: 2600, // ...then slowly to the visitor's version
+  finaleIn: 600,
+
+  blowAway: 1500, // the wind-blown exit
+  resetButtonAt: 3000, // "after 3 seconds, a reset button comes up"
+  autoResetAt: 45000,
 }
 
-const CAPTURE_W = 960 // exposure resolution, also what gets published
+const CAPTURE_W = 900
 
-// Compress the whole sequence for anyone who asked the OS for less motion.
-const PACE = matchMedia('(prefers-reduced-motion: reduce)').matches ? 0.25 : 1
+const PACE = matchMedia('(prefers-reduced-motion: reduce)').matches ? 0.3 : 1
 const t = (ms) => Math.round(ms * PACE)
 const EASE = 'cubic-bezier(.16, 1, .3, 1)'
 
@@ -42,24 +51,32 @@ const $ = (id) => document.getElementById(id)
 const feed = $('feed')
 const shutter = $('shutter')
 const flash = $('flash')
-const portraitCanvas = $('portraitCanvas')
-const nebulaCanvas = $('nebulaCanvas')
-const knob = $('knob')
-const keepBtn = $('keepBtn')
-const restartBtn = $('restart')
+const countdownEl = $('countdown')
+const photoA = $('photoA')
+const photoB = $('photoB')
+const photoStack = document.querySelector('.photo-stack')
+const editorMount = $('editor')
+const touchupMount = $('touchups')
+const nextBtn = $('nextBtn')
+const submitBtn = $('submitBtn')
+const resetBtn = $('resetBtn')
 
-// Which <section> is on screen for each stage. hinge/map/sendoff share one section so the
-// frozen portrait never has to be re-positioned between them.
-const SECTION_FOR = { approach: 'approach', hinge: 'study', map: 'study', sendoff: 'study' }
+const SECTION_FOR = {
+  live: 'live', countdown: 'live',
+  intro: 'work', tuneR: 'work', tuneG: 'work', tuneB: 'work', reveal: 'work', finale: 'work',
+  thanks: 'thanks',
+}
+const TUNE_STAGES = ['tuneR', 'tuneG', 'tuneB']
 
 let gen = 0
 let anims = []
 let timers = []
 
-let exposure = null // { intensity, width, height } — written once, then read-only
-let nebula = null
-let paletteIndex = 0
-let plinth = null
+let frame = null // { width, height, planes, luma, histograms } — written once, read-only after
+let levels = null // [{black, white} x3] — the only thing the visitor changes
+let bigEditors = []
+let smallEditors = []
+let front = photoA // which stacked canvas is currently showing
 
 // ── timing + animation, all cancellable ─────────────────────────────────────
 
@@ -93,11 +110,11 @@ function pop(node, delay = 0) {
   return track(
     node.animate(
       [
-        { opacity: 0, transform: 'translateY(20px) scale(.88)', offset: 0 },
-        { opacity: 1, transform: 'translateY(0) scale(1.03)', offset: 0.62 },
+        { opacity: 0, transform: 'translateY(18px) scale(.9)', offset: 0 },
+        { opacity: 1, transform: 'translateY(0) scale(1.02)', offset: 0.62 },
         { opacity: 1, transform: 'translateY(0) scale(1)', offset: 1 },
       ],
-      { duration: t(640), delay: t(delay), easing: EASE, fill: 'both' }
+      { duration: t(620), delay: t(delay), easing: EASE, fill: 'both' }
     )
   )
 }
@@ -105,8 +122,8 @@ function pop(node, delay = 0) {
 function rise(node, delay = 0) {
   if (!node) return null
   return track(
-    node.animate([{ opacity: 0, transform: 'translateY(46px)' }, { opacity: 1, transform: 'none' }], {
-      duration: t(700),
+    node.animate([{ opacity: 0, transform: 'translateY(40px)' }, { opacity: 1, transform: 'none' }], {
+      duration: t(680),
       delay: t(delay),
       easing: EASE,
       fill: 'both',
@@ -114,10 +131,14 @@ function rise(node, delay = 0) {
   )
 }
 
-/** Run the entrances for one sub-stage: every marked element inside `root`. */
+/**
+ * Run the entrances for one beat. Elements marked [data-hold] are skipped: their reveal is
+ * scheduled elsewhere, and sweeping them up here would fire it early and then leave two
+ * competing animations on the same element.
+ */
 function revealAll(root) {
   if (!root) return
-  root.querySelectorAll('.pop, .rise').forEach((node) => {
+  root.querySelectorAll('.pop:not([data-hold]), .rise:not([data-hold])').forEach((node) => {
     const delay = Number(node.dataset.d) || 0
     if (node.classList.contains('rise')) rise(node, delay)
     else pop(node, delay)
@@ -136,54 +157,75 @@ function setAspect(w, h) {
   if (w && h) document.documentElement.style.setProperty('--shot-ar', (w / h).toFixed(4))
 }
 
-// ── the colormap dial ───────────────────────────────────────────────────────
+// ── the photo bay: two stacked canvases, so any change can crossfade ────────
 
-function applyPalette(index) {
-  paletteIndex = Math.max(0, Math.min(COLORMAPS.length - 1, index))
-  const map = COLORMAPS[paletteIndex]
+const lutsNow = () => levels.map((l) => levelsLut(l.black, l.white))
+const lutsIdentity = () => [IDENTITY_LUT, IDENTITY_LUT, IDENTITY_LUT]
 
-  knob.value = String(paletteIndex)
-  knob.style.setProperty('--fill', `${(paletteIndex / (COLORMAPS.length - 1)) * 100}%`)
-  $('paletteName').textContent = map.name
-  $('paletteNote').textContent = map.note
-  $('chosenPalette').textContent = map.name
-  drawSwatch($('swatch'), map)
-
-  // The one operation the visitor controls: a lookup table over an untouched intensity array.
-  if (exposure) drawMapped(portraitCanvas, exposure, map)
-  if (nebula) drawMapped(nebulaCanvas, nebula, map)
+/** Draw straight onto whichever canvas is showing — no transition. */
+function paint(drawFn) {
+  drawFn(front)
 }
 
-/** Rotary 0..1023 -> palette index. */
-function dialToIndex(raw) {
-  return Math.round((raw / 1023) * (COLORMAPS.length - 1))
+/**
+ * Draw onto the hidden canvas, then crossfade it in. Used for the reveal sequence, where the
+ * whole point is watching one version become another.
+ */
+function crossfadeTo(drawFn, duration) {
+  const back = front === photoA ? photoB : photoA
+  drawFn(back)
+  track(back.animate([{ opacity: 0 }, { opacity: 1 }], { duration: t(duration), easing: 'ease-in-out', fill: 'both' }))
+  track(front.animate([{ opacity: 1 }, { opacity: 0 }], { duration: t(duration), easing: 'ease-in-out', fill: 'both' }))
+  front = back
 }
 
-function onDial(index) {
-  if (stage() === 'hinge') {
-    runMap(index) // the first turn of the dial is what advances the piece
-    return
+// ── the levels editors ──────────────────────────────────────────────────────
+
+function buildEditors() {
+  editorMount.replaceChildren()
+  touchupMount.replaceChildren()
+  bigEditors = []
+  smallEditors = []
+
+  CHANNELS.forEach((channel, i) => {
+    const shared = {
+      channelIndex: i,
+      bins: frame.histograms[i],
+      get: () => levels[i],
+      set: (next) => (levels[i] = next),
+    }
+    // One large editor per channel, shown in turn during the walkthrough.
+    bigEditors.push(createLevels({ ...shared, mount: editorMount, onInput: onLevelsChanged }))
+    // Three compact ones for final touches. Both sets read the same state, so they agree.
+    smallEditors.push(createLevels({ ...shared, mount: touchupMount, compact: true, onInput: onLevelsChanged }))
+  })
+}
+
+function refreshEditors() {
+  bigEditors.forEach((e) => e.refresh())
+  smallEditors.forEach((e) => e.refresh())
+}
+
+/** A handle moved: repaint whatever the current beat is showing. */
+function onLevelsChanged() {
+  refreshEditors()
+  const s = stage()
+  const idx = TUNE_STAGES.indexOf(s)
+  if (idx >= 0) {
+    // While tuning one channel, the photo shows that channel alone.
+    paint((c) => drawChannel(c, frame, idx, levelsLut(levels[idx].black, levels[idx].white)))
+  } else if (s === 'finale') {
+    paint((c) => drawComposite(c, frame, lutsNow()))
   }
-  if (stage() !== 'map') return
-  applyPalette(index)
 }
 
-// ── the one button ──────────────────────────────────────────────────────────
-
-function onButton() {
-  if (stage() === 'approach') takeExposure()
-  else if (stage() === 'map') keepIt()
-}
-
-// ── 1. approach ─────────────────────────────────────────────────────────────
+// ── 1. live ─────────────────────────────────────────────────────────────────
 
 async function boot() {
-  applyPalette(0)
-  setStage('approach')
+  setStage('live')
 
-  const params = new URLSearchParams(location.search)
   try {
-    await startCamera(feed, { want: params.get('cam') })
+    await startCamera(feed, { want: new URLSearchParams(location.search).get('cam') })
     setAspect(feed.videoWidth, feed.videoHeight)
     feed.addEventListener('loadedmetadata', () => setAspect(feed.videoWidth, feed.videoHeight))
     shutter.disabled = false
@@ -193,129 +235,195 @@ async function boot() {
     box.hidden = false
     box.textContent = `No camera: ${err.message}`
   }
-
-  revealAll(document.querySelector('.stage-approach'))
-
-  // Optional: bind the plinth's real controls, only when asked for with ?plinth.
-  if (serialSupported() && params.has('plinth')) {
-    try {
-      plinth = await connectPlinth({
-        onDial: (raw) => onDial(dialToIndex(raw)),
-        onButtonPress: onButton,
-      })
-    } catch {
-      /* fall back to the on-screen controls */
-    }
-  }
 }
 
-async function takeExposure() {
-  if (!feed.videoWidth) return
+// ── 2. countdown ────────────────────────────────────────────────────────────
+
+async function runCountdown() {
+  if (!feed.videoWidth || stage() !== 'live') return
+  setStage('countdown')
   shutter.disabled = true
 
+  for (let n = TIMELINE.countdownFrom; n >= 1; n--) {
+    countdownEl.textContent = String(n)
+    track(
+      countdownEl.animate(
+        [
+          { opacity: 0, transform: 'scale(1.6)' },
+          { opacity: 1, transform: 'scale(1)', offset: 0.35 },
+          { opacity: 0, transform: 'scale(.85)' },
+        ],
+        { duration: t(TIMELINE.countdownTick), easing: 'ease-out', fill: 'both' }
+      )
+    )
+    await wait(t(TIMELINE.countdownTick))
+  }
+  countdownEl.textContent = ''
+  takePhoto()
+}
+
+async function takePhoto() {
   flash.classList.remove('go')
-  void flash.offsetWidth // restart the flash animation
+  void flash.offsetWidth
   flash.classList.add('go')
 
-  exposure = captureIntensity(feed, CAPTURE_W)
-  if (!exposure) {
+  frame = captureFrame(feed, CAPTURE_W)
+  if (!frame) {
+    setStage('live')
     shutter.disabled = false
     return
   }
 
-  setAspect(exposure.width, exposure.height)
-  applyPalette(0) // the exposure appears as what it is: grayscale
+  levels = CHANNELS.map(() => ({ black: 0, white: 255 }))
+  setAspect(frame.width, frame.height)
+  buildEditors()
+
+  // The photo appears exactly as taken.
+  paint((c) => drawComposite(c, frame, lutsIdentity()))
   await wait(t(TIMELINE.freezeHold))
-  runHinge()
+  runIntro()
 }
 
-// ── 2. the hinge beat ───────────────────────────────────────────────────────
+// ── 3–4. the didactic beats ─────────────────────────────────────────────────
 
-async function runHinge() {
-  setStage('hinge')
-  revealAll(document.querySelector('.hinge'))
+async function runIntro() {
+  setStage('intro') // CSS squishes the photo out of full-frame and into the bay
+  $('photoTag').textContent = 'Your photo'
 
-  // Build the telescope frame at the portrait's exact dimensions while they're reading, so
-  // the two panes match and the dial has something to recolour the instant it's touched.
-  loadNebula(exposure.width, exposure.height).then((frame) => {
-    if (!exposure) return // they restarted while it was loading
-    nebula = frame
-    $('nebulaCaption').textContent = NEBULA_CREDIT.label
-    drawMapped(nebulaCanvas, nebula, COLORMAPS[paletteIndex])
+  await wait(t(TIMELINE.beat1))
+  pop($('beat1'))
+
+  await wait(t(TIMELINE.beat2))
+  pop($('beat2'))
+  // R, then G, then B light up as the sentence lands.
+  document.querySelectorAll('#beat2 .chip').forEach((chip, i) => {
+    later(t(TIMELINE.chipStagger * (i + 1)), () => chip.classList.add('lit'))
   })
 
-  await wait(t(TIMELINE.hingeHold))
-  document.body.classList.add('invite-dial') // CSS fades in "Turn the dial"
+  await wait(t(TIMELINE.editorIn))
+  enterTune(0)
 }
 
-// ── 3. the map beat ─────────────────────────────────────────────────────────
+// ── 4–5. one channel at a time ──────────────────────────────────────────────
 
-async function runMap(index) {
-  setStage('map')
-  document.body.classList.remove('invite-dial')
-  applyPalette(index)
+function enterTune(index) {
+  setStage(TUNE_STAGES[index])
+  const channel = CHANNELS[index]
+  $('photoTag').textContent = `${channel.label} channel`
 
-  await wait(t(TIMELINE.mapCrossfade))
-  revealAll(document.querySelector('.map-head'))
-  pop(document.querySelector('.pane-sky'), TIMELINE.nebulaIn)
+  // Only this channel's chip stays lit, so the highlight tracks the walkthrough.
+  document.querySelectorAll('.chip').forEach((chip) => {
+    chip.classList.toggle('lit', chip.classList.contains(`chip-${channel.key.toLowerCase()}`))
+  })
 
-  // Let them explore before offering the way out, so the dial is the focus first.
-  await wait(t(TIMELINE.keepHint))
-  rise(keepBtn)
+  paint((c) => drawChannel(c, frame, index, levelsLut(levels[index].black, levels[index].white)))
+  pop(bigEditors[index].root)
+  rise(nextBtn, TIMELINE.channelSwap)
 }
 
-// ── 4. send-off ─────────────────────────────────────────────────────────────
-
-function keepIt() {
-  const map = COLORMAPS[paletteIndex]
-  publishToWall({ image: mappedURL(exposure, map), palette: map.name })
-  runSendoff()
+function onNext() {
+  const idx = TUNE_STAGES.indexOf(stage())
+  if (idx === -1) return
+  if (idx < TUNE_STAGES.length - 1) enterTune(idx + 1)
+  else runReveal()
 }
 
-async function runSendoff() {
-  setStage('sendoff')
-  document.body.classList.remove('invite-dial')
+// ── 6–7. the reveal, then final touches ─────────────────────────────────────
 
-  later(t(TIMELINE.restartButtonAt), () => rise(restartBtn))
-  later(t(TIMELINE.autoRestartAt), restart)
+async function runReveal() {
+  setStage('reveal')
+  document.querySelectorAll('.chip').forEach((chip) => chip.classList.add('lit'))
 
-  await wait(t(TIMELINE.verdict))
-  revealAll(document.querySelector('.sendoff'))
+  // Brightness only — what the sensor actually measured.
+  $('photoTag').textContent = 'Brightness only'
+  crossfadeTo((c) => drawGrey(c, frame), 700)
+  await wait(t(TIMELINE.revealGrey))
+
+  // What the camera handed over, untouched.
+  $('photoTag').textContent = 'As the camera captured it'
+  crossfadeTo((c) => drawComposite(c, frame, lutsIdentity()), 900)
+  await wait(t(TIMELINE.revealOriginal))
+
+  // And slowly into the visitor's version.
+  $('photoTag').textContent = 'Your version'
+  crossfadeTo((c) => drawComposite(c, frame, lutsNow()), TIMELINE.revealUser)
+  await wait(t(TIMELINE.revealUser))
+
+  setStage('finale')
+  refreshEditors()
+  revealAll($('finale'))
+  rise(submitBtn, TIMELINE.finaleIn)
 }
 
-// ── restart ─────────────────────────────────────────────────────────────────
+// ── 8. send-off ─────────────────────────────────────────────────────────────
 
-function restart() {
+async function onSubmit() {
+  if (stage() !== 'finale') return
+  submitBtn.disabled = true
+
+  publishToWall({
+    image: compositeURL(frame, lutsNow()),
+    levels: levels.map((l) => ({ ...l })),
+  })
+
+  // Blow the photo off to a random edge, as if caught by wind.
+  const edge = Math.floor(Math.random() * 4)
+  const dist = 120
+  const [dx, dy] = [[0, -dist], [dist, 0], [0, dist], [-dist, 0]][edge]
+  const spin = (Math.random() > 0.5 ? 1 : -1) * (420 + Math.random() * 260)
+
+  track(
+    photoStack.animate(
+      [
+        { transform: 'translate(0, 0) rotate(0deg) scale(1)', opacity: 1 },
+        {
+          transform: `translate(${dx * 0.25}vw, ${dy * 0.25}vh) rotate(${spin * 0.2}deg) scale(1.04)`,
+          opacity: 1,
+          offset: 0.25,
+        },
+        { transform: `translate(${dx}vw, ${dy}vh) rotate(${spin}deg) scale(.35)`, opacity: 0 },
+      ],
+      { duration: t(TIMELINE.blowAway), easing: 'cubic-bezier(.3,.1,.6,1)', fill: 'both' }
+    )
+  )
+
+  await wait(t(TIMELINE.blowAway * 0.7))
+  setStage('thanks')
+  revealAll(document.querySelector('.stage-thanks'))
+
+  later(t(TIMELINE.resetButtonAt), () => rise(resetBtn))
+  later(t(TIMELINE.autoResetAt), reset)
+}
+
+// ── reset ───────────────────────────────────────────────────────────────────
+
+function reset() {
   cancelAll()
 
-  exposure = null
-  nebula = null
-  document.body.classList.remove('invite-dial')
-  applyPalette(0)
+  frame = null
+  levels = null
+  bigEditors = []
+  smallEditors = []
+  editorMount.replaceChildren()
+  touchupMount.replaceChildren()
 
-  setStage('approach')
+  // Undo anything the animations left behind on the persistent elements.
+  front = photoA
+  countdownEl.textContent = ''
+  submitBtn.disabled = false
+  document.querySelectorAll('.chip').forEach((chip) => chip.classList.remove('lit'))
+  ;[photoA, photoB].forEach((c) => c.getContext('2d').clearRect(0, 0, c.width, c.height))
+
+  setStage('live')
   setAspect(feed.videoWidth, feed.videoHeight)
   shutter.disabled = !feed.videoWidth
-  revealAll(document.querySelector('.stage-approach'))
 }
 
 // ── wiring ──────────────────────────────────────────────────────────────────
 
-shutter.addEventListener('click', onButton)
-keepBtn.addEventListener('click', onButton)
-knob.addEventListener('input', () => onDial(Number(knob.value)))
-restartBtn.addEventListener('click', restart)
-
-// Keyboard equivalents for the two physical inputs, for testing without the plinth.
-addEventListener('keydown', (e) => {
-  if (e.key === ' ' || e.key === 'Enter') {
-    e.preventDefault()
-    onButton()
-  }
-  if (e.key === 'ArrowRight') onDial(paletteIndex + 1)
-  if (e.key === 'ArrowLeft') onDial(paletteIndex - 1)
-})
-
-addEventListener('beforeunload', () => plinth && plinth.close())
+shutter.addEventListener('click', runCountdown)
+nextBtn.addEventListener('click', onNext)
+submitBtn.addEventListener('click', onSubmit)
+resetBtn.addEventListener('click', reset)
 
 boot()
