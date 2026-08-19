@@ -9,7 +9,7 @@
 // animations and leaving pending waits unresolved, so an abandoned turn cannot bleed into the
 // next visitor's.
 
-import { startCamera } from './camera.js'
+import { startCamera, CameraSetupError } from './camera.js'
 import {
   CHANNELS, captureFrame, levelsLut, IDENTITY_LUT,
   drawComposite, drawChannel, drawGrey, compositeURL,
@@ -233,7 +233,8 @@ async function boot() {
     shutter.disabled = true
     const box = $('camError')
     box.hidden = false
-    box.textContent = `No camera: ${err.message}`
+    box.textContent =
+      err instanceof CameraSetupError ? err.message : `No camera: ${err.message}`
   }
 }
 

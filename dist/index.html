@@ -1,0 +1,98 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Share Your Sky</title>
+  <script type="module" crossorigin src="./assets/main-l5TF7R4_.js"></script>
+  <link rel="modulepreload" crossorigin href="./assets/store-Fob85R0f.js">
+  <link rel="stylesheet" crossorigin href="./assets/store-YHhKWumd.css">
+</head>
+<body data-stage="live">
+
+<div class="sky" aria-hidden="true"></div>
+
+<!-- ─────────── 1–2. LIVE + COUNTDOWN ─────────── -->
+<section class="stage stage-live" data-for="live">
+  <h1 class="title">Share Your Sky</h1>
+
+  <div class="live-frame">
+    <video id="feed" class="framed" playsinline muted autoplay></video>
+    <div class="reticle" aria-hidden="true"><i></i><i></i><i></i><i></i></div>
+    <div class="countdown" id="countdown" aria-live="polite"></div>
+    <button id="shutter" class="shutter" aria-label="Take a photo" disabled>
+      <span class="shutter-dot"></span>
+    </button>
+  </div>
+
+  <p class="live-hint">Step into frame · press to start the countdown</p>
+  <p class="err" id="camError" hidden></p>
+</section>
+
+<!-- ─────────── 3–7. THE WORKBENCH ───────────
+     One section for the didactic beats, the per-channel levels walkthrough and the final
+     touches, so the photo is anchored in place and never re-positioned mid-flow. -->
+<section class="stage stage-work" data-for="work">
+
+  <div class="photo-bay">
+    <div class="photo-stack">
+      <canvas id="photoA" class="photo"></canvas>
+      <canvas id="photoB" class="photo"></canvas>
+    </div>
+    <p class="photo-tag" id="photoTag">Your photo</p>
+  </div>
+
+  <div class="panel">
+
+    <!-- step 3 -->
+    <p class="beat pop" id="beat1">When you took a photo, the camera captured light.</p>
+
+    <!-- step 4 -->
+    <p class="beat pop" id="beat2">
+      That light was filtered into
+      <b class="chip chip-r">R</b>
+      <b class="chip chip-g">G</b>
+      <b class="chip chip-b">B</b>.
+    </p>
+
+    <!-- steps 4–5: one editor per channel, revealed in turn -->
+    <div class="editor" id="editor"></div>
+
+    <!-- step 7 -->
+    <div class="finale" id="finale">
+      <div class="touchups" id="touchups"></div>
+      <p class="essay">
+        This is what <span class="w-astro">astrophotographers</span> do. Their cameras capture
+        light — including invisible light like <span class="w-ir">infrared</span>! — with or
+        without specific filters, and the astrophotographers do their best to highlight areas of
+        interest by increasing or decreasing how certain
+        <span class="w-wave" aria-label="wavelengths"><span aria-hidden="true">w</span><span
+          aria-hidden="true">a</span><span aria-hidden="true">v</span><span
+          aria-hidden="true">e</span><span aria-hidden="true">l</span><span
+          aria-hidden="true">e</span><span aria-hidden="true">n</span><span
+          aria-hidden="true">g</span><span aria-hidden="true">t</span><span
+          aria-hidden="true">h</span><span aria-hidden="true">s</span></span>
+        of light (like <b class="chip chip-r">R</b>, <b class="chip chip-g">G</b>,
+        <b class="chip chip-b">B</b>) show up in the final image.
+      </p>
+    </div>
+
+    <div class="actions">
+      <button id="nextBtn" class="btn rise">Next</button>
+      <button id="submitBtn" class="btn rise">Share my sky</button>
+    </div>
+  </div>
+</section>
+
+<!-- ─────────── 8. SEND-OFF ─────────── -->
+<section class="stage stage-thanks" data-for="thanks">
+  <h1 class="thanks-title pop">Thanks for sharing your sky</h1>
+  <p class="thanks-note pop" data-d="400">It's on the gallery wall now.</p>
+  <!-- data-hold: revealed on its own 3s timer, not with the rest of this section -->
+  <button id="resetBtn" class="btn ghost rise" data-hold>Start again</button>
+</section>
+
+<div class="flash" id="flash" aria-hidden="true"></div>
+
+</body>
+</html>

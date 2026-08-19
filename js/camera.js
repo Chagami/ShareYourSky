@@ -11,7 +11,15 @@
 
 export async function startCamera(video, { want = null, width = 1280, height = 720 } = {}) {
   if (!navigator.mediaDevices?.getUserMedia) {
-    throw new Error('This browser has no camera access. Use Chrome or Edge over http://localhost.')
+    // Two very different faults land here and the fix for each is nothing like the other,
+    // so say which one it is. An insecure origin is by far the more common: the camera API
+    // is only exposed in a secure context, and `localhost` is the sole plain-http origin
+    // that counts as one — open the LAN address over http and the API is simply absent.
+    throw new CameraSetupError(
+      window.isSecureContext
+        ? 'This browser has no camera access. Use Chrome or Edge.'
+        : `The camera needs a secure connection. This page is on ${location.origin} — open it over https:// or on http://localhost.`
+    )
   }
 
   const base = { width: { ideal: width }, height: { ideal: height }, facingMode: 'user' }
@@ -50,4 +58,8 @@ async function pickDevice(want) {
   }
   const needle = String(want).toLowerCase()
   return inputs.find((d) => d.label.toLowerCase().includes(needle))?.deviceId ?? null
+}
+
+export class CameraSetupError extends Error {
+  name = 'CameraSetupError'
 }

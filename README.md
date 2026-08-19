@@ -21,12 +21,37 @@ npm install
 npm run dev
 ```
 
-- Interaction screen → `http://localhost:5173/`
-- Gallery wall → `http://localhost:5173/gallery.html`
+- Interaction screen → `https://localhost:5173/`
+- Gallery wall → `https://localhost:5173/gallery.html`
 
-Chrome or Edge, full screen (F11). `localhost` counts as a secure context, so the camera works
-without HTTPS. Vanilla JS, no framework — Vite is here for the dev server, HMR and a bundled
-build, not for a component model.
+Chrome or Edge, full screen (F11). Vanilla JS, no framework — Vite is here for the dev server,
+HMR and a bundled build, not for a component model.
+
+### Why HTTPS
+
+The camera API is only exposed in a **secure context**. `localhost` is the one plain-http origin
+that qualifies; open the LAN address over `http://` and `navigator.mediaDevices` is not merely
+blocked, it is undefined. So the dev and preview servers both run TLS
+(`@vitejs/plugin-basic-ssl`), which makes *every* address a secure context and lets the
+interaction screen run on a second machine:
+
+```
+https://<this-machine's-IP>:5173/
+```
+
+The cert is self-signed and generated on first run into `node_modules/.vite/basic-ssl/`, so each
+new client gets one **"Your connection is not private"** interstitial — *Advanced → Proceed*.
+After that the camera works normally. Two things follow from it:
+
+- To lose the warning entirely, issue a cert with [mkcert](https://github.com/FiloSottile/mkcert)
+  (`mkcert -install && mkcert <IP> localhost`), point `server.https` at the pair instead of the
+  plugin, and install the mkcert root CA on each client.
+- Camera permission is granted **per origin**. Moving from `localhost` to the HTTPS LAN address
+  is a new origin, so the browser prompts again — and `?cam=` matching by label only works after
+  that prompt is answered, since device labels stay blank until it is.
+
+If the camera fails, the on-screen message distinguishes the two causes: an insecure origin names
+the origin it is on, an unsupported browser says so.
 
 > **Watch the port.** If another Vite server is already running, Vite silently takes the next
 > free one and prints it. Read the terminal output rather than assuming 5173.
@@ -35,10 +60,14 @@ build, not for a component model.
 
 ```bash
 npm run build     # -> dist/
-npm run preview   # serve dist/ to check it before deploying
+npm run preview   # serve dist/ over https on :4173 to check it before deploying
 ```
 
 `base` is `'./'`, so `dist/` runs from any folder without rewriting paths.
+
+`dist/` is **committed**, so a clone runs on an exhibit PC with no Node install — but that means
+it can go stale. Rebuild and commit it in the same commit as any change to `js/`, `css/` or the
+HTML, or the deployed copy will quietly lag the source.
 
 ### Picking the camera
 
