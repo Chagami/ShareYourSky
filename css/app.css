@@ -20,7 +20,7 @@
 
   /* The live feed and the frozen portrait share one box, so the freeze lands exactly where
      the preview was. Bounded on both axes to survive 4:3 and 16:9 cameras. */
-  --frame-h: min(58vh, calc(52vw / var(--shot-ar)));
+  --frame-h: min(46vh, calc(46vw / var(--shot-ar)));
   /* Both study panes: smaller, because two of them sit side by side. */
   --pane-h: min(38vh, calc(30vw / var(--shot-ar)));
 }
@@ -192,9 +192,30 @@ body {
 
 .stage-study {
   justify-content: center;
-  padding: 4vh 4vw;
+  padding: 3vh 4vw 28vh;
   gap: 2.2vh;
 }
+
+/* The dial and the prompt beneath it are pinned to the bottom, so they occupy the same
+   pixels in the hinge beat and the map beat. The portrait shrinks by ~20vh when the sky pane
+   joins it, and if the control cluster were in that flow it would leap upward out from under
+   the hand that is already dragging it. Centred with auto margins rather than a transform,
+   because the rise() entrance animation owns `transform`. */
+.stage-study > .dial-bay,
+.stage-study > .turn-hint,
+.stage-study > #keepBtn {
+  position: absolute;
+  left: 0;
+  right: 0;
+  margin-inline: auto;
+  width: fit-content;
+}
+.stage-study > .dial-bay { bottom: 15vh; width: min(560px, 60vw); }
+.stage-study > .turn-hint { bottom: 7vh; }
+.stage-study > #keepBtn { bottom: 5vh; }
+
+/* Nothing is pinned in the send-off, so the resolving text gets the full height. */
+body[data-stage="sendoff"] .stage-study { padding-bottom: 4vh; }
 
 /* --- the hinge beat --- */
 
@@ -391,6 +412,17 @@ body.invite-dial .turn-hint {
 body[data-stage="hinge"] .pane-sky { display: none; }
 body[data-stage="hinge"] .pane-you canvas { height: var(--frame-h); }
 body[data-stage="hinge"] .stage-study > .turn-hint { display: block; }
+/* The slider has to be ON SCREEN here, not just in the map beat: moving it is the only way
+   out of the hinge, so hiding it strands the visitor in front of an instruction they cannot
+   follow. It fades in with the invitation, after the hold, so it doesn't compete with the
+   question. The caption belongs to the map beat and stays back. */
+body[data-stage="hinge"] .stage-study > .dial-bay {
+  display: flex;
+  opacity: 0;
+  transition: opacity 700ms ease;
+}
+body[data-stage="hinge"].invite-dial .stage-study > .dial-bay { opacity: 1; }
+body[data-stage="hinge"] .dial-caption { display: none; }
 
 /* the map: heading, both panes, the dial */
 body[data-stage="map"] .stage-study > .hinge { display: none; }
@@ -401,10 +433,8 @@ body[data-stage="map"] .stage-study > .dial-bay { display: flex; }
 /* the send-off: both panes stay as evidence, the label resolves it */
 body[data-stage="sendoff"] .stage-study > .hinge,
 body[data-stage="sendoff"] .stage-study > .map-head { display: none; }
-body[data-stage="sendoff"] .stage-study > .dial-bay { display: flex; opacity: 0.35; }
 body[data-stage="sendoff"] .stage-study > .sendoff,
 body[data-stage="sendoff"] .stage-study > #restart { display: block; }
-body[data-stage="sendoff"] .knob { pointer-events: none; }
 
 /* ─── buttons ─── */
 

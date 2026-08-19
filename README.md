@@ -71,8 +71,22 @@ The whole piece runs on **one button and one rotary control**, and nothing else:
 | Button | take the exposure | — | keep it |
 | Dial | — | first turn advances | choose the colormap |
 
-On screen the shutter and the slider fire the same two actions, and Space/Enter plus the
-arrow keys drive them for testing. Real hardware is opt-in with `?plinth` — see below.
+**Both have full on-screen equivalents, and no hardware is required:** the shutter, the
+slider, and a `Keep this one` button. Space/Enter and the arrow keys drive the same two
+actions. Real hardware is opt-in with `?plinth` — see below.
+
+Two layout rules exist because of the on-screen slider, and both matter:
+
+- The slider is **visible during the hinge**, faded in after the hold. Moving it is the only
+  way out of that stage, so hiding it strands the visitor in front of an instruction they
+  cannot follow.
+- The slider and the button under it are **pinned to the bottom** of the study section. The
+  portrait shrinks by ~20vh when the sky pane joins it, and if the control cluster sat in that
+  flow it would leap upward out from under the hand already dragging it. Verified: 0px drift
+  across the beat change.
+
+The hint reads "Drag the slider". Change that one word in `index.html` to "Turn the dial" when
+the plinth's rotary is wired up.
 
 ## Color science
 
