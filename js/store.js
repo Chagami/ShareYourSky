@@ -26,8 +26,8 @@ export function list() {
  * a quota error the oldest entries are dropped until the write fits rather than losing the
  * image the visitor just made.
  */
-export function publish({ image, weights }) {
-  const entry = { id: newId(), image, weights, ts: Date.now() }
+export function publish({ image, palette }) {
+  const entry = { id: newId(), image, palette, ts: Date.now() }
   let items = [entry, ...list()].slice(0, MAX_ITEMS)
 
   while (items.length) {

@@ -1,6 +1,11 @@
 /* Is It Real? — kiosk interaction.
-   Deliberately chrome-free: no nav, no header, no controls that aren't part of the
-   experience. Every stage is a fixed full-screen layer; only one is active at a time. */
+   Chrome-free on purpose: no nav, no menus, nothing on screen that isn't part of the
+   experience or a description of it.
+
+   Two sections only. `approach` holds the live grayscale feed; `study` holds the frozen
+   exposure and stays put through the hinge, map and send-off beats, which are switched
+   entirely by body[data-stage] below. That way the visitor's portrait never has to be
+   re-positioned mid-flow. */
 
 :root {
   --bg: #07080b;
@@ -8,17 +13,16 @@
   --muted: #969ca8;
   --panel: rgba(255, 255, 255, 0.045);
   --line: rgba(255, 255, 255, 0.10);
-
-  --ch-r: #ff4d4d;
-  --ch-g: #3ddc6b;
-  --ch-b: #4d94ff;
+  --accent: #8fb6ff;
 
   --ease: cubic-bezier(0.16, 1, 0.3, 1);
-  --shot-ar: 1.3333; /* set from the camera's real aspect ratio on first frame */
+  --shot-ar: 1.3333; /* real camera aspect ratio, set from JS on the first frame */
 
-  /* One base box for the live feed and the captured photo, so the photo appears
-     exactly where the feed was. Bounded on both axes to survive 4:3 and 16:9 cameras. */
-  --frame-h: min(60vh, calc(56vw / var(--shot-ar)));
+  /* The live feed and the frozen portrait share one box, so the freeze lands exactly where
+     the preview was. Bounded on both axes to survive 4:3 and 16:9 cameras. */
+  --frame-h: min(58vh, calc(52vw / var(--shot-ar)));
+  /* Both study panes: smaller, because two of them sit side by side. */
+  --pane-h: min(38vh, calc(30vw / var(--shot-ar)));
 }
 
 * { box-sizing: border-box; }
@@ -42,13 +46,12 @@ body {
   position: fixed;
   inset: 0;
   background:
-    radial-gradient(70vw 60vh at 20% 10%, rgba(77, 148, 255, 0.10), transparent 70%),
-    radial-gradient(60vw 55vh at 85% 85%, rgba(255, 77, 77, 0.07), transparent 70%),
-    radial-gradient(50vw 50vh at 60% 40%, rgba(61, 220, 107, 0.045), transparent 70%);
+    radial-gradient(70vw 60vh at 20% 12%, rgba(120, 150, 210, 0.09), transparent 70%),
+    radial-gradient(60vw 55vh at 84% 86%, rgba(180, 160, 220, 0.06), transparent 70%);
   pointer-events: none;
 }
 
-/* ─── stages ─── */
+/* ─── sections ─── */
 
 .stage {
   position: fixed;
@@ -65,59 +68,41 @@ body {
   visibility: visible;
 }
 
-/* ─── reveal animations ───
-   Entrances are driven from main.js with the Web Animations API rather than CSS classes:
-   the choreography is a long timed sequence, and WAAPI lets a restart cancel every
-   in-flight animation at once instead of unwinding a pile of classes. These rules only
-   hold the elements hidden until their animation claims them. */
-
+/* Entrances are driven from main.js with the Web Animations API; a restart cancels them all
+   at once. These rules only hold elements hidden until their animation claims them. */
 .pop, .rise { opacity: 0; }
 
-/* ─── the travelling photo ─── */
+/* ─── 1. approach — black and white before they touch anything ─── */
 
-.shot {
-  position: fixed;
-  left: 50%;
-  top: 50%;
-  height: var(--frame-h);
-  width: auto;
-  border-radius: 14px;
-  box-shadow: 0 30px 90px rgba(0, 0, 0, 0.65), 0 0 0 1px var(--line);
-  transform: translate(-50%, -50%);
-  transform-origin: 50% 50%;
-  will-change: transform, filter;
-  transition:
-    transform 950ms var(--ease),
-    filter 1250ms linear,
-    opacity 420ms ease;
-  z-index: 3;
+.stage-approach { justify-content: center; gap: 3.5vh; }
+
+.setup {
+  margin: 0;
+  max-width: 46ch;
+  text-align: center;
+  font-size: clamp(1.1rem, 1.75vw, 1.7rem);
+  line-height: 1.4;
 }
-.shot[hidden] { display: none; }
-
-/* one class per resting place */
-.shot.at-frame   { transform: translate(-50%, -50%); }
-.shot.at-aside   { transform: translate(-50%, -50%) translateX(-26vw) scale(0.80); }
-.shot.at-top     { transform: translate(-50%, -50%) translateY(-36.5vh) scale(0.25); }
-.shot.at-result  { transform: translate(-50%, -50%) translateY(2vh) scale(0.76); }
-.shot.bw         { filter: grayscale(1); }
-.shot.fade       { opacity: 0; }
-
-/* ─── 1. live ─── */
-
-.live-frame {
-  position: fixed;
-  left: 50%;
-  top: 50%;
-  transform: translate(-50%, -50%);
-  line-height: 0;
+.setup em {
+  font-style: normal;
+  color: #fff;
+  text-decoration: underline;
+  text-decoration-thickness: 1px;
+  text-underline-offset: 5px;
 }
+
+.live-frame { position: relative; line-height: 0; }
+
 .framed {
   height: var(--frame-h);
   width: auto;
   border-radius: 14px;
-  transform: scaleX(-1); /* mirror, so standing in front of it feels like a mirror */
   background: #101216;
   box-shadow: 0 30px 90px rgba(0, 0, 0, 0.65), 0 0 0 1px var(--line);
+  /* The whole premise: the visitor is never shown a colour image of themselves. Rec. 709,
+     matching the luma the capture computes, so the freeze is seamless. */
+  filter: grayscale(1);
+  transform: scaleX(-1); /* mirror, so standing in front of it feels like a mirror */
 }
 .live-glow {
   position: absolute;
@@ -130,7 +115,7 @@ body {
 .shutter {
   position: absolute;
   left: 50%;
-  bottom: 30px;
+  bottom: 28px;
   transform: translateX(-50%);
   width: 92px;
   height: 92px;
@@ -140,7 +125,7 @@ body {
   background: rgba(0, 0, 0, 0.25);
   backdrop-filter: blur(6px);
   cursor: pointer;
-  transition: transform 180ms var(--ease), border-color 180ms ease;
+  transition: transform 180ms var(--ease);
 }
 .shutter-dot {
   display: block;
@@ -168,10 +153,8 @@ body {
 .shutter:disabled { opacity: 0.4; cursor: default; }
 
 .live-hint {
-  position: fixed;
-  top: calc(50% - var(--frame-h) / 2 - 8.5vh);
   margin: 0;
-  font-size: clamp(1.1rem, 1.9vw, 1.7rem);
+  font-size: clamp(1rem, 1.6vw, 1.4rem);
   letter-spacing: 0.16em;
   text-transform: uppercase;
   color: var(--muted);
@@ -205,294 +188,259 @@ body {
   100% { opacity: 0; }
 }
 
-/* ─── 2. is it real? ─── */
+/* ─── 2–4. the study section ─── */
 
-.stage-ask { justify-content: center; }
-
-.ask-panel {
-  position: absolute;
-  left: 51vw;
-  right: 4vw;
-  top: 50%;
-  transform: translateY(-50%);
-  display: flex;
-  flex-direction: column;
-  align-items: flex-start;
-  gap: 2.4vh;
+.stage-study {
+  justify-content: center;
+  padding: 4vh 4vw;
+  gap: 2.2vh;
 }
 
-.ask-title {
-  margin: 0;
-  font-size: clamp(3rem, 6.4vw, 6rem);
+/* --- the hinge beat --- */
+
+.hinge { text-align: center; }
+.hinge-title {
+  margin: 0 0 0.5em;
+  font-size: clamp(2.6rem, 5.6vw, 5.2rem);
   font-weight: 700;
   letter-spacing: -0.035em;
   line-height: 0.95;
 }
-
-.cloud {
-  display: flex;
-  flex-direction: column;
-  align-items: flex-start;
-  gap: 1.5vh;
-  width: 100%;
-}
-.bubble {
+.hinge-note {
   margin: 0;
-  padding: 0.85em 1.15em;
-  max-width: 30ch;
-  border-radius: 18px;
-  border: 1px solid var(--line);
-  background: var(--panel);
-  backdrop-filter: blur(4px);
-  color: #e4e7ec;
-  font-size: clamp(0.95rem, 1.35vw, 1.3rem);
-  line-height: 1.35;
-}
-.bubble:nth-child(2) { margin-left: 8%; }
-.bubble:nth-child(3) { margin-left: 3%; }
-.bubble:nth-child(4) { margin-left: 11%; }
-.bubble:nth-child(5) { margin-left: 5%; }
-
-/* ─── 3. processing ─── */
-
-/* The top ~27vh is reserved for the photo, which is a fixed-position element and so takes
-   no part in this flow. overflow-y is a safety valve for displays shorter than the design. */
-.stage-process {
-  padding: 27vh 4vw 3vh;
-  gap: 1.6vh;
-  justify-content: flex-start;
-  overflow-y: auto;
-}
-
-.caption {
-  margin: 0;
-  max-width: 62ch;
-  text-align: center;
-  font-size: clamp(1rem, 1.5vw, 1.45rem);
-  line-height: 1.4;
-}
-.caption small {
-  display: block;
-  margin-top: 0.5em;
+  font-size: clamp(1rem, 1.6vw, 1.5rem);
   color: var(--muted);
-  font-size: 0.78em;
-  line-height: 1.4;
-}
-.caption em { font-style: normal; text-decoration: underline; text-decoration-thickness: 1px; text-underline-offset: 4px; }
-
-/* Sits in the gap between the photo and the channel cards, and is faded out again once
-   the channels arrive — so it costs no vertical space in the layout below. Centred with
-   auto margins, not a transform, because the reveal animation owns `transform`. */
-#greyCaption {
-  position: absolute;
-  top: 22.5vh;
-  left: 0;
-  right: 0;
-  margin-inline: auto;
 }
 
-.beams {
-  position: fixed;
-  inset: 0;
-  pointer-events: none;
-  z-index: 2;
-}
-.beam {
-  position: absolute;
-  width: 2px;
-  margin-left: -1px;
-  transform-origin: 50% 0;
-  border-radius: 2px;
-  opacity: 0;
-  background: linear-gradient(to bottom, currentColor, transparent);
+/* --- the map beat heading --- */
+
+.map-head { text-align: center; }
+.map-title {
+  margin: 0;
+  font-size: clamp(1.5rem, 3vw, 2.8rem);
+  font-weight: 700;
+  letter-spacing: -0.025em;
 }
 
-.channels {
+/* --- the two panes --- */
+
+.pair {
   display: flex;
-  gap: 1.6vw;
   align-items: flex-start;
+  gap: 3vw;
+  transition: transform 720ms var(--ease);
 }
-/* Deliberately thumbnail-sized: the channels are evidence, the composite is the hero. */
-.channel {
-  width: 11.5vw;
-  max-width: 215px;
-  padding: 0.9vh 0.9vw 1.2vh;
-  border-radius: 12px;
-  border: 1px solid var(--line);
-  background: var(--panel);
-  opacity: 0; /* held until the pull-out animation in main.js claims it */
-}
-.channel canvas {
-  display: block;
-  width: 100%;
-  height: auto;
-  border-radius: 7px;
-  background: #0c0e12;
-  filter: grayscale(1);
-  transition: filter 900ms ease;
-}
-.channel.tinted canvas { filter: grayscale(0); }
 
-.channel-head {
-  display: flex;
-  align-items: center;
-  gap: 0.5em;
-  margin-bottom: 0.8vh;
-  font-size: clamp(0.68rem, 0.85vw, 0.85rem);
-  letter-spacing: 0.14em;
+.pane { margin: 0; }
+.pane canvas {
+  display: block;
+  height: var(--pane-h);
+  width: auto;
+  /* Canvas is a replaced element, so width: auto tracks the intrinsic ratio as the height
+     animates — the portrait shrinks to make room for the sky without distorting. */
+  transition: height 720ms var(--ease);
+  border-radius: 12px;
+  background: #0c0e12;
+  box-shadow: 0 22px 60px rgba(0, 0, 0, 0.6), 0 0 0 1px var(--line);
+}
+.pane figcaption {
+  margin-top: 1vh;
+  text-align: center;
+  font-size: clamp(0.68rem, 0.9vw, 0.88rem);
+  letter-spacing: 0.13em;
   text-transform: uppercase;
   color: var(--muted);
 }
-.swatch {
-  width: 10px;
-  height: 10px;
-  border-radius: 50%;
-  background: var(--acc);
-  box-shadow: 0 0 12px var(--acc);
+
+/* --- the one dial --- */
+
+.dial-bay {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 1vh;
+  width: min(560px, 60vw);
 }
-.channel-head .val {
-  margin-left: auto;
-  color: var(--ink);
-  font-variant-numeric: tabular-nums;
-  letter-spacing: 0.06em;
+.dial-readout {
+  display: flex;
+  align-items: baseline;
+  gap: 0.7em;
+}
+.palette-name {
+  font-size: clamp(1.1rem, 1.9vw, 1.7rem);
+  font-weight: 700;
+  letter-spacing: -0.015em;
+}
+.palette-note {
+  font-size: clamp(0.75rem, 1vw, 0.98rem);
+  color: var(--muted);
 }
 
-.slider {
-  -webkit-appearance: none;
-  appearance: none;
+.swatch {
   display: block;
   width: 100%;
-  height: 26px;
-  margin: 1vh 0 0;
+  height: 14px;
+  border-radius: 99px;
+  box-shadow: 0 0 0 1px var(--line);
+}
+
+.knob {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 100%;
+  height: 30px;
+  margin: 0;
   background: transparent;
   cursor: pointer;
 }
-.slider::-webkit-slider-runnable-track {
+.knob::-webkit-slider-runnable-track {
   height: 6px;
   border-radius: 99px;
-  background: linear-gradient(to right, var(--acc) var(--fill, 50%), rgba(255, 255, 255, 0.14) var(--fill, 50%));
+  background: linear-gradient(to right, var(--accent) var(--fill, 0%), rgba(255, 255, 255, 0.14) var(--fill, 0%));
 }
-.slider::-moz-range-track {
+.knob::-moz-range-track {
   height: 6px;
   border-radius: 99px;
-  background: linear-gradient(to right, var(--acc) var(--fill, 50%), rgba(255, 255, 255, 0.14) var(--fill, 50%));
+  background: linear-gradient(to right, var(--accent) var(--fill, 0%), rgba(255, 255, 255, 0.14) var(--fill, 0%));
 }
-.slider::-webkit-slider-thumb {
+.knob::-webkit-slider-thumb {
   -webkit-appearance: none;
-  width: 22px;
-  height: 22px;
-  margin-top: -8px;
+  width: 28px;
+  height: 28px;
+  margin-top: -11px;
   border-radius: 50%;
   background: #fff;
-  border: 3px solid var(--acc);
-  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.6);
+  border: 3px solid var(--accent);
+  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.6);
 }
-.slider::-moz-range-thumb {
-  width: 22px;
-  height: 22px;
+.knob::-moz-range-thumb {
+  width: 28px;
+  height: 28px;
   border-radius: 50%;
   background: #fff;
-  border: 3px solid var(--acc);
+  border: 3px solid var(--accent);
 }
 
-.result {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 0.9vh;
-}
-.label {
-  font-size: clamp(0.68rem, 0.85vw, 0.85rem);
-  letter-spacing: 0.16em;
-  text-transform: uppercase;
-  color: var(--muted);
-}
-.composite {
-  display: block;
-  height: 26vh;
-  width: auto;
-  max-width: 46vw;
-  border-radius: 12px;
-  background: #0c0e12;
-  box-shadow: 0 24px 60px rgba(0, 0, 0, 0.6), 0 0 0 1px var(--line);
-}
-
-/* ─── 4. is this photo real? ─── */
-
-.stage-final {
-  padding: 9vh 4vw 4.5vh;
-  gap: 1.2vh;
-}
-.final-title {
-  margin: 0;
-  font-size: clamp(2.6rem, 5.4vw, 5rem);
-  font-weight: 700;
-  letter-spacing: -0.03em;
-}
-.final-note {
-  margin: auto 0 0;
+.dial-caption {
+  margin: 0.4vh 0 0;
   text-align: center;
-  font-size: clamp(1rem, 1.5vw, 1.4rem);
-}
-.final-note small {
-  display: block;
-  margin-top: 0.6em;
+  font-size: clamp(0.85rem, 1.15vw, 1.1rem);
   color: var(--muted);
-  font-size: 0.74em;
-  letter-spacing: 0.1em;
-  font-variant-numeric: tabular-nums;
 }
-.final-sent {
+
+/* --- the nudge, faded in by JS adding a class to <body> ---
+   The breathe animation is gated behind .invite-dial rather than sitting on .turn-hint: a
+   running animation outranks a normal `opacity` declaration, so an always-on breathe would
+   override the opacity:0 and show the hint immediately, collapsing the held hinge beat. */
+
+.turn-hint {
   margin: 0;
-  font-size: clamp(0.72rem, 0.95vw, 0.95rem);
+  font-size: clamp(0.85rem, 1.15vw, 1.1rem);
   letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--accent);
+  opacity: 0;
+  transition: opacity 700ms ease;
+}
+body.invite-dial .turn-hint {
+  opacity: 1;
+  animation: breathe-bright 3s ease-in-out infinite;
+}
+@keyframes breathe-bright {
+  0%, 100% { opacity: 0.62; }
+  50%      { opacity: 1; }
+}
+
+/* --- the send-off --- */
+
+/* Sized in px, not ch: this is a 16px div wrapping much larger text, so `ch` here resolves
+   against the wrong font and chops the verdict into four lines. */
+.sendoff { text-align: center; max-width: min(780px, 86vw); }
+.verdict {
+  margin: 0 0 1em;
+  font-size: clamp(1.15rem, 2.1vw, 2rem);
+  line-height: 1.35;
+}
+.verdict em {
+  font-style: normal;
+  font-weight: 700;
+  color: #fff;
+}
+.takeaway {
+  margin: 0;
+  font-size: clamp(0.85rem, 1.15vw, 1.1rem);
+  letter-spacing: 0.1em;
   text-transform: uppercase;
   color: var(--muted);
 }
+.takeaway b { color: var(--ink); }
+
+/* ─── which beat is on screen ───
+   Everything in the study section is present in the DOM the whole time; these rules decide
+   what is visible. `display: none` rather than opacity, so hidden beats claim no layout. */
+
+.stage-study > .map-head,
+.stage-study > .dial-bay,
+.stage-study > .sendoff,
+.stage-study > .turn-hint,
+.stage-study > #keepBtn,
+.stage-study > #restart { display: none; }
+
+/* the hinge: question above, the frozen exposure alone and centred. It holds the live
+   preview's exact size so the freeze lands in place rather than jumping smaller. */
+body[data-stage="hinge"] .pane-sky { display: none; }
+body[data-stage="hinge"] .pane-you canvas { height: var(--frame-h); }
+body[data-stage="hinge"] .stage-study > .turn-hint { display: block; }
+
+/* the map: heading, both panes, the dial */
+body[data-stage="map"] .stage-study > .hinge { display: none; }
+body[data-stage="map"] .stage-study > .map-head,
+body[data-stage="map"] .stage-study > #keepBtn { display: block; }
+body[data-stage="map"] .stage-study > .dial-bay { display: flex; }
+
+/* the send-off: both panes stay as evidence, the label resolves it */
+body[data-stage="sendoff"] .stage-study > .hinge,
+body[data-stage="sendoff"] .stage-study > .map-head { display: none; }
+body[data-stage="sendoff"] .stage-study > .dial-bay { display: flex; opacity: 0.35; }
+body[data-stage="sendoff"] .stage-study > .sendoff,
+body[data-stage="sendoff"] .stage-study > #restart { display: block; }
+body[data-stage="sendoff"] .knob { pointer-events: none; }
 
 /* ─── buttons ─── */
 
 .btn {
-  padding: 1em 2.2em;
+  padding: 0.95em 2.2em;
   border: 0;
   border-radius: 99px;
   background: #f3f4f6;
   color: #0a0b0e;
   font: inherit;
-  font-size: clamp(0.95rem, 1.25vw, 1.2rem);
+  font-size: clamp(0.9rem, 1.2vw, 1.15rem);
   font-weight: 600;
-  letter-spacing: 0.01em;
   cursor: pointer;
-  transition: transform 200ms var(--ease), background 200ms ease, opacity 200ms ease;
+  transition: transform 200ms var(--ease), background 200ms ease;
 }
 .btn:hover { transform: translateY(-2px); background: #fff; }
 .btn:active { transform: translateY(0) scale(0.98); }
-.btn:disabled { opacity: 0.35; cursor: default; transform: none; }
-/* Publish is disabled *and* not yet revealed for most of the process stage. This has to
-   outrank .btn:disabled or the button sits there greyed out during the whole B&W step. */
-.btn.rise:disabled { opacity: 0; }
 .btn.ghost {
   background: transparent;
   color: var(--ink);
   border: 1px solid rgba(255, 255, 255, 0.35);
 }
 .btn.ghost:hover { background: rgba(255, 255, 255, 0.08); }
-#publish { margin-top: 0.6vh; }
 
 /* ─── smaller / shorter displays ─── */
 
 @media (max-height: 860px) {
-  .stage-process { padding-top: 25vh; gap: 1.2vh; }
-  .composite { height: 22vh; }
-  #greyCaption { top: 20vh; }
+  .stage-study { gap: 1.4vh; }
+  :root { --pane-h: min(32vh, calc(28vw / var(--shot-ar))); }
 }
 @media (max-width: 1100px) {
-  .channel { width: 17vw; }
-  .ask-panel { left: 46vw; }
+  .pair { gap: 2vw; }
+  .dial-bay { width: 78vw; }
 }
 
-/* Scripted animations read this too — see PACE in main.js. */
 @media (prefers-reduced-motion: reduce) {
-  .shot, .channel canvas { transition-duration: 220ms; }
-  .shutter::after, .live-hint { animation: none; }
+  .shutter::after, .live-hint, body.invite-dial .turn-hint { animation: none; }
+  .pair { transition-duration: 200ms; }
 }

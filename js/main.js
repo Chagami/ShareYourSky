@@ -1,48 +1,65 @@
 // Is It Real? — stage machine and choreography.
 //
-//   live  ── shutter ─▶  ask  ── button ─▶  process  ── publish ─▶  final  ── 30s ─▶ live
+//   approach --button--> hinge --dial--> map --button--> sendoff --30s--> approach
 //
-// The whole flow is one long timed sequence, so every wait and every animation is tagged
-// with a generation number. restart() bumps the generation, which cancels in-flight
-// animations and makes any pending wait simply never resolve — no half-finished stage can
-// bleed into the next visitor's turn.
+// Two physical inputs drive the whole piece, matching the plinth: one button and one rotary
+// control. The button takes the exposure, then later keeps it; the dial does everything in
+// between. The on-screen shutter and slider fire the same two actions, so it runs without
+// hardware attached.
+//
+// Every wait and animation is tagged with a generation number. restart() bumps it, which
+// cancels in-flight animations and leaves pending waits unresolved, so an abandoned turn can
+// never bleed into the next visitor's.
 
 import { startCamera } from './camera.js'
-import { CHANNELS, captureFrame, channelLayers, drawChannel, drawComposite, compositeURL } from './imaging.js'
+import { captureIntensity, drawMapped, mappedURL } from './imaging.js'
+import { COLORMAPS, drawSwatch } from './colormaps.js'
+import { loadNebula, NEBULA_CREDIT } from './nebula.js'
+import { connectPlinth, serialSupported } from './serial.js'
 import { publish as publishToWall } from './store.js'
 
-const EASE = 'cubic-bezier(.16, 1, .3, 1)'
-const WORK_W = 420 // preview resolution while the sliders are live
-const FULL_W = 960 // capture + published resolution
-const RESTART_BUTTON_AT = 5000
-const AUTO_RESTART_AT = 30000
+// ── the knobs you'll actually want to turn ──────────────────────────────────
 
-// Honour the OS reduced-motion setting by compressing the whole sequence.
+const TIMELINE = {
+  freezeHold: 160, // beat between the flash and the hinge, so the freeze registers
+  hingeHold: 3400, // the fulcrum. Deliberately long — do not rush this one.
+  mapCrossfade: 520,
+  nebulaIn: 260,
+  keepHint: 2400, // how long they explore before being told they can keep it
+  verdict: 300,
+  restartButtonAt: 5000,
+  autoRestartAt: 30000,
+}
+
+const CAPTURE_W = 960 // exposure resolution, also what gets published
+
+// Compress the whole sequence for anyone who asked the OS for less motion.
 const PACE = matchMedia('(prefers-reduced-motion: reduce)').matches ? 0.25 : 1
 const t = (ms) => Math.round(ms * PACE)
+const EASE = 'cubic-bezier(.16, 1, .3, 1)'
 
 const $ = (id) => document.getElementById(id)
 const feed = $('feed')
-const shot = $('shot')
 const shutter = $('shutter')
 const flash = $('flash')
-const beams = $('beams')
-const channelsEl = $('channels')
-const compositeCanvas = $('compositeCanvas')
-const publishBtn = $('publish')
+const portraitCanvas = $('portraitCanvas')
+const nebulaCanvas = $('nebulaCanvas')
+const knob = $('knob')
+const keepBtn = $('keepBtn')
 const restartBtn = $('restart')
-const greyCaption = $('greyCaption')
-const mixCaption = $('mixCaption')
-const resultPanel = $('resultPanel')
+
+// Which <section> is on screen for each stage. hinge/map/sendoff share one section so the
+// frozen portrait never has to be re-positioned between them.
+const SECTION_FOR = { approach: 'approach', hinge: 'study', map: 'study', sendoff: 'study' }
 
 let gen = 0
 let anims = []
 let timers = []
 
-let capture = null // { canvas, colorURL, width, height }
-let workLayers = null // the three measured channel planes, at preview resolution
-let weights = [1, 1, 1]
-const cards = [] // { root, canvas, slider, val }
+let exposure = null // { intensity, width, height } — written once, then read-only
+let nebula = null
+let paletteIndex = 0
+let plinth = null
 
 // ── timing + animation, all cancellable ─────────────────────────────────────
 
@@ -71,23 +88,22 @@ function track(anim) {
   return anim
 }
 
-/** Scale-and-settle entrance, preserving any per-element `--rot` tilt. */
 function pop(node, delay = 0) {
-  const rot = getComputedStyle(node).getPropertyValue('--rot').trim() || '0deg'
+  if (!node) return null
   return track(
     node.animate(
       [
-        { opacity: 0, transform: `translateY(20px) scale(.86) rotate(${rot})`, offset: 0 },
-        { opacity: 1, transform: `translateY(0) scale(1.035) rotate(${rot})`, offset: 0.62 },
-        { opacity: 1, transform: `translateY(0) scale(1) rotate(${rot})`, offset: 1 },
+        { opacity: 0, transform: 'translateY(20px) scale(.88)', offset: 0 },
+        { opacity: 1, transform: 'translateY(0) scale(1.03)', offset: 0.62 },
+        { opacity: 1, transform: 'translateY(0) scale(1)', offset: 1 },
       ],
       { duration: t(640), delay: t(delay), easing: EASE, fill: 'both' }
     )
   )
 }
 
-/** Slide-up entrance, used for the buttons that advance a stage. */
 function rise(node, delay = 0) {
+  if (!node) return null
   return track(
     node.animate([{ opacity: 0, transform: 'translateY(46px)' }, { opacity: 1, transform: 'none' }], {
       duration: t(700),
@@ -98,93 +114,76 @@ function rise(node, delay = 0) {
   )
 }
 
-// Created after the entrance, so it wins the animation cascade and fades from 1 to 0.
-function fadeOut(node, delay = 0) {
-  return track(
-    node.animate([{ opacity: 1 }, { opacity: 0 }], {
-      duration: t(420),
-      delay: t(delay),
-      easing: 'ease',
-      fill: 'forwards',
-    })
-  )
+/** Run the entrances for one sub-stage: every marked element inside `root`. */
+function revealAll(root) {
+  if (!root) return
+  root.querySelectorAll('.pop, .rise').forEach((node) => {
+    const delay = Number(node.dataset.d) || 0
+    if (node.classList.contains('rise')) rise(node, delay)
+    else pop(node, delay)
+  })
 }
 
 function setStage(name) {
-  document.querySelectorAll('.stage').forEach((s) => s.classList.toggle('active', s.dataset.for === name))
+  const section = SECTION_FOR[name]
+  document.querySelectorAll('.stage').forEach((s) => s.classList.toggle('active', s.dataset.for === section))
   document.body.dataset.stage = name
 }
 
-/** Keep the photo box matched to whatever the camera actually gives us. */
+const stage = () => document.body.dataset.stage
+
 function setAspect(w, h) {
   if (w && h) document.documentElement.style.setProperty('--shot-ar', (w / h).toFixed(4))
 }
 
-// ── channel cards ───────────────────────────────────────────────────────────
+// ── the colormap dial ───────────────────────────────────────────────────────
 
-function buildChannels() {
-  CHANNELS.forEach((ch, i) => {
-    const root = document.createElement('div')
-    root.className = 'channel'
-    root.style.setProperty('--acc', ch.accent)
-    root.innerHTML = `
-      <div class="channel-head"><span class="swatch"></span>${ch.label}<span class="val">100%</span></div>
-      <canvas></canvas>
-      <input class="slider" type="range" min="0" max="2" step="0.01" value="1" disabled
-             aria-label="${ch.label} channel intensity">`
-    channelsEl.appendChild(root)
+function applyPalette(index) {
+  paletteIndex = Math.max(0, Math.min(COLORMAPS.length - 1, index))
+  const map = COLORMAPS[paletteIndex]
 
-    const card = {
-      root,
-      canvas: root.querySelector('canvas'),
-      slider: root.querySelector('.slider'),
-      val: root.querySelector('.val'),
-    }
-    card.slider.addEventListener('input', () => onSlide(i, parseFloat(card.slider.value)))
-    cards.push(card)
-    paintFill(card.slider)
-  })
+  knob.value = String(paletteIndex)
+  knob.style.setProperty('--fill', `${(paletteIndex / (COLORMAPS.length - 1)) * 100}%`)
+  $('paletteName').textContent = map.name
+  $('paletteNote').textContent = map.note
+  $('chosenPalette').textContent = map.name
+  drawSwatch($('swatch'), map)
+
+  // The one operation the visitor controls: a lookup table over an untouched intensity array.
+  if (exposure) drawMapped(portraitCanvas, exposure, map)
+  if (nebula) drawMapped(nebulaCanvas, nebula, map)
 }
 
-function paintFill(slider) {
-  slider.style.setProperty('--fill', `${(slider.value / slider.max) * 100}%`)
+/** Rotary 0..1023 -> palette index. */
+function dialToIndex(raw) {
+  return Math.round((raw / 1023) * (COLORMAPS.length - 1))
 }
 
-let redrawQueued = false
-
-function onSlide(index, value) {
-  weights[index] = value
-  cards[index].val.textContent = `${Math.round(value * 100)}%`
-  paintFill(cards[index].slider)
-
-  // Redraw all four canvases on the next frame: cheap at this working size, and it can't
-  // drop an update the way a per-channel queue can when two sliders move together.
-  if (redrawQueued) return
-  redrawQueued = true
-  requestAnimationFrame(() => {
-    redrawQueued = false
-    if (workLayers) redrawPreviews()
-  })
+function onDial(index) {
+  if (stage() === 'hinge') {
+    runMap(index) // the first turn of the dial is what advances the piece
+    return
+  }
+  if (stage() !== 'map') return
+  applyPalette(index)
 }
 
-function redrawPreviews() {
-  cards.forEach((c, i) => drawChannel(c.canvas, workLayers, i, weights[i]))
-  drawComposite(compositeCanvas, workLayers, weights)
+// ── the one button ──────────────────────────────────────────────────────────
+
+function onButton() {
+  if (stage() === 'approach') takeExposure()
+  else if (stage() === 'map') keepIt()
 }
 
-function setSlidersEnabled(on) {
-  cards.forEach((c) => (c.slider.disabled = !on))
-}
-
-// ── 1. live ─────────────────────────────────────────────────────────────────
+// ── 1. approach ─────────────────────────────────────────────────────────────
 
 async function boot() {
-  buildChannels()
-  setStage('live')
+  applyPalette(0)
+  setStage('approach')
 
-  const want = new URLSearchParams(location.search).get('cam')
+  const params = new URLSearchParams(location.search)
   try {
-    await startCamera(feed, { want })
+    await startCamera(feed, { want: params.get('cam') })
     setAspect(feed.videoWidth, feed.videoHeight)
     feed.addEventListener('loadedmetadata', () => setAspect(feed.videoWidth, feed.videoHeight))
     shutter.disabled = false
@@ -194,9 +193,23 @@ async function boot() {
     box.hidden = false
     box.textContent = `No camera: ${err.message}`
   }
+
+  revealAll(document.querySelector('.stage-approach'))
+
+  // Optional: bind the plinth's real controls, only when asked for with ?plinth.
+  if (serialSupported() && params.has('plinth')) {
+    try {
+      plinth = await connectPlinth({
+        onDial: (raw) => onDial(dialToIndex(raw)),
+        onButtonPress: onButton,
+      })
+    } catch {
+      /* fall back to the on-screen controls */
+    }
+  }
 }
 
-async function onShutter() {
+async function takeExposure() {
   if (!feed.videoWidth) return
   shutter.disabled = true
 
@@ -204,202 +217,105 @@ async function onShutter() {
   void flash.offsetWidth // restart the flash animation
   flash.classList.add('go')
 
-  capture = captureFrame(feed, FULL_W)
-  if (!capture) {
+  exposure = captureIntensity(feed, CAPTURE_W)
+  if (!exposure) {
     shutter.disabled = false
     return
   }
 
-  setAspect(capture.width, capture.height)
-  shot.src = capture.colorURL
-  shot.hidden = false
-  shot.className = 'shot at-frame' // lands exactly where the live feed was
-
-  await wait(t(140))
-  runAsk()
+  setAspect(exposure.width, exposure.height)
+  applyPalette(0) // the exposure appears as what it is: grayscale
+  await wait(t(TIMELINE.freezeHold))
+  runHinge()
 }
 
-// ── 2. is it real? ──────────────────────────────────────────────────────────
+// ── 2. the hinge beat ───────────────────────────────────────────────────────
 
-async function runAsk() {
-  setStage('ask')
-  await wait(t(80))
+async function runHinge() {
+  setStage('hinge')
+  revealAll(document.querySelector('.hinge'))
 
-  shot.classList.remove('at-frame')
-  shot.classList.add('at-aside') // slides out of the centre, making room for the questions
-
-  await wait(t(400))
-  document.querySelectorAll('.stage-ask [data-d]').forEach((node) => {
-    const delay = Number(node.dataset.d) || 0
-    ;(node.classList.contains('rise') ? rise : pop)(node, delay)
-  })
-}
-
-// ── 3. processing ───────────────────────────────────────────────────────────
-
-async function runProcess() {
-  setStage('process') // the ask stage fades out on its own — that's the wipe
-  shot.classList.remove('at-aside')
-  shot.classList.add('at-top', 'bw') // kicked to the top, desaturating as it goes
-
-  // Split the colour capture into its three measured planes while the CSS desaturation of
-  // the photo plays, so the channel cards already hold real data when they're pulled out.
-  workLayers = channelLayers(capture.canvas, WORK_W)
-  redrawPreviews()
-
-  await wait(t(750))
-  pop(greyCaption)
-
-  await wait(t(2500))
-  fadeOut(greyCaption)
-  await pullChannels()
-
-  pop(mixCaption, 100)
-  pop(resultPanel, 240)
-  rise(publishBtn, 500)
-  setSlidersEnabled(true)
-  publishBtn.disabled = false
-}
-
-/**
- * The three channel cards start life mapped exactly onto the black-and-white photo and
- * then travel out to their own slots, gaining their colour on the way — so they read as
- * having been pulled out of that one greyscale frame. A beam trails behind each one.
- */
-async function pullChannels() {
-  const from = shot.getBoundingClientRect()
-  drawBeams(from)
-
-  const stagger = 200
-  cards.forEach((card, i) => {
-    const r = card.root.getBoundingClientRect()
-    const scale = Math.max(0.1, Math.min(from.width / r.width, from.height / r.height))
-    const dx = from.left + from.width / 2 - (r.left + r.width / 2)
-    const dy = from.top + from.height / 2 - (r.top + r.height / 2)
-
-    track(
-      card.root.animate(
-        [
-          { opacity: 0, transform: `translate(${dx}px, ${dy}px) scale(${scale})`, offset: 0 },
-          { opacity: 1, offset: 0.35 },
-          { opacity: 1, transform: 'none', offset: 1 },
-        ],
-        { duration: t(1000), delay: t(220 + i * stagger), easing: EASE, fill: 'both' }
-      )
-    )
-    later(t(420 + i * stagger), () => card.root.classList.add('tinted'))
+  // Build the telescope frame at the portrait's exact dimensions while they're reading, so
+  // the two panes match and the dial has something to recolour the instant it's touched.
+  loadNebula(exposure.width, exposure.height).then((frame) => {
+    if (!exposure) return // they restarted while it was loading
+    nebula = frame
+    $('nebulaCaption').textContent = NEBULA_CREDIT.label
+    drawMapped(nebulaCanvas, nebula, COLORMAPS[paletteIndex])
   })
 
-  await wait(t(220 + 2 * stagger + 1000))
+  await wait(t(TIMELINE.hingeHold))
+  document.body.classList.add('invite-dial') // CSS fades in "Turn the dial"
 }
 
-function drawBeams(from) {
-  beams.replaceChildren()
-  const x0 = from.left + from.width / 2
-  const y0 = from.bottom - 4
+// ── 3. the map beat ─────────────────────────────────────────────────────────
 
-  cards.forEach((card, i) => {
-    const r = card.root.getBoundingClientRect()
-    const dx = r.left + r.width / 2 - x0
-    const dy = Math.max(1, r.top + 8 - y0)
-    const length = Math.hypot(dx, dy)
-    // The beam hangs straight down from its top edge, so rotate it onto the card.
-    const rot = -Math.atan2(dx, dy) * (180 / Math.PI)
+async function runMap(index) {
+  setStage('map')
+  document.body.classList.remove('invite-dial')
+  applyPalette(index)
 
-    const beam = document.createElement('div')
-    beam.className = 'beam'
-    beam.style.left = `${x0}px`
-    beam.style.top = `${y0}px`
-    beam.style.height = `${length}px`
-    beam.style.color = CHANNELS[i].accent
-    beams.appendChild(beam)
+  await wait(t(TIMELINE.mapCrossfade))
+  revealAll(document.querySelector('.map-head'))
+  pop(document.querySelector('.pane-sky'), TIMELINE.nebulaIn)
 
-    track(
-      beam.animate(
-        [
-          { opacity: 0, transform: `rotate(${rot}deg) scaleY(0)`, offset: 0 },
-          { opacity: 0.9, offset: 0.35 },
-          { opacity: 0, transform: `rotate(${rot}deg) scaleY(1)`, offset: 1 },
-        ],
-        { duration: t(900), delay: t(120 + i * 200), easing: EASE, fill: 'both' }
-      )
-    )
-  })
+  // Let them explore before offering the way out, so the dial is the focus first.
+  await wait(t(TIMELINE.keepHint))
+  rise(keepBtn)
 }
 
-// ── 4. is this photo real? ──────────────────────────────────────────────────
+// ── 4. send-off ─────────────────────────────────────────────────────────────
 
-function onPublish() {
-  publishBtn.disabled = true
-  setSlidersEnabled(false)
-
-  const fullLayers = channelLayers(capture.canvas, FULL_W)
-  const image = compositeURL(fullLayers, weights)
-  publishToWall({ image, weights: weights.slice() })
-  runFinal(image)
+function keepIt() {
+  const map = COLORMAPS[paletteIndex]
+  publishToWall({ image: mappedURL(exposure, map), palette: map.name })
+  runSendoff()
 }
 
-async function runFinal(image) {
-  shot.classList.add('fade')
-  setStage('final')
+async function runSendoff() {
+  setStage('sendoff')
+  document.body.classList.remove('invite-dial')
 
-  later(t(RESTART_BUTTON_AT), () => rise(restartBtn))
-  later(t(AUTO_RESTART_AT), restart)
+  later(t(TIMELINE.restartButtonAt), () => rise(restartBtn))
+  later(t(TIMELINE.autoRestartAt), restart)
 
-  await wait(t(440))
-  shot.src = image // the edited composite takes the original photo's place
-  shot.classList.remove('bw', 'at-top')
-  shot.classList.add('at-result')
-
-  await wait(t(120))
-  shot.classList.remove('fade')
-
-  await wait(t(420))
-  $('finalWeights').textContent = CHANNELS.map((c, i) => `${c.key} ${Math.round(weights[i] * 100)}%`).join('  ·  ')
-  pop($('finalTitle'))
-  pop($('finalNote'), 420)
-  pop($('finalSent'), 760)
+  await wait(t(TIMELINE.verdict))
+  revealAll(document.querySelector('.sendoff'))
 }
 
 // ── restart ─────────────────────────────────────────────────────────────────
 
 function restart() {
-  cancelAll() // stops every pending wait and reverts every revealed element
+  cancelAll()
 
-  weights = [1, 1, 1]
-  workLayers = null
-  capture = null
-  cards.forEach((card) => {
-    card.slider.value = 1
-    card.slider.disabled = true
-    card.val.textContent = '100%'
-    card.root.classList.remove('tinted')
-    paintFill(card.slider)
-  })
-  beams.replaceChildren()
-  publishBtn.disabled = true
+  exposure = null
+  nebula = null
+  document.body.classList.remove('invite-dial')
+  applyPalette(0)
 
-  shot.classList.add('fade')
-  setStage('live')
+  setStage('approach')
   setAspect(feed.videoWidth, feed.videoHeight)
-
-  later(t(520), () => {
-    shot.hidden = true
-    shot.className = 'shot'
-    shot.removeAttribute('src')
-    shutter.disabled = !feed.videoWidth
-  })
+  shutter.disabled = !feed.videoWidth
+  revealAll(document.querySelector('.stage-approach'))
 }
 
 // ── wiring ──────────────────────────────────────────────────────────────────
 
-shutter.addEventListener('click', onShutter)
-$('toProcess').addEventListener('click', runProcess)
-publishBtn.addEventListener('click', onPublish)
+shutter.addEventListener('click', onButton)
+keepBtn.addEventListener('click', onButton)
+knob.addEventListener('input', () => onDial(Number(knob.value)))
 restartBtn.addEventListener('click', restart)
 
-// Beam geometry is measured in pixels, so a resize (display swap, projector) invalidates
-// it. They are a one-shot trail that has already played by then — just clear them.
-addEventListener('resize', () => beams.replaceChildren())
+// Keyboard equivalents for the two physical inputs, for testing without the plinth.
+addEventListener('keydown', (e) => {
+  if (e.key === ' ' || e.key === 'Enter') {
+    e.preventDefault()
+    onButton()
+  }
+  if (e.key === 'ArrowRight') onDial(paletteIndex + 1)
+  if (e.key === 'ArrowLeft') onDial(paletteIndex - 1)
+})
+
+addEventListener('beforeunload', () => plinth && plinth.close())
 
 boot()

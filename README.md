@@ -1,10 +1,13 @@
 # Is It Real?
 
 A single-visitor exhibit interaction about where the color in an astronomical image comes
-from. The visitor photographs themselves, is asked whether the photo looks real, then takes
-it apart: the photo is reduced to brightness only, that one greyscale frame is assigned to
-red, green and blue, and they mix the three by hand. The result goes up on a gallery wall
-and the question comes back — *is this photo real?*
+from. The visitor is shown in black and white before they touch anything, takes one exposure,
+is asked where the color went — and then turns one dial that recolors both their own portrait
+and a real telescope frame through a set of colormaps. The brightness never changes. Only the
+color encoding does.
+
+The interaction is the physics: acquisition produces an intensity map, processing chooses how
+to show it.
 
 Deliberately chrome-free. No nav bar, no menus, no settings. Everything on screen is either
 part of the interaction or a description of it.
@@ -54,46 +57,51 @@ With no parameter it uses the browser's default.
 
 | Stage | What the visitor sees |
 | --- | --- |
-| `live` | Full mirrored feed with a shutter button inside the frame. |
-| `ask` | The photo slides aside; **Is It Real?** pops in, then five smaller questions, then a button. |
-| `process` | Everything wipes; the photo flies to the top and desaturates; its three measured color channels are pulled out of it; sliders and a live composite rise up. |
-| `final` | The edited image returns to the centre under **Is this photo real?** Restart button at 5s, automatic restart at 30s. |
+| `approach` | Live feed, **already grayscale**. "This is what the camera actually measures — how much light, not what color." |
+| `hinge` | One exposure freezes in place at the same size. **"Where's the color?"** Held for 3.4s before anything else is offered — this is the fulcrum, don't shorten it. |
+| `map` | The first turn of the dial opens this beat. Their portrait and a real telescope frame sit side by side and recolor together as one knob sweeps the colormaps. |
+| `sendoff` | Both panes stay on screen as evidence while the label resolves it. Restart at 5s, automatic restart at 30s. |
 
-Publishing writes to the wall and moves the interaction to `final` — the wall is a separate
-display and the interaction screen never navigates away from itself.
+### Two inputs, matching the plinth
+
+The whole piece runs on **one button and one rotary control**, and nothing else:
+
+| Input | `approach` | `hinge` | `map` |
+| --- | --- | --- | --- |
+| Button | take the exposure | — | keep it |
+| Dial | — | first turn advances | choose the colormap |
+
+On screen the shutter and the slider fire the same two actions, and Space/Enter plus the
+arrow keys drive them for testing. Real hardware is opt-in with `?plinth` — see below.
 
 ## Color science
 
-`js/imaging.js` is the whole of it.
+`js/imaging.js` and `js/colormaps.js` are the whole of it, and the split between them is the
+argument.
 
-`channelLayers()` splits the capture into its three **measured** planes — the actual red,
-green and blue values in the visitor's photo. Each card renders one plane in its own color,
-scaled by its slider; `drawComposite()` writes each plane back into its own output channel.
-These are separations, not three tinted copies of the photo's brightness: each card is
-bright only where its own filter actually caught light, so they hold visibly different
-images.
+`captureIntensity()` reduces the frame to **one brightness value per pixel** (Rec. 709 luma —
+the same coefficients CSS `filter: grayscale()` uses, so the live preview and the frozen
+exposure are the same image and the freeze is seamless). That array is written once and then
+only ever read.
 
-The consequence is the point of the exhibit: with all three sliders at 100% the composite
-reconstructs the captured photo **exactly, pixel for pixel** (verified — reconstruction
-error 0). Neutral is the truth. Every other setting is visibly a choice the visitor made,
-which is the same choice made for every image of space they have ever seen.
+`drawMapped()` is the only thing the dial does: a 256-entry lookup table over that untouched
+array. The measurement is provably fixed — verified by sweeping every palette and confirming
+the recovered intensity is bit-identical to the original (drift 0).
 
-The composite is written as a 3×3 mix rather than a straight copy, so replacing the three
-`CHANNELS` colors with a different palette still recombines correctly. Rewrite
-`drawComposite()` to change the science.
-
-The greyscale step before the split is presentational — a CSS `filter: grayscale()` on the
-photo, no pixel data involved. It sets up the reveal: a sensor only measures brightness, and
-it does that three times, behind three filters.
+Grayscale is deliberately **first** on the dial. It is the un-chosen option, the raw
+measurement, so every turn away from it is visibly an authored decision. To add or retune a
+palette, edit the `PALETTES` anchors in `js/colormaps.js` — they are plain hex control points,
+interpolated linearly, no colour-science dependency to fight.
 
 ## Where to change things
 
-- `js/main.js` — the stage machine and all choreography timings. `PACE`, `RESTART_BUTTON_AT`,
-  `AUTO_RESTART_AT` at the top.
-- `js/imaging.js` — the color science, `WORK_W`/`FULL_W` resolutions.
-- `index.html` — every word the visitor reads, including the five follow-up questions.
-- `css/app.css` — the `.shot.at-*` classes are the photo's resting places in each stage;
-  that one element travels through the entire flow.
+- `index.html` — **every word the visitor reads.**
+- `js/colormaps.js` — the palettes, as editable hex anchors.
+- `js/main.js` — the `TIMELINE` object at the top is the entire pacing of the piece in one
+  block, including `hingeHold` (how long the fulcrum is held) and the restart timings.
+- `css/app.css` — `--frame-h` and `--pane-h` are the two image sizes; the beat-switching
+  rules at the bottom (`body[data-stage="..."]`) decide what is on screen when.
+- `js/nebula.js` — the telescope panel, and how to drop in real data.
 - `js/store.js` — the gallery store (`MAX_ITEMS`, quota handling).
 - `vite.config.js` — dev port, LAN host, the two build inputs.
 
@@ -106,16 +114,53 @@ leaves any pending `wait()` unresolved forever. Nothing from an abandoned turn c
 into the next visitor's. CSS keeps only the always-on decoration (shutter halo, flash) and
 the rules that hold elements hidden until an animation claims them.
 
+## The telescope panel — before this ships
+
+`js/nebula.js` currently renders a **synthetic placeholder** and captions it
+"Simulated frame — placeholder". It must not go in front of visitors claiming to be real data,
+and the transfer beat only lands if the sky panel genuinely is a telescope measurement.
+
+To fix, before the exhibit opens:
+
+1. Drop a monochrome single-filter frame at `public/nebula.png` — one filter's exposure, e.g.
+   an Hα frame from hubblesite.org, or an SDSS/DSS plate. It is picked up automatically.
+2. Set `REAL_LABEL` in `js/nebula.js` to name the object, instrument and filter
+   (e.g. `'M16 · Hubble/WFC3 · Ha'`). A real exhibit must caption real data.
+
+The placeholder is seeded, so it looks identical every session rather than changing each
+morning.
+
+## Hardware
+
+`?plinth` asks for the USB serial device on load (Chrome/Edge). One line per reading at
+115200 baud:
+
+```
+pot\n          rotary position, 0..1023
+pot,btn\n      plus the button, 0/1 — a rising edge fires the button action
+```
+
+Same shape as the FiltersNew firmware, minus two pots. **Untested against real hardware** —
+the on-screen dial and shutter drive the same two actions, so the piece runs fully without it.
+
+## Still open
+
+- **The QR takeaway.** The send-off currently sends the image to the gallery wall with its
+  palette name. An ephemeral-QR handoff needs a URL a phone can reach, which means a real
+  server — `localStorage` cannot do it. That is an architecture decision, not a small addition:
+  see the upgrade path below.
+
 ## Exhibit-grade upgrade path
 
 The wall is fed through `localStorage` plus `BroadcastChannel`, which means one machine, one
 browser, and a 24-image cap (`js/store.js` drops the oldest entries rather than losing the
-image a visitor just made when quota is hit). To run the wall on a different device or keep
-images permanently, replace `list()` and `publish()` with calls to a small server — the rest
-of the app never touches storage directly.
+image a visitor just made when quota is hit). To run the wall on a different device, keep
+images permanently, **or hand a visitor a QR code**, replace `list()` and `publish()` with
+calls to a small server — the rest of the app never touches storage directly.
 
 ## Lineage
 
-Fourth prototype in `AstroProto/`. The pipeline reasoning comes from
-`FiltersGreyscale/web/index.html`, the multi-display + `BroadcastChannel` arrangement from
-`FiltersNew/`, and the mirrored-capture and camera-selection lessons from `Filters/`.
+Fourth prototype in `AstroProto/`. The intensity-plus-lookup-table pipeline comes from
+`FiltersGreyscale/web/index.html`, the multi-display + `BroadcastChannel` arrangement and the
+serial protocol from `FiltersNew/`, and the mirrored-capture and camera-selection lessons from
+`Filters/`.

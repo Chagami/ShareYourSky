@@ -2,7 +2,6 @@
 // interaction screen publishes something, so a visitor can walk from one display to the
 // other and find their image already there.
 
-import { CHANNELS } from './imaging.js'
 import { list, subscribe } from './store.js'
 
 const grid = document.getElementById('grid')
@@ -32,26 +31,17 @@ function piece(item) {
   const meta = document.createElement('figcaption')
   meta.className = 'piece-meta'
 
-  const mix = document.createElement('div')
-  mix.className = 'mix'
-  CHANNELS.forEach((channel, i) => {
-    const row = document.createElement('div')
-    row.className = 'mix-row'
-    row.style.setProperty('--acc', channel.accent)
-    row.title = `${channel.label} ${Math.round((item.weights?.[i] ?? 1) * 100)}%`
-    const bar = document.createElement('i')
-    // Weights run 0–2, so 100% of the bar means the maximum the sliders allow.
-    bar.style.width = `${Math.min(100, ((item.weights?.[i] ?? 1) / 2) * 100)}%`
-    row.append(bar)
-    mix.append(row)
-  })
+  // The palette is the whole point of the card: same measurement, authored colour.
+  const name = document.createElement('span')
+  name.className = 'piece-palette'
+  name.textContent = item.palette || 'Grayscale'
 
   const when = document.createElement('span')
   when.className = 'piece-when'
   when.dataset.ts = item.ts
   when.textContent = ago(item.ts)
 
-  meta.append(mix, when)
+  meta.append(name, when)
   root.append(meta)
   return root
 }

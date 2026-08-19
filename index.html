@@ -6,73 +6,82 @@
 <title>Is It Real?</title>
 <link rel="stylesheet" href="css/app.css">
 </head>
-<body data-stage="live">
+<body data-stage="approach">
 
 <div class="sky" aria-hidden="true"></div>
 
-<!-- The one photo that travels through every stage: full frame, then aside, then up top,
-     then back to the middle as the finished composite. -->
-<img id="shot" class="shot" alt="The photo you took" hidden>
+<!-- ─────────── 1. APPROACH — already black and white, before they touch anything ─────────── -->
+<section class="stage stage-approach" data-for="approach">
+  <p class="setup pop" data-d="300">
+    This is what the camera actually measures — <em>how much light</em>, not what color.
+  </p>
 
-<!-- ─────────── 1. LIVE ─────────── -->
-<section class="stage stage-live" data-for="live">
   <div class="live-frame">
     <video id="feed" class="framed" playsinline muted autoplay></video>
     <div class="live-glow" aria-hidden="true"></div>
-    <button id="shutter" class="shutter" aria-label="Take photo" disabled><span class="shutter-dot"></span></button>
+    <button id="shutter" class="shutter" aria-label="Take one exposure" disabled>
+      <span class="shutter-dot"></span>
+    </button>
   </div>
+
   <p class="live-hint">Step into frame</p>
   <p class="err" id="camError" hidden></p>
 </section>
 
-<!-- ─────────── 2. IS IT REAL? ─────────── -->
-<section class="stage stage-ask" data-for="ask">
-  <div class="ask-panel">
-    <h1 class="ask-title pop" data-d="0">Is It Real?</h1>
-    <div class="cloud">
-      <p class="bubble pop" style="--rot:-1.6deg" data-d="520">Does it look exactly how you would see it in real life?</p>
-      <p class="bubble pop" style="--rot:1.2deg"  data-d="900">Is there anything different?</p>
-      <p class="bubble pop" style="--rot:-0.9deg" data-d="1280">Are these the true colors?</p>
-      <p class="bubble pop" style="--rot:1.7deg"  data-d="1660">What did the camera decide for you?</p>
-      <p class="bubble pop" style="--rot:-1.2deg" data-d="2040">Would your eyes have seen it this way?</p>
+<!-- ─────────── 2. HINGE · 3. MAP · 4. SEND-OFF — one section, so the portrait never moves ─────────── -->
+<section class="stage stage-study" data-for="study">
+
+  <!-- the hinge beat: held, not rushed -->
+  <div class="hinge">
+    <h1 class="hinge-title pop">Where's the color?</h1>
+    <p class="hinge-note pop" data-d="700">The camera only recorded brightness at each point.</p>
+  </div>
+
+  <!-- the map beat: their portrait and real telescope data, one dial for both -->
+  <div class="map-head">
+    <h2 class="map-title">You chose a color map.</h2>
+  </div>
+
+  <div class="pair">
+    <figure class="pane pane-you">
+      <canvas id="portraitCanvas"></canvas>
+      <figcaption>Your exposure</figcaption>
+    </figure>
+    <figure class="pane pane-sky">
+      <canvas id="nebulaCanvas"></canvas>
+      <figcaption id="nebulaCaption">Real telescope data</figcaption>
+    </figure>
+  </div>
+
+  <div class="dial-bay">
+    <div class="dial-readout">
+      <span class="palette-name" id="paletteName">Grayscale</span>
+      <span class="palette-note" id="paletteNote">the raw measurement</span>
     </div>
-    <button id="toProcess" class="btn rise" data-d="2560">Take it apart</button>
-  </div>
-</section>
-
-<!-- ─────────── 3. PROCESSING ─────────── -->
-<section class="stage stage-process" data-for="process">
-  <p class="caption pop" id="greyCaption">
-    Your camera never saw color.
-    <small>A sensor only measures brightness. It does that three times — behind a red, a green and a blue filter.</small>
-  </p>
-
-  <div class="beams" id="beams" aria-hidden="true"></div>
-
-  <div class="channels" id="channels"></div>
-
-  <p class="caption tight pop" id="mixCaption">
-    This is the light measured behind each filter. Turn the dials.
-    <small>All three at 100% rebuilds the <em>exact</em> photo you took. Anything else is a
-    choice — the same choice made for every picture of space you have ever seen.</small>
-  </p>
-
-  <div class="result pop" id="resultPanel">
-    <span class="label">Live composite</span>
-    <canvas id="compositeCanvas" class="composite"></canvas>
+    <canvas id="swatch" class="swatch" width="512" height="14"></canvas>
+    <input id="knob" class="knob" type="range" min="0" max="4" step="1" value="0"
+           aria-label="Color map">
+    <p class="dial-caption">
+      The brightness is locked. Only the color encoding changes.
+    </p>
   </div>
 
-  <button id="publish" class="btn rise" disabled>Publish to the wall</button>
-</section>
+  <p class="turn-hint" id="turnHint">Turn the dial</p>
 
-<!-- ─────────── 4. IS THIS PHOTO REAL? ─────────── -->
-<section class="stage stage-final" data-for="final">
-  <h1 class="final-title pop" id="finalTitle">Is this photo real?</h1>
-  <p class="final-note pop" id="finalNote">
-    The light was real. The color was yours.
-    <small id="finalWeights"></small>
-  </p>
-  <p class="final-sent pop" id="finalSent">Added to the gallery wall.</p>
+  <!-- On the plinth this is what the physical button does; on screen it IS the button. -->
+  <button id="keepBtn" class="btn rise">Keep this one</button>
+
+  <!-- the send-off: the fixed label that resolves the question -->
+  <div class="sendoff">
+    <p class="verdict pop">
+      The brightness is real — it's what the light did.<br>
+      <em>The color is a choice</em>, made to show what's there.
+    </p>
+    <p class="takeaway pop" data-d="500">
+      Yours is on the wall in <b id="chosenPalette">Grayscale</b>.
+    </p>
+  </div>
+
   <button id="restart" class="btn ghost rise">Start over</button>
 </section>
 

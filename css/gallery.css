@@ -80,25 +80,14 @@ body.wall { padding: 6vh 4vw 8vh; }
   padding: 0.9em 1.1em 1em;
 }
 
-/* Three stacked bars, one per channel, showing the mix that visitor chose. */
-.mix {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
+/* The authored choice, named. This is the evidence the visitor leaves holding. */
+.piece-palette {
   flex: 1;
+  font-size: clamp(0.9rem, 1.1vw, 1.1rem);
+  font-weight: 600;
+  letter-spacing: -0.01em;
 }
-.mix-row {
-  height: 5px;
-  border-radius: 99px;
-  background: rgba(255, 255, 255, 0.12);
-  overflow: hidden;
-}
-.mix-row i {
-  display: block;
-  height: 100%;
-  border-radius: 99px;
-  background: var(--acc);
-}
+
 .piece-when {
   color: var(--muted);
   font-size: 0.78rem;
