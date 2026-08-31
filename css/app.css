@@ -18,7 +18,9 @@
   --ease: cubic-bezier(0.16, 1, 0.3, 1);
   --shot-ar: 1.3333;
 
-  --live-h: min(62vh, calc(58vw / var(--shot-ar)));
+  /* One definition of the viewfinder's width, so the rotated case can be derived from it
+     instead of guessed at again. */
+  --frame-w: min(90vw, calc(64vh * var(--shot-ar)));
   --bay-h: min(52vh, calc(44vw / var(--shot-ar)));
 }
 
@@ -43,58 +45,112 @@ body {
     radial-gradient(62vw 56vh at 86% 88%, rgba(196, 118, 96, 0.07), transparent 70%);
 }
 
-.stage {
-  position: fixed;
-  inset: 0;
-  opacity: 0;
-  visibility: hidden;
-  transition: opacity 460ms var(--ease), visibility 460ms;
+/* ═══════════ four steps and a dock ═══════════
+   Portrait first. The screen is 2160x3840 and reads like a very large phone: content fills the
+   upper part, and the one thing to press is always at the bottom within reach. */
+
+body {
+  display: grid;
+  grid-template-rows: 1fr auto;
+  height: 100dvh;
+  overflow: hidden;
 }
-.stage.active { opacity: 1; visibility: visible; }
 
-/* The outgoing section clears faster than the incoming one arrives. The photo flies out of
-   the viewfinder on the same cut, and a half-faded live frame lingering underneath it for the
-   full 460ms reads as a double exposure. */
-.stage:not(.active) { transition-duration: 220ms; }
+.steps { position: relative; min-height: 0; }
 
-/* Entrances run from main.js via the Web Animations API so a reset can cancel them all at
-   once. These rules only hold elements hidden until their animation claims them. */
-.pop, .rise { opacity: 0; }
-
-/* ─── 1–2. camera ─── */
-
-.stage-live {
-  display: flex;
+.step {
+  position: absolute;
+  inset: 0;
+  display: none;
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  gap: 3vh;
+  gap: 2.2vh;
+  padding: 4vh 5vw 2vh;
+  text-align: center;
+  overflow-y: auto;
 }
+body[data-step="camera"] .step[data-step="camera"],
+body[data-step="edit"] .step[data-step="edit"],
+body[data-step="share"] .step[data-step="share"],
+body[data-step="astro"] .step[data-step="astro"] { display: flex; }
 
 .title {
   margin: 0;
-  font-size: clamp(2rem, 4.4vw, 4rem);
+  /* Twice the old size: on a screen this tall it is a sign, not a heading. */
+  font-size: clamp(2.6rem, 8.5vw, 7rem);
   font-weight: 700;
   letter-spacing: -0.035em;
+  line-height: 1.02;
+  text-wrap: balance;
+}
+.step-title {
+  margin: 0;
+  font-size: clamp(1.4rem, 4.2vw, 3rem);
+  font-weight: 700;
+  letter-spacing: -0.025em;
+  line-height: 1.1;
+  text-wrap: balance;
+}
+.hint {
+  margin: 0;
+  max-width: 30ch;
+  font-size: clamp(0.9rem, 2vw, 1.5rem);
+  line-height: 1.4;
+  color: var(--muted);
+  text-wrap: balance;
 }
 
-.live-frame { position: relative; line-height: 0; }
+/* ─── 1. camera ─── */
 
-.framed {
-  height: var(--live-h);
-  width: auto;
-  border-radius: 16px;
+/* The frame is a fixed landscape window and the video fills it, rather than the video setting
+   its own size. That is what lets a sideways camera be turned upright and simply lose its
+   edges to the crop instead of letting a rotation drag the whole layout around with it. */
+.live-frame {
+  position: relative;
+  line-height: 0;
+  width: var(--frame-w);
+  aspect-ratio: var(--shot-ar);
+  border-radius: 20px;
+  overflow: hidden;
   background: #101216;
   box-shadow: 0 30px 90px rgba(0, 0, 0, 0.65), 0 0 0 1px var(--line);
+}
+.framed {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover; /* fill the window, crop the edges */
   transform: scaleX(-1); /* mirror, so standing in front of it feels like a mirror */
 }
 
-/* Viewfinder corners — camera UI without any actual controls. */
+/* A camera mounted sideways. `?rot=` sets this, and the capture is turned by the same amount
+   so the photo matches the viewfinder. */
+body[data-rot="180"] .framed { transform: rotate(180deg) scaleX(-1); }
+
+/* On a quarter turn the element is given the frame's dimensions *swapped* before being turned,
+   so that once rotated it lands exactly on the frame. Scaling a correctly-sized box up
+   afterwards is the obvious move and the wrong one: it leaves the picture letterboxed inside
+   its own frame, because a 3:4 box turned sideways is 4:3 and no longer fits what it came from. */
+body[data-rot="90"] .framed,
+body[data-rot="270"] .framed {
+  inset: auto;
+  left: 50%;
+  top: 50%;
+  /* The frame's dimensions swapped: as wide as the frame is tall, as tall as it is wide. Once
+     turned a quarter, that lands exactly on the frame with no letterbox and no overspill. */
+  width: calc(var(--frame-w) / var(--shot-ar));
+  height: var(--frame-w);
+}
+body[data-rot="90"] .framed { transform: translate(-50%, -50%) rotate(90deg) scaleX(-1); }
+body[data-rot="270"] .framed { transform: translate(-50%, -50%) rotate(270deg) scaleX(-1); }
+
 .reticle { position: absolute; inset: 3%; pointer-events: none; }
 .reticle i {
   position: absolute;
-  width: 34px;
-  height: 34px;
+  width: 5%;
+  aspect-ratio: 1;
   border: 3px solid rgba(255, 255, 255, 0.75);
   border-radius: 3px;
 }
@@ -108,60 +164,33 @@ body {
   inset: 0;
   display: grid;
   place-items: center;
-  font-size: clamp(6rem, 18vh, 14rem);
+  font-size: clamp(6rem, 26vw, 22rem);
   font-weight: 800;
   line-height: 1;
   color: #fff;
   text-shadow: 0 8px 60px rgba(0, 0, 0, 0.7);
-  pointer-events: none;
 }
-
-.shutter {
-  position: absolute;
-  left: 50%;
-  bottom: 26px;
-  transform: translateX(-50%);
-  width: 88px;
-  height: 88px;
-  padding: 0;
-  border: 4px solid rgba(255, 255, 255, 0.9);
-  border-radius: 50%;
-  background: rgba(0, 0, 0, 0.25);
-  backdrop-filter: blur(6px);
-  cursor: pointer;
-  transition: transform 180ms var(--ease);
-}
-.shutter-dot {
-  display: block;
-  width: 64px;
-  height: 64px;
-  margin: 6px;
-  border-radius: 50%;
-  background: #fff;
-  transition: transform 180ms var(--ease);
-}
-.shutter:hover { transform: translateX(-50%) scale(1.05); }
-.shutter:active .shutter-dot { transform: scale(0.86); }
-.shutter:disabled { opacity: 0.35; cursor: default; }
-/* No shutter during the countdown — the photo is already on its way. */
-body[data-stage="countdown"] .shutter { opacity: 0; pointer-events: none; }
-
-.live-hint {
-  margin: 0;
-  font-size: clamp(0.8rem, 1.15vw, 1.05rem);
-  letter-spacing: 0.14em;
-  text-transform: uppercase;
-  color: var(--muted);
-}
-body[data-stage="countdown"] .live-hint { opacity: 0; }
 
 .err {
-  position: fixed;
-  bottom: 4vh;
-  left: 0; right: 0;
-  text-align: center;
+  max-width: 34ch;
+  margin: 0;
   color: #ff8f8f;
-  font-size: 0.95rem;
+  font-size: clamp(0.9rem, 1.9vw, 1.3rem);
+  line-height: 1.4;
+}
+.err[hidden] { display: none; }
+
+/* The service note under a camera failure. Deliberately quiet — it is for whoever is fixing
+   the exhibit, not for a visitor, but it has to be on the screen because the person fixing it
+   is usually holding nothing but a phone to photograph it with. */
+.err-detail {
+  display: block;
+  margin-top: 0.7em;
+  font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  font-size: 0.72em;
+  letter-spacing: 0.02em;
+  color: var(--muted);
+  opacity: 0.85;
 }
 
 .flash {
@@ -175,194 +204,190 @@ body[data-stage="countdown"] .live-hint { opacity: 0; }
 .flash.go { animation: flash 460ms ease-out; }
 @keyframes flash { 0% { opacity: 0.92; } 100% { opacity: 0; } }
 
-/* ─── 3–7. the workbench ─── */
+/* ─── 2 and 4. the pictures ─── */
 
-.stage-work {
-  display: grid;
-  grid-template-columns: auto minmax(420px, 44vw);
-  align-items: center;
-  justify-content: center;
-  gap: 3.5vw;
-  padding: 4vh 4vw;
-}
-
-.photo-bay { display: flex; flex-direction: column; gap: 1.2vh; }
-
-/* Two stacked canvases so any change of state can crossfade rather than cut. */
 .photo-stack {
   position: relative;
-  height: var(--bay-h);
+  width: min(88vw, calc(42vh * var(--shot-ar)));
+  max-height: 42vh;
   aspect-ratio: var(--shot-ar);
-  border-radius: 14px;
+  border-radius: 16px;
   overflow: hidden;
   box-shadow: 0 26px 70px rgba(0, 0, 0, 0.6), 0 0 0 1px var(--line);
-  transition: height 700ms var(--ease);
-  will-change: transform;
 }
-.photo {
-  position: absolute;
-  inset: 0;
-  width: 100%;
-  height: 100%;
-  display: block;
-  background: #0b0d11;
-}
+.photo { position: absolute; inset: 0; width: 100%; height: 100%; display: block; background: #0b0d11; }
 #photoB { opacity: 0; }
 
-.photo-tag {
+.shot { margin: 0; display: flex; flex-direction: column; align-items: center; gap: 1vh; }
+.shot-img {
+  display: block;
+  /* Capped in both directions: the step has a title, a hint, three channel images, three charts
+     and this, and on a portrait screen the only one that can give is this. */
+  width: auto;
+  height: auto;
+  max-width: min(78vw, 900px);
+  max-height: 26vh;
+  border-radius: 16px;
+  background: #0b0d11;
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.6), 0 0 0 1px var(--line);
+}
+.shot-tag {
   margin: 0;
-  text-align: center;
-  font-size: clamp(0.68rem, 0.9vw, 0.86rem);
+  font-size: clamp(0.68rem, 1.5vw, 1rem);
   letter-spacing: 0.16em;
   text-transform: uppercase;
   color: var(--muted);
 }
 
-.panel {
+/* Three channels across, each with its chart under it. */
+.channels, .astro-strip {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 1.6vw;
+  width: min(94vw, 1800px);
+  align-items: start;
+}
+.channel, .band { min-width: 0; }
+.band-img {
+  display: block;
+  width: 100%;
+  height: auto;
+  max-height: 16vh;
+  object-position: center;
+  aspect-ratio: var(--shot-ar);
+  object-fit: cover;
+  margin-bottom: 1vh;
+  border-radius: 10px;
+  background: #05070c;
+  box-shadow: 0 0 0 1px var(--line);
+}
+
+/* ─── the dock ─── */
+
+.dock {
   display: flex;
   flex-direction: column;
-  gap: 2vh;
-  min-width: 0;
+  align-items: center;
+  gap: 2.2vh;
+  padding: 2vh 5vw calc(2.6vh + env(safe-area-inset-bottom, 0px));
+  border-top: 1px solid var(--line);
+  background: linear-gradient(to top, rgba(255, 255, 255, 0.04), transparent);
 }
 
-.beat {
-  margin: 0;
-  font-size: clamp(1.15rem, 2.1vw, 2rem);
+.dock-action { display: flex; align-items: center; justify-content: center; min-height: 1px; }
+.dock-action > [hidden] { display: none !important; }
+
+/* The shutter, at the bottom of the page and sized for a stranger's thumb from a metre away. */
+.shutter {
+  width: clamp(84px, 13vw, 190px);
+  aspect-ratio: 1;
+  display: grid;
+  place-items: center;
+  padding: 0;
+  border: 5px solid rgba(255, 255, 255, 0.92);
+  border-radius: 50%;
+  background: rgba(0, 0, 0, 0.25);
+  cursor: pointer;
+  transition: transform 180ms var(--ease);
+}
+.shutter-dot {
+  width: 76%;
+  aspect-ratio: 1;
+  border-radius: 50%;
+  background: #fff;
+  transition: transform 180ms var(--ease);
+}
+.shutter:active .shutter-dot { transform: scale(0.86); }
+.shutter:disabled { opacity: 0.35; cursor: default; }
+
+.btn {
+  padding: 0.85em 2.4em;
+  border: 0;
+  border-radius: 99px;
+  background: #f4f5f7;
+  color: #0a0b0e;
+  font: inherit;
+  font-size: clamp(1rem, 2.4vw, 1.9rem);
   font-weight: 600;
-  line-height: 1.3;
-  letter-spacing: -0.015em;
+  cursor: pointer;
+  transition: transform 200ms var(--ease), background 200ms ease;
+}
+.btn:active { transform: scale(0.97); }
+.btn:disabled { opacity: 0.35; cursor: default; }
+.btn.ghost {
+  background: transparent;
+  color: var(--ink);
+  border: 2px solid rgba(255, 255, 255, 0.35);
 }
 
-/* ─── the typed first beat, and "light" under god rays ─── */
+/* ─── the step indicator ─── */
 
-/* Every character is in the DOM from the start and merely hidden. Appending them one at a
-   time would re-wrap the line on almost every keystroke and shove the panel around; revealing
-   them means the line breaks are decided once, before a single character is visible. */
-.beat-line .word { display: inline-block; }
-.beat-line .ch {
+.dots {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  align-items: start;
+  gap: 0;
+  width: min(90vw, 1400px);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  counter-reset: dot;
+}
+.dot {
   position: relative;
-  opacity: 0;
-  transition: opacity 90ms linear;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.9vh;
+  color: var(--muted);
+  transition: color 320ms ease;
 }
-.beat-line .ch.on { opacity: 1; }
-
-/* The caret rides whichever character was typed last, so it follows the text across a line
-   break for free. Absolutely positioned: a caret in the flow would nudge every character. */
-.beat-line .ch.at::after {
+/* The rule between steps, drawn behind the marks so progress reads as a line being walked. */
+.dot::before {
   content: "";
   position: absolute;
-  top: 0.06em;
-  right: -0.1em;
-  width: 0.08em;
-  height: 1.05em;
-  background: currentColor;
-  border-radius: 1px;
-  animation: caret 900ms steps(1, end) infinite;
+  top: clamp(19px, 2.6vw, 38px);
+  right: 50%;
+  width: 100%;
+  height: 2px;
+  background: var(--line);
+  transition: background 320ms ease;
 }
-@keyframes caret { 0%, 55% { opacity: 1; } 56%, 100% { opacity: 0.15; } }
+.dot:first-child::before { display: none; }
+.dot.now, .dot.done { color: var(--ink); }
+.dot.now ~ .dot { color: var(--muted); }
+.dot.done + .dot::before, .dot.now::before { background: rgba(255, 255, 255, 0.45); }
 
-/* "light" gets its own row and roughly twice the size of the sentence that introduces it.
-   Held at 0 until the line finishes typing; main.js animates it in. */
-.lightword {
-  display: block;
-  margin-top: 0.7em;
-  opacity: 0;
+.dot-mark {
+  display: grid;
+  place-items: center;
+  width: clamp(38px, 5.2vw, 76px);
+  aspect-ratio: 1;
+  border-radius: 50%;
+  border: 2px solid currentColor;
+  background: var(--bg);
+  transition: transform 320ms var(--ease), background 320ms ease, color 320ms ease;
 }
-.lightword-inner {
-  position: relative;
-  display: inline-block;
-  padding-top: 2.3em; /* the shafts fall through this */
-  line-height: 1;
+.dot-mark svg {
+  width: 56%;
+  height: 56%;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.8;
+  stroke-linecap: round;
+  stroke-linejoin: round;
 }
-.lightword-text {
-  position: relative;
-  z-index: 1;
-  display: block;
-  font-size: 1.95em;
-  font-weight: 700;
-  letter-spacing: -0.02em;
-  text-shadow: 0 0 30px rgba(255, 244, 214, 0.45);
+.dot.done .dot-mark { background: rgba(255, 255, 255, 0.14); }
+.dot.now .dot-mark {
+  transform: scale(1.12);
+  background: #f4f5f7;
+  color: #0a0b0e;
 }
-
-/* The pool of light the shafts land in, sitting behind the word. */
-.lightword-inner::after {
-  content: "";
-  position: absolute;
-  left: 50%;
-  bottom: -0.15em;
-  width: 190%;
-  height: 1.7em;
-  transform: translateX(-50%);
-  background: radial-gradient(closest-side, rgba(255, 246, 222, 0.30), transparent 76%);
-  mix-blend-mode: screen;
-  pointer-events: none;
-}
-
-.rays {
-  position: absolute;
-  left: 50%;
-  top: 0;
-  width: 205%;
-  height: 3.7em;
-  transform: translateX(-50%);
-  pointer-events: none;
-  /* No `mix-blend-mode` here, deliberately. A blended element cannot be composited on its own
-     layer — the browser has to re-read the backdrop every frame — and these seven shafts are
-     blurred *and* animating, so it was the one genuinely expensive thing on this screen. Over
-     a near-black page `screen` is indistinguishable from normal alpha compositing anyway;
-     the two render pixel for pixel the same. The static pool below keeps its blend, since it
-     never animates and so costs nothing per frame. */
-}
-/* Each shaft is a trapezoid hinged at the source above the word and splayed outward, so they
-   read as one beam breaking apart rather than seven unrelated stripes. */
-.rays i {
-  position: absolute;
-  left: 50%;
-  top: 0;
-  width: 30%;
-  height: 100%;
-  margin-left: -15%;
-  transform-origin: 50% 0;
-  transform: rotate(var(--a));
-  clip-path: polygon(43% 0, 57% 0, 100% 100%, 0 100%);
-  background: linear-gradient(
-    to bottom,
-    hsl(var(--hue) 95% 72% / 0.62),
-    hsl(var(--hue) 95% 72% / 0.14) 72%,
-    hsl(var(--hue) 95% 72% / 0)
-  );
-  filter: blur(7px) saturate(0) brightness(1.45);
-  opacity: 0.5;
-  animation: shaft 7s ease-in-out infinite;
-  animation-delay: calc(var(--i) * -0.9s);
-  transition: filter 900ms ease, opacity 900ms ease;
-}
-@keyframes shaft {
-  0%, 100% { transform: rotate(var(--a)) scaleY(1); }
-  50% { transform: rotate(var(--a)) scaleY(1.07); }
-}
-
-.rays i:nth-child(1) { --hue: 358; --a: -30deg; --i: 0; } /* red    */
-.rays i:nth-child(2) { --hue: 20;  --a: -20deg; --i: 1; } /* orange */
-.rays i:nth-child(3) { --hue: 48;  --a: -10deg; --i: 2; } /* yellow */
-.rays i:nth-child(4) { --hue: 132; --a: 0deg;   --i: 3; } /* green  */
-.rays i:nth-child(5) { --hue: 182; --a: 10deg;  --i: 4; } /* cyan   */
-.rays i:nth-child(6) { --hue: 214; --a: 20deg;  --i: 5; } /* blue   */
-.rays i:nth-child(7) { --hue: 268; --a: 30deg;  --i: 6; } /* violet */
-
-/* Once the light is split, the desaturation comes off — but only part way. The rainbow has to
-   stay dull, or the one band the visitor is working on has nothing to stand out against. */
-.rays.rainbow i { filter: blur(7px) saturate(0.5) brightness(0.8); opacity: 0.3; }
-
-/* The band for the channel being tuned. Red covers red+orange, green covers yellow+green,
-   blue covers cyan+blue+violet — the sensor's filters overlap in about the same way. */
-.rays.rainbow[data-band="r"] i:nth-child(-n + 2),
-.rays.rainbow[data-band="g"] i:nth-child(3),
-.rays.rainbow[data-band="g"] i:nth-child(4),
-.rays.rainbow[data-band="b"] i:nth-child(n + 5),
-.rays.rainbow[data-band="all"] i {
-  filter: blur(6px) saturate(1.5) brightness(1.5);
-  opacity: 1;
+.dot-label {
+  font-size: clamp(0.62rem, 1.4vw, 1.05rem);
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  font-weight: 600;
 }
 
 /* R / G / B chips — dim until the beat lights them, then they hold their colour. */
@@ -382,8 +407,6 @@ body[data-stage="countdown"] .live-hint { opacity: 0; }
 .chip.lit { transform: translateY(-1px) scale(1.06); }
 
 /* ─── the levels editor ─── */
-
-.editor { display: flex; flex-direction: column; gap: 1.4vh; }
 
 /* Three across, so the final touch-ups are visibly smaller than the guided editor and leave
    the essay room to breathe. Stacked full-width copies ate 690px of the panel. */
@@ -424,7 +447,15 @@ body[data-stage="countdown"] .live-hint { opacity: 0; }
 .levels-read { font-variant-numeric: tabular-nums; }
 .levels-read b { color: var(--ink); font-weight: 600; }
 
-.levels-plot { position: relative; }
+/* touch-action:none is the fix for a drag that keeps stopping. Without it the browser runs
+   gesture detection on every touch, decides a horizontal drag might be a pan, and fires
+   pointercancel — which silently ends the drag. Nothing to do with the touchscreen or the
+   speed of the device; it happens on a fast phone too. */
+.levels-plot {
+  position: relative;
+  touch-action: none;
+  cursor: pointer;
+}
 .levels-chart {
   display: block;
   width: 100%;
@@ -438,6 +469,7 @@ body[data-stage="countdown"] .live-hint { opacity: 0; }
    one object rather than a chart with a slider bolted underneath. */
 .levels-track {
   position: absolute;
+  touch-action: none;
   left: 0;
   right: 0;
   bottom: -14px;
@@ -446,6 +478,7 @@ body[data-stage="countdown"] .live-hint { opacity: 0; }
 }
 .levels-handle {
   position: absolute;
+  touch-action: none;
   top: 0;
   width: 26px;
   height: 26px;
@@ -627,35 +660,6 @@ body[data-stage="countdown"] .live-hint { opacity: 0; }
 }
 .thanks-note { margin: 0 0 2vh; color: var(--muted); font-size: clamp(0.95rem, 1.4vw, 1.3rem); }
 
-/* ─── which beat is on screen ───
-   Everything in the workbench is in the DOM the whole time; these rules decide what shows.
-   display:none rather than opacity, so a hidden beat claims no layout. */
-
-.editor > .levels, .finale, #nextBtn, #submitBtn { display: none; }
-
-/* step 3: photo lands in the bay, first sentence only. visibility, not display, so the
-   second sentence already occupies its space and nothing shifts when it arrives. */
-body[data-stage="intro"] #beat2 { visibility: hidden; }
-
-/* steps 4–5: one channel's editor at a time, with Next */
-body[data-stage="tuneR"] .editor > .levels:nth-child(1),
-body[data-stage="tuneG"] .editor > .levels:nth-child(2),
-body[data-stage="tuneB"] .editor > .levels:nth-child(3) { display: block; }
-body[data-stage="tuneR"] #nextBtn,
-body[data-stage="tuneG"] #nextBtn,
-body[data-stage="tuneB"] #nextBtn { display: block; }
-
-/* step 6: the reveal — the editors step back so the image has the attention. The beats are
-   faded out from main.js rather than hidden here: a rule firing on the stage change cuts them
-   dead in one frame, which is the thing that read as a glitch. They keep their space either
-   way, so nothing below them shifts. */
-
-/* step 7: the essay, the three compact editors, and Share */
-body[data-stage="finale"] #beat1,
-body[data-stage="finale"] #beat2 { display: none; }
-body[data-stage="finale"] .finale { display: flex; }
-body[data-stage="finale"] #submitBtn { display: block; }
-
 /* ─── shorter displays ─── */
 
 @media (max-height: 880px) {
@@ -667,8 +671,33 @@ body[data-stage="finale"] #submitBtn { display: block; }
   .stage-work { grid-template-columns: auto minmax(360px, 46vw); }
 }
 
+/* ─── ?fx=lite ───
+   Everything on this page that a weak GPU hates, in one place, switchable from the URL. Blur
+   filters, blend modes and permanently running animations are the three things that behave
+   completely differently on an Android TV SoC than they do on a desktop — and a kiosk that
+   crashes is worth more with plain gradients than it is pretty. Also the fastest way to find
+   out whether the GPU is what is wrong: load with ?fx=lite and see if it stops. */
+body[data-fx="lite"] .rays i { filter: none; opacity: 0.5; animation: none; }
+body[data-fx="lite"] .rays.rainbow i,
+body[data-fx="lite"] .rays[data-aim] i { filter: none; }
+body[data-fx="lite"] .lightword-inner::after,
+body[data-fx="lite"] .rays { mix-blend-mode: normal; }
+body[data-fx="lite"] .shutter { backdrop-filter: none; }
+body[data-fx="lite"] .levels.pulsing .levels-handle::after { animation: none; opacity: 0.55; }
+body[data-fx="lite"] .w-ir,
+body[data-fx="lite"] .w-wave span { animation: none; }
+body[data-fx="lite"] .photo-stack { will-change: auto; }
+
+/* ?fx=off drops the light shafts entirely — the last resort that still leaves a working piece. */
+body[data-fx="off"] .rays { display: none; }
+body[data-fx="off"] .lightword-inner::after { display: none; }
+body[data-fx="off"] .shutter { backdrop-filter: none; }
+body[data-fx="off"] .levels.pulsing .levels-handle::after { animation: none; opacity: 0.55; }
+body[data-fx="off"] .w-ir,
+body[data-fx="off"] .w-wave span { animation: none; }
+
 @media (prefers-reduced-motion: reduce) {
-  .w-wave span, .w-ir, .rays i, .beat-line .ch.at::after,
+  .w-wave span, .w-ir, .typed .ch.at::after,
   .levels.pulsing .levels-handle::after { animation: none; }
   .photo-stack { transition-duration: 200ms; }
 }

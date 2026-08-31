@@ -4,6 +4,14 @@ import basicSsl from '@vitejs/plugin-basic-ssl'
 // Two pages, no framework: the interaction screen and the gallery wall. Both need to be
 // listed as build inputs or `vite build` would emit index.html only.
 export default defineConfig({
+  // Stamped into the bundle so the debug overlay can say which build is on screen. A kiosk
+  // that has cached an old index.html looks identical to one that has not, and this is the
+  // only way to tell them apart without a cable.
+  define: {
+    __BUILD__: JSON.stringify(
+      new Date().toISOString().slice(0, 16).replace('T', ' ') + ' UTC'
+    ),
+  },
   // Relative asset URLs, so a built copy runs from any folder — including straight off a
   // USB stick or a subdirectory on the exhibit PC — without rewriting paths.
   base: './',

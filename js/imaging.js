@@ -21,22 +21,36 @@ const clamp255 = (v) => (v < 0 ? 0 : v > 255 ? 255 : v)
  * Take the exposure: grab the frame mirrored, then split it into planes plus a luma plane.
  * Everything downstream needs is computed once, here.
  */
-export function captureFrame(video, maxW = 900) {
+export function captureFrame(video, maxW = 900, rotate = 0) {
   const vw = video.videoWidth
   const vh = video.videoHeight
   if (!vw || !vh) return null
 
-  const scale = Math.min(1, maxW / vw)
-  const width = Math.round(vw * scale)
-  const height = Math.round(vh * scale)
+  // A camera mounted sideways delivers a sideways stream, and the live view is corrected with
+  // a CSS transform — but `drawImage` reads the *raw* frame, not what the transform made of
+  // it. So the same correction has to be applied again here, or the photo comes out at ninety
+  // degrees to the viewfinder the visitor was looking at.
+  const rot = ((Math.round(rotate / 90) * 90) % 360 + 360) % 360
+  const upright = rot === 90 || rot === 270
+  const srcW = upright ? vh : vw
+  const srcH = upright ? vw : vh
+
+  const scale = Math.min(1, maxW / srcW)
+  const width = Math.round(srcW * scale)
+  const height = Math.round(srcH * scale)
 
   const canvas = document.createElement('canvas')
   canvas.width = width
   canvas.height = height
   const ctx = canvas.getContext('2d', { willReadFrequently: true })
-  ctx.translate(width, 0)
+
+  // Work from the middle: rotate, then mirror, then draw the frame centred on the origin. Done
+  // this way the order is the same whatever the rotation, and the mirror stays a mirror rather
+  // than becoming a vertical flip on the quarter turns.
+  ctx.translate(width / 2, height / 2)
+  if (rot) ctx.rotate((rot * Math.PI) / 180)
   ctx.scale(-1, 1) // mirror, so the live feed reads like a mirror
-  ctx.drawImage(video, 0, 0, width, height)
+  ctx.drawImage(video, (-vw * scale) / 2, (-vh * scale) / 2, vw * scale, vh * scale)
   ctx.setTransform(1, 0, 0, 1, 0, 0)
 
   const data = ctx.getImageData(0, 0, width, height).data
@@ -93,6 +107,35 @@ export function restingLevels(bins) {
   const black = Math.min(Math.max(percentile(0.005), MIN_INSET), 255 - MIN_INSET - MIN_SPAN)
   const white = Math.max(Math.min(percentile(0.995), 255 - MIN_INSET), black + MIN_SPAN)
   return { black, white }
+}
+
+/**
+ * A smaller copy of a frame, for the thumbnails and the preview.
+ *
+ * Every one of those redraws on every drag, and at capture resolution that is four full-frame
+ * passes per pointermove. Nearest-neighbour off the planes is cheap, runs once, and nothing
+ * downstream can tell the difference at the size these are shown.
+ */
+export function downscaleFrame(frame, maxW) {
+  const scale = Math.min(1, maxW / frame.width)
+  const width = Math.max(1, Math.round(frame.width * scale))
+  const height = Math.max(1, Math.round(frame.height * scale))
+  const n = width * height
+  const planes = [new Uint8ClampedArray(n), new Uint8ClampedArray(n), new Uint8ClampedArray(n)]
+  const luma = new Uint8ClampedArray(n)
+
+  for (let y = 0; y < height; y++) {
+    const sy = Math.min(frame.height - 1, Math.round(y / scale))
+    for (let x = 0; x < width; x++) {
+      const si = sy * frame.width + Math.min(frame.width - 1, Math.round(x / scale))
+      const di = y * width + x
+      planes[0][di] = frame.planes[0][si]
+      planes[1][di] = frame.planes[1][si]
+      planes[2][di] = frame.planes[2][si]
+      luma[di] = frame.luma[si]
+    }
+  }
+  return { width, height, planes, luma }
 }
 
 /** How many pixels sit at each value — the shape the levels chart draws. */

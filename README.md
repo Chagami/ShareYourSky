@@ -77,27 +77,94 @@ the choice lives in the URL of the kiosk shortcut:
 ```
 ?cam=1          second video input, by order
 ?cam=Logitech   first input whose label contains "Logitech"
+?cam=back       Android labels read "camera2 1, facing back", so this matches
 ```
 
-## The flow
+**On a tablet, Android's permission prompt has no camera picker.** Desktop Chrome lets you
+choose a device in the permission bubble; Android gives you Allow or Block and the page decides.
+So `?cam=` is the only way to choose there. To find out what to put in it, open the debug overlay
+(hold the top-left corner for 1.5s) — it lists every input with the index to use, marks the one
+in use, and shows the secure-context and permission state above it.
 
-| Stage | What the visitor sees |
-| --- | --- |
-| `live` | **Share Your Sky**, live feed, viewfinder corners, one shutter button. |
-| `countdown` | 5 · 4 · 3 · 2 · 1, each number scaling through, then a flash. |
-| `intro` | The photo lifts off the viewfinder, drifts right as it swells, then travels left and shrinks into the bay. "When you took a photo, the camera captured" types itself out; **light** lands on its own row at twice the size, with god rays falling onto it. |
-| `tuneR` / `tuneG` / `tuneB` | "That light was filtered into **R G B**", one chip lit at a time. The god rays split into a dull rainbow and light the band belonging to the current channel. A levels editor for that channel, and the photo shows **that channel alone**. `Next` advances. |
-| `reveal` | Brightness only → as the camera captured it → your version. Three crossfades, the last one slow. |
-| `finale` | Three compact editors for final touches, plus the essay. `Share my sky`. |
-| `thanks` | The photo is blown off to a random edge, spinning. "Thanks for sharing your sky." Reset button after 3s. |
+Two things that only bite on a phone or tablet:
 
-Two decisions worth knowing, because they aren't obvious from the spec:
+- Asking for a specific `deviceId` **and** a `facingMode` contradicts itself as soon as the
+  chosen device is the rear camera, and fails with `OverconstrainedError`. The device-specific
+  request therefore sends no `facingMode` at all. Desktop never shows this up, because desktop
+  cameras report no facing.
+- `facingMode` is requested as `ideal`, not as a bare value. As a hard constraint it fails
+  outright on hardware with no front camera.
 
-- **While tuning one channel, the photo shows that channel alone**, tinted. Showing the full
-  composite there would spoil the `reveal` beat, which is the first time the visitor sees their
-  three choices combined.
-- **The photo never moves between `intro` and `finale`.** One anchored bay, one swapping
-  right-hand panel. Moving an image while someone is dragging a handle beside it reads as a bug.
+### When the camera will not open
+
+`openCamera()` retries every `cameraRetryAt` (15s) until it succeeds, then clears the error and
+re-arms the shutter. A camera can be unavailable for reasons that have nothing to do with this
+page and that clear up on their own — another app holding it, or the device's own camera service
+wedged until something releases it. Without the retry, a fault at 9am is a dead exhibit until
+somebody notices, even if the camera freed itself a minute later. It deliberately sits outside
+the generation counter `reset()` bumps: recovery has to outlive a visitor's turn.
+
+Under the visitor-facing message is a **small service note** giving the fault name, the origin,
+the secure-context state, the browser engine and the retry count. Whoever is standing in front
+of a kiosk that will not start has no debugger and usually no second machine, so a photograph of
+the screen has to be enough to work from.
+
+> **Suspect the device before the code.** A wedged camera service reports `NotReadableError` and
+> is cleared by restarting the device. From the browser's side it looks exactly like a
+> permissions or constraints bug, and it is neither — this cost a long debugging session once
+> already. Read the service note before changing anything.
+
+## The four steps
+
+Portrait, 2160&times;3840, built to read like a very large phone: the content fills the upper
+part and the one thing to press is always at the foot, within reach.
+
+| Step | Screen | The dock offers |
+| --- | --- | --- |
+| `camera` | Title, viewfinder, countdown | the shutter |
+| `edit` | Their photo, and three levels charts under it | `Next` |
+| `share` | The picture they made | `Share my sky` |
+| `astro` | The same photo through each colour on its own, with a chart each, and all three recombined below | `Start again` |
+
+Each step is a self-contained `<section>`; only one is on screen, chosen by `body[data-step]`.
+`STEP_ENTER[id]` is the only place a step's content is built, and **no step knows about any
+other** — a step builds what it needs from `frame` and `levels` and does not care how the
+visitor arrived.
+
+That is what makes them separable, and it buys the thing worth having while building:
+
+```
+?step=edit     open one step directly, without sitting through the ones before it
+```
+
+It takes a photo as soon as the camera is ready and then jumps, so the step has something real
+to work with.
+
+### The dock
+
+Always on screen: the one action this step offers, and where the visitor is in the sequence.
+Which button shows is derived from `STEPS[i].action`, so there is exactly one place to look when
+a step offers the wrong control. The indicator marks the current step and everything passed,
+with the rule between marks drawn behind them so progress reads as a line being walked.
+
+### A camera mounted sideways
+
+`?rot=90`, `?rot=180`, `?rot=270`. A URL parameter for the same reason `?cam=` is: which way the
+camera sits is a property of the bracket it is screwed to, not of the exhibit.
+
+Two things that are easy to get wrong here, both of which did:
+
+- **The capture has to be turned too.** `drawImage` reads the raw frame, not what a CSS
+  transform made of it, so without the matching rotation in `captureFrame()` the photo comes out
+  at ninety degrees to the viewfinder the visitor was looking at.
+- **`setAspect()` takes the camera's dimensions, never the frame's.** `captureFrame` has already
+  applied the rotation to the frame; passing it back in makes the swap happen twice and inverts
+  the aspect ratio for every screen after the first.
+
+On a quarter turn the video element is given the frame's dimensions **swapped** before being
+turned, so that once rotated it lands exactly on the frame. Scaling a correctly-sized box up
+afterwards is the obvious move and the wrong one: it leaves the picture letterboxed inside its
+own frame, because a 3:4 box turned sideways is 4:3 and no longer fits what it came from.
 
 ## The levels editor
 
@@ -118,6 +185,15 @@ rather than a chart with a slider bolted underneath.
 - **Custom handles, not range inputs.** Two overlaid full-width ranges fight for the same pointer
   when the values get close. These are focusable `role="slider"` widgets with arrow-key support
   (shift for ×10), so they stay keyboard- and test-drivable.
+- **`touch-action: none`, or the drag keeps stopping.** Without it the browser runs gesture
+  detection on every touch, decides a horizontal drag might be a pan, and fires `pointercancel`
+  — which silently ends the drag mid-gesture. It looks exactly like a flaky touchscreen and is
+  nothing of the kind; it happens on a fast phone too.
+- **The whole plot is the drag surface, not just the handles.** Pressing anywhere on the chart
+  grabs the nearer handle and keeps it until the finger lifts, and the pointer is captured on
+  the plot rather than on the handle — a drag that starts a few pixels off a handle used to be
+  captured by nothing and go nowhere. Press *on* a handle and it grabs where it is; press
+  anywhere else and it jumps to the touch.
 - **Touch targets, not just chips.** The visible handle is 26px; a transparent `::before`
   inflates the hit area to 52×48, past the 44px minimum. The card carries **26px of bottom
   padding in px, not vh**, because that overhang is a fixed size and has to be reserved — a
@@ -168,6 +244,7 @@ is still there.
   the bottom (`body[data-stage="..."]`) decide what is on screen when.
 - `js/levels.js` — the editor and the histogram drawing.
 - `js/store.js` — the gallery store (`MAX_ITEMS`, quota handling).
+- `js/perf.js` — the in-situ performance readout. See above for how to summon it.
 
 ### Animation approach
 
@@ -186,80 +263,59 @@ Two guards to keep in mind if you add elements:
   `opacity: 0` gives the button a stacking context, so an invisible Next paints *over* the
   levels handles beneath it and silently swallows taps meant for them.
 
-### Beats leave, they are not switched off
+### Performance, and how to read it in situ
 
-`dismiss()`. Both sentences used to be removed by a CSS rule firing on the stage change —
-`visibility: hidden` for the first one at `reveal`, `display: none` for both at `finale`. That
-cut them dead in one frame, and the second sentence sat there through the whole 4.8s reveal
-before it happened. Now they fade and drift out, and the second one is dismissed **partway
-through the last crossfade** rather than on the way into the finale, so the panel is already
-empty when the essay arrives and the exit costs no extra time.
+The exhibit machine is not the machine this was written on, so the meter travels with the build.
+`js/perf.js` shows rolling frame time, the count of frames over 25&nbsp;ms, the cost of a full
+levels redraw, and the current stage. Three ways in:
 
-Both fades are `linear`, and that is deliberate. An eased fade holds near full opacity for most
-of its duration and then dumps the rest in a few frames: measured, `cubic-bezier(.55,0,.9,.35)`
-stepped opacity by **0.13 in a single frame** where linear steps by **0.026**. That late dump is
-itself the hang-then-cut the dismissal was added to fix. The same trap caught the handle pulse —
-if a transition ever looks like dropped frames, check the curve before blaming the frame rate.
+| | |
+| --- | --- |
+| `?perf=1` | on from the URL, for a bench session |
+| `?fx=lite` | no blur, no blend modes, no idle animations |
+| `?fx=off` | as above, and the light shafts removed entirely |
+| press <kbd>P</kbd> | on a machine with a keyboard |
+| hold the top-left corner for 1.5s | for a touchscreen on the floor |
 
-### The hand-off into the bay
+It never persists across a reload, so one left on by accident cannot outlive the session; it is
+`pointer-events: none`, so it can never eat a visitor's touch; and the sampling loop only runs
+while it is showing, so it costs nothing when off.
 
-`morphPhotoIntoBay()`. A FLIP: the photo stack is already sitting in its final place, so it
-measures both boxes, starts the stack transformed onto the live viewfinder, and animates back to
-no transform. The midpoint is the point — a drift right and a slight swell (`photoSwell`) before
-the long travel left (`photoSettle`). A straight tween from big-and-centred to small-and-left
-reads as the image collapsing.
+Alongside the timings it reports the **build stamp**, the secure-context and camera-permission
+state, the camera list with the `?cam=` index for each, and running **node / canvas / heap**
+counts. Those last three are how you spot a leak on a machine you cannot attach a debugger to —
+they should be flat across visitors, and a kiosk never restarts, so anything that grows has all
+day to do it.
 
-Two things fall out of it. `takePhoto()` calls `feed.pause()`, because a live frame still moving
-underneath the photo during its flight reads as a double exposure — `reset()` plays it again. And
-`.stage:not(.active)` exits in 220ms rather than 460ms, so the outgoing live section is gone
-before the photo has displaced far enough to expose it.
+The `?fx` modes are applied by a small inline script **before the module loads**, because on
+hardware where the heavy effects are the problem, one painted frame of them is one too many.
+They are also the fastest way to find out whether the GPU is what is wrong: if `?fx=lite` stops
+a crash or a stutter, it is; if it does not, look elsewhere.
 
-### Typing, and "light"
+> **A stale kiosk looks identical to a fresh one.** Asset filenames are content-hashed so they
+> bust themselves, but `index.html` is not — a device that has cached it keeps loading the old
+> assets it names, indefinitely. The build stamp in the overlay is the only way to tell from the
+> floor. Serve `index.html` with `Cache-Control: no-cache` on the exhibit machine.
 
-The first beat types itself out. Every character is in the DOM from the start and merely hidden
-(`splitChars()` wraps each word in an inline-block and each character in a span): **appending**
-characters would re-wrap the line on nearly every keystroke and shove the panel around, whereas
-revealing them settles the line breaks once, before anything is visible. The caret is an
-`::after` on whichever character was typed last, so it follows the text across a line break for
-free, and it is absolutely positioned so it never nudges the glyphs.
+**What a drag used to cost, and why.** Roughly half the work on the hot path was bookkeeping
+rather than imaging:
 
-"light" is *not* typed — five characters at that size read as a banner, and the shafts need
-something to land on all at once. It blooms in as one word.
+- `pointermove` ran a full redraw **synchronously**, so a touchscreen firing faster than the
+  display redrew more often than anything could be seen.
+- All **six** editors refreshed on every move — including the three touch-ups that are
+  `display: none` during tuning, and the two channels that had not changed.
+- `drawHistogram` read `clientWidth` on every draw, forcing a synchronous layout six times per
+  move. On a hidden editor that reads 0, so the canvas was reallocated to 1px and drawn into,
+  every move, for nothing.
 
-### The god rays
+Now: redraws are marked dirty and coalesced to **one a frame**, only the channel that moved is
+redrawn, only editors that are on screen are touched, and the backing store is sized from a
+`ResizeObserver` off the layout pass rather than by asking for layout on the hot path. Working
+copies dropped to 420px (preview) and 200px (thumbnails).
 
-`.rays` is seven trapezoid shafts hinged at a point above the word and splayed outward, so they
-read as one beam breaking apart rather than seven stripes. Hue and angle come from `nth-child`
-in the CSS; the shafts start desaturated (`saturate(0)`) so the beam is white.
-
-- `.rainbow`, added when the second sentence lands, takes the desaturation only part way off.
-  The rainbow has to stay **dull**, or the one band the visitor is working on has nothing to
-  stand out against.
-- `data-band="r|g|b"`, set by `enterTune()`, brightens that channel's shafts. Red covers
-  red+orange, green covers yellow+green, blue covers cyan+blue+violet — the sensor's filters
-  overlap in roughly the same way.
-- No `mix-blend-mode` on `.rays`. A blended element cannot be composited on its own layer —
-  the browser re-reads the backdrop every frame — and these shafts are blurred *and* animating,
-  which made them the one genuinely expensive thing on the screen. Over a near-black page
-  `screen` renders pixel for pixel the same as normal compositing, so it was pure cost.
-- The idle drift animates **transform only**. An unregistered custom property does not
-  interpolate in `@keyframes` (it snaps at 50%), and an animated `opacity` would outrank the
-  state rules, so the dull/lit switch would never show.
-
-### Text that glides instead of teleporting
-
-`flipPanelText(mutate)`. The workbench is vertically centred, so anything that changes the
-panel's height — the levels editor arriving, the Next button appearing — shunts every line above
-it by half that height in a single frame. It measures the panel's children, runs the stage
-change, and animates the difference away over `panelShift`. Wrap any future stage change that
-adds or removes panel content in it.
-
-### The animated words
-
-`.w-ir` (infrared) glows on a slow cycle, sitting just outside the visible range. `.w-wave`
-(wavelengths) is split into per-letter spans, each running the same `wave` keyframe with a
-staggered `animation-delay`, so the wiggle travels through the word as a sine wave. Most of the
-5.5s cycle is flat, so it kicks in occasionally rather than jittering constantly.
+Measured on a sustained 150-move drag: a full redraw went **4.9&nbsp;ms &rarr; 0.80&nbsp;ms**,
+with zero frames over 25&nbsp;ms. The remaining cost is the per-pixel JS, which is the next thing
+to move to a WebGL shader if a weaker machine needs it.
 
 ## Exhibit-grade upgrade path
 

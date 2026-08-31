@@ -9,12 +9,13 @@
 // animations and leaving pending waits unresolved, so an abandoned turn cannot bleed into the
 // next visitor's.
 
-import { startCamera, CameraSetupError } from './camera.js'
+import { startCamera, CameraSetupError, reportCameras } from './camera.js'
 import {
-  CHANNELS, captureFrame, levelsLut, IDENTITY_LUT,
+  CHANNELS, captureFrame, downscaleFrame, levelsLut, IDENTITY_LUT,
   drawComposite, drawChannel, drawGrey, compositeURL,
 } from './imaging.js'
 import { createLevels } from './levels.js'
+import { initPerf, measure, count, setProbe, setInfo } from './perf.js'
 import { publish as publishToWall } from './store.js'
 
 // ── the knobs you'll actually want to turn ──────────────────────────────────
@@ -22,37 +23,28 @@ import { publish as publishToWall } from './store.js'
 const TIMELINE = {
   countdownFrom: 5,
   countdownTick: 900, // 5-4-3-2-1 at this cadence
-  freezeHold: 420,
+  freezeHold: 420, // the flash, before the photo is handed to the next step
 
-  photoSwell: 420, // the photo drifts right off the viewfinder and swells...
-  photoSettle: 760, // ...then travels left and shrinks into the bay
-
-  beat1: 500, // pause after the photo lands, before the sentence starts typing
-  typeChar: 34, // per character
-  typePunct: 240, // extra beat on a comma, so it reads like someone talking
-  lightIn: 380, // "light" blooms onto its own row once the line finishes
-  panelShift: 520, // text gliding to its new place when the editor changes the panel height
-  beat2: 1300, // "that light was filtered into R G B" — timed from the light word
-  chipStagger: 260, // R, then G, then B lighting up
-  editorIn: 900, // the levels editor arriving after beat 2
+  stepIn: 420, // a step arriving
 
   handlePulseAt: 260, // the handles start asking to be touched, once they have settled
-  levelsSettleAt: 520, // the handles wait for the editor to land before they move...
-  levelsSettle: 780, // ...then slide from the ends of the track to the channel's own range
-  nextFallbackAt: 18000, // Next appears anyway after this long, so nobody is ever stranded
+  levelsSettleAt: 320, // the handles wait for the charts to land before they move...
+  levelsSettle: 700, // ...then slide from the ends of the track to the channel's own range
 
-  revealGrey: 700, // reveal: greyscale holds...
-  revealOriginal: 1500, // ...crossfades to what the camera actually captured...
-  revealUser: 2600, // ...then slowly to the visitor's version
-  beatOut: 520, // a sentence leaving, rather than being switched off
-  finaleIn: 600,
-
-  blowAway: 1500, // the wind-blown exit
-  resetButtonAt: 3000, // "after 3 seconds, a reset button comes up"
-  autoResetAt: 45000,
+  cameraRetryAt: 15000, // a camera that will not open is retried until it does
+  shareHold: 1600, // the confirmation after sharing, before the last step is offered
+  autoResetAt: 90000, // an abandoned session returns to the camera on its own
 }
 
-const CAPTURE_W = 900
+const CAPTURE_W = 1400 // a 2160-wide panel shows this large; 900 was visibly soft
+
+// A sideways-mounted camera, corrected on the kiosk shortcut rather than in the code, because
+// which way it is turned is a property of the bracket it is screwed to and not of the exhibit:
+//   ?rot=90   ?rot=180   ?rot=270
+const CAM_ROT = (() => {
+  const n = Number(new URLSearchParams(location.search).get('rot') ?? 270)
+  return Number.isFinite(n) ? ((Math.round(n / 90) * 90) % 360 + 360) % 360 : 0
+})()
 
 const PACE = matchMedia('(prefers-reduced-motion: reduce)').matches ? 0.3 : 1
 const t = (ms) => Math.round(ms * PACE)
@@ -66,31 +58,42 @@ const countdownEl = $('countdown')
 const photoA = $('photoA')
 const photoB = $('photoB')
 const photoStack = document.querySelector('.photo-stack')
-const editorMount = $('editor')
-const touchupMount = $('touchups')
-const beat1Line = $('beat1Line')
-const lightWord = $('lightWord')
-const lightRays = $('lightRays')
-const panel = document.querySelector('.panel')
+const channelsEl = $('channels')
+const astroStrip = $('astroStrip')
+const shareCanvas = $('shareCanvas')
+const previewCanvas = $('previewCanvas')
+const stepBar = $('stepBar')
 const nextBtn = $('nextBtn')
 const submitBtn = $('submitBtn')
 const resetBtn = $('resetBtn')
 
-const SECTION_FOR = {
-  live: 'live', countdown: 'live',
-  intro: 'work', tuneR: 'work', tuneG: 'work', tuneB: 'work', reveal: 'work', finale: 'work',
-  thanks: 'thanks',
-}
-const TUNE_STAGES = ['tuneR', 'tuneG', 'tuneB']
+/**
+ * The four steps, in order. Each owns one screen and one action in the dock.
+ *
+ * `enter` runs when the step is opened, and is the only place a step's content is built. That
+ * is what makes them separable: any of them can be opened directly with `?step=edit` without
+ * running the ones before it, which is how they get worked on individually.
+ */
+const STEPS = [
+  { id: 'camera', action: 'shutter' },
+  { id: 'edit', action: 'nextBtn' },
+  { id: 'share', action: 'submitBtn' },
+  { id: 'astro', action: 'resetBtn' },
+]
+const STEP_IDS = STEPS.map((s) => s.id)
+
 
 let gen = 0
 let anims = []
 let timers = []
 
 let frame = null // { width, height, planes, luma, histograms, rest } — written once, read-only after
+// Cheap copies for the things that redraw on every drag. At capture resolution the three
+// thumbnails plus the preview would be four full-frame passes per pointermove.
+let thumbFrame = null
+let previewFrame = null
 let levels = null // [{black, white} x3] — the only thing the visitor changes
 let bigEditors = []
-let smallEditors = []
 let front = photoA // which stacked canvas is currently showing
 
 // ── timing + animation, all cancellable ─────────────────────────────────────
@@ -146,133 +149,61 @@ function rise(node, delay = 0) {
   )
 }
 
-/**
- * Split a line into per-character spans once, so it can be typed out later. Words are kept
- * whole in an inline-block each and the spaces between them left as real text, which is what
- * lets the line wrap normally — a span per space would either collapse or refuse to break.
- */
-function splitChars(el) {
-  if (el.dataset.split) return [...el.querySelectorAll('.ch')]
-  const words = el.textContent.trim().split(/\s+/)
-  el.textContent = ''
-  words.forEach((word, i) => {
-    if (i) el.append(' ')
-    const w = document.createElement('span')
-    w.className = 'word'
-    for (const ch of word) {
-      const c = document.createElement('span')
-      c.className = 'ch'
-      c.textContent = ch
-      w.append(c)
-    }
-    el.append(w)
-  })
-  el.dataset.split = '1'
-  return [...el.querySelectorAll('.ch')]
-}
+
+
+
+let stepIndex = 0
+
+const step = () => document.body.dataset.step
+const stepAt = (id) => STEP_IDS.indexOf(id)
 
 /**
- * Type the line out. Every wait is generation-guarded, so a reset mid-sentence simply leaves
- * the loop hanging forever rather than racing the next visitor's turn.
+ * Open a step.
+ *
+ * Everything about which screen is showing, which dock button is offered and how far along the
+ * indicator reads is derived from this one call, so there is exactly one place to look when a
+ * step goes to the wrong screen.
  */
-async function typeOut(el) {
-  const chars = splitChars(el)
-  chars.forEach((c) => c.classList.remove('on', 'at'))
+function goToStep(id, { animate = true } = {}) {
+  const i = stepAt(id)
+  if (i === -1) return
+  stepIndex = i
+  document.body.dataset.step = id
 
-  for (let i = 0; i < chars.length; i++) {
-    chars[i - 1]?.classList.remove('at')
-    chars[i].classList.add('on', 'at')
-    const pause = /[,;:]/.test(chars[i].textContent) ? TIMELINE.typePunct : 0
-    await wait(t(TIMELINE.typeChar + pause))
+  // The dock offers one action, and it is the one this step named.
+  const wanted = STEPS[i].action
+  for (const btn of [shutter, nextBtn, submitBtn, resetBtn]) {
+    btn.hidden = btn.id !== wanted && !(wanted === 'shutter' && btn === shutter)
   }
-  chars.at(-1)?.classList.remove('at')
-}
 
-/** "light" arrives as one word rather than typed: five characters at that size read as a
- *  banner, and the shafts need something to land on all at once. */
-function revealLightWord() {
-  return track(
-    lightWord.animate(
-      [
-        { opacity: 0, transform: 'translateY(10px) scale(.94)', filter: 'blur(6px)' },
-        { opacity: 1, transform: 'none', filter: 'blur(0)' },
-      ],
-      { duration: t(760), easing: EASE, fill: 'both' }
-    )
-  )
-}
+  // The indicator marks where we are and what has been passed.
+  ;[...stepBar.children].forEach((dot, n) => {
+    dot.classList.toggle('now', n === i)
+    dot.classList.toggle('done', n < i)
+  })
 
-/**
- * Move the panel's text to its new resting place instead of letting it teleport there. The
- * workbench is vertically centred, so anything that changes the panel's height — the levels
- * editor arriving, the Next button appearing — shunts every line above it by half that height
- * in a single frame. Measure, mutate, then animate the difference away.
- */
-function flipPanelText(mutate) {
-  const kept = [...panel.children].filter((n) => n.getBoundingClientRect().height > 0)
-  const before = kept.map((n) => n.getBoundingClientRect().top)
-  mutate()
-  kept.forEach((n, i) => {
-    const dy = before[i] - n.getBoundingClientRect().top
-    if (Math.abs(dy) < 1) return
+  setInfo('step', `${i + 1}/${STEPS.length} ${id}`)
+
+  const section = document.querySelector(`.step[data-step="${id}"]`)
+  if (section && animate) {
     track(
-      n.animate([{ transform: `translateY(${dy}px)` }, { transform: 'none' }], {
-        duration: t(TIMELINE.panelShift),
+      section.animate([{ opacity: 0, transform: 'translateY(14px)' }, { opacity: 1, transform: 'none' }], {
+        duration: t(TIMELINE.stepIn),
         easing: EASE,
         fill: 'both',
       })
     )
-  })
+  }
+  STEP_ENTER[id]?.()
 }
 
-/**
- * Send a beat away instead of cutting it. Text that simply stops existing between one screen
- * and the next reads as a glitch; the same text drifting up and dissolving reads as the piece
- * moving on. Opacity only, so the line keeps its space and nothing below it jumps.
- *
- * Linear, deliberately. An eased fade holds the text near full opacity for most of its
- * duration and then dumps the rest in a few frames — measurably so: an ease-in curve here
- * stepped opacity by 0.13 in a single frame where linear steps by 0.026. That late dump is the
- * hang-then-cut this was meant to fix. Nobody reads a 520ms text fade as mechanical.
- */
-function dismiss(nodes, stagger = 70) {
-  const live = nodes.filter(Boolean)
-  live.forEach((node, i) =>
-    track(
-      node.animate([{ opacity: 1, transform: 'none' }, { opacity: 0, transform: 'translateY(-16px)' }], {
-        duration: t(TIMELINE.beatOut),
-        delay: t(i * stagger),
-        easing: 'linear',
-        fill: 'both',
-      })
-    )
-  )
-}
-
-/**
- * Run the entrances for one beat. Elements marked [data-hold] are skipped: their reveal is
- * scheduled elsewhere, and sweeping them up here would fire it early and then leave two
- * competing animations on the same element.
- */
-function revealAll(root) {
-  if (!root) return
-  root.querySelectorAll('.pop:not([data-hold]), .rise:not([data-hold])').forEach((node) => {
-    const delay = Number(node.dataset.d) || 0
-    if (node.classList.contains('rise')) rise(node, delay)
-    else pop(node, delay)
-  })
-}
-
-function setStage(name) {
-  const section = SECTION_FOR[name]
-  document.querySelectorAll('.stage').forEach((s) => s.classList.toggle('active', s.dataset.for === section))
-  document.body.dataset.stage = name
-}
-
-const stage = () => document.body.dataset.stage
 
 function setAspect(w, h) {
-  if (w && h) document.documentElement.style.setProperty('--shot-ar', (w / h).toFixed(4))
+  if (!w || !h) return
+  // On a quarter turn the displayed shape is the camera's, turned — so the ratio flips too.
+  const upright = CAM_ROT === 90 || CAM_ROT === 270
+  const ar = upright ? h / w : w / h
+  document.documentElement.style.setProperty('--shot-ar', ar.toFixed(4))
 }
 
 // ── the photo bay: two stacked canvases, so any change can crossfade ────────
@@ -285,107 +216,52 @@ function paint(drawFn) {
   drawFn(front)
 }
 
-/**
- * Draw onto the hidden canvas, then crossfade it in. Used for the reveal sequence, where the
- * whole point is watching one version become another.
- */
-function crossfadeTo(drawFn, duration) {
-  const back = front === photoA ? photoB : photoA
-  drawFn(back)
-  track(back.animate([{ opacity: 0 }, { opacity: 1 }], { duration: t(duration), easing: 'ease-in-out', fill: 'both' }))
-  track(front.animate([{ opacity: 1 }, { opacity: 0 }], { duration: t(duration), easing: 'ease-in-out', fill: 'both' }))
-  front = back
-}
 
-/**
- * Carry the photo out of the viewfinder and into the bay instead of cutting between two
- * layouts. FLIP: the stack is already sitting in its final place, so measure both boxes,
- * start it transformed onto the live frame, and animate back to no transform at all.
- *
- * The midpoint is the whole point. A straight tween from big-and-centred to small-and-left
- * reads as the image collapsing; a drift to the right with a slight swell first reads as the
- * photo being lifted off the camera before it is set down on the bench. The same anticipation
- * beat the send-off uses, run in reverse.
- */
-function morphPhotoIntoBay() {
-  const from = feed.getBoundingClientRect()
-  const to = photoStack.getBoundingClientRect()
-  if (!from.width || !to.width) return null
-
-  const scale = from.height / to.height
-  const dx = from.left + from.width / 2 - (to.left + to.width / 2)
-  const dy = from.top + from.height / 2 - (to.top + to.height / 2)
-
-  // Lead right by a fraction of the journey rather than a fixed pixel count, so the swell
-  // stays in proportion on a laptop and on the exhibit wall alike.
-  const lead = Math.max(24, Math.abs(dx) * 0.18)
-  const total = TIMELINE.photoSwell + TIMELINE.photoSettle
-
-  return track(
-    photoStack.animate(
-      [
-        {
-          transform: `translate(${dx}px, ${dy}px) scale(${scale})`,
-          offset: 0,
-          easing: 'cubic-bezier(.33,.85,.5,1)', // off the viewfinder, decisive
-        },
-        {
-          transform: `translate(${dx + lead}px, ${dy}px) scale(${scale * 1.06})`,
-          offset: TIMELINE.photoSwell / total,
-          easing: 'cubic-bezier(.55,0,.25,1)', // the long travel: gentle away, gentle down
-        },
-        { transform: 'none', offset: 1 },
-      ],
-      { duration: t(total), fill: 'both' }
-    )
-  )
-}
 
 // ── the levels editors ──────────────────────────────────────────────────────
 
-function buildEditors() {
-  editorMount.replaceChildren()
-  touchupMount.replaceChildren()
+/** Hand back what the last step's editors were holding. */
+function destroyEditors() {
+  bigEditors.forEach((e) => e.destroy?.())
   bigEditors = []
-  smallEditors = []
+}
 
-  CHANNELS.forEach((channel, i) => {
-    const shared = {
-      channelIndex: i,
-      bins: frame.histograms[i],
-      get: () => levels[i],
-      set: (next) => (levels[i] = next),
+// A drag can fire pointermove more often than the display can show it, and every one of those
+// used to run a full redraw synchronously. Mark what is dirty, draw it once a frame.
+let dirtyChannel = -1
+let dirtyAll = false
+let drawQueued = 0
+
+function queueDraw(index) {
+  if (index == null || index < 0) dirtyAll = true
+  else if (dirtyChannel === -1) dirtyChannel = index
+  else if (dirtyChannel !== index) dirtyAll = true
+  if (drawQueued) return
+  drawQueued = requestAnimationFrame(runQueuedDraw)
+}
+
+function runQueuedDraw() {
+  drawQueued = 0
+  const only = dirtyAll ? -1 : dirtyChannel
+  dirtyChannel = -1
+  dirtyAll = false
+  if (!frame || !levels) return
+
+  count('draws')
+  measure('levels', () => {
+    bigEditors.forEach((e, i) => (only === -1 || only === i) && e.redraw())
+    if (step() === 'astro') {
+      drawBands(only)
+      drawPreview()
+    } else {
+      paint((c) => drawComposite(c, frame, lutsNow()))
     }
-    // One large editor per channel, shown in turn during the walkthrough.
-    bigEditors.push(
-      createLevels({
-        ...shared,
-        mount: editorMount,
-        onInput: onLevelsChanged,
-        onFirstTouch: () => revealNext(i),
-      })
-    )
-    // Three compact ones for final touches. Both sets read the same state, so they agree.
-    smallEditors.push(createLevels({ ...shared, mount: touchupMount, compact: true, onInput: onLevelsChanged }))
   })
 }
 
-function refreshEditors() {
-  bigEditors.forEach((e) => e.refresh())
-  smallEditors.forEach((e) => e.refresh())
-}
-
-/** A handle moved: repaint whatever the current beat is showing. */
-function onLevelsChanged() {
-  refreshEditors()
-  const s = stage()
-  const idx = TUNE_STAGES.indexOf(s)
-  if (idx >= 0) {
-    // While tuning one channel, the photo shows that channel alone.
-    paint((c) => drawChannel(c, frame, idx, levelsLut(levels[idx].black, levels[idx].white)))
-  } else if (s === 'finale') {
-    paint((c) => drawComposite(c, frame, lutsNow()))
-  }
+/** A handle moved: mark it and let the next frame draw it. */
+function onLevelsChanged(index) {
+  queueDraw(index)
 }
 
 /**
@@ -405,12 +281,14 @@ function settleLevels(index) {
   const started = performance.now()
   const duration = t(TIMELINE.levelsSettle)
 
-  const step = (now) => {
+  // Named `tick`, not `step`: a local called `step` would shadow the module's step() and this
+  // would silently call itself instead of asking which screen is open.
+  const tick = (now) => {
     if (g !== gen) return
-    // Next was pressed mid-slide: land on the target rather than leaving it half moved.
-    if (stage() !== TUNE_STAGES[index]) {
+    // Left the editing screens mid-slide: land on the target rather than leaving it half moved.
+    if (step() !== 'edit' && step() !== 'astro') {
       levels[index] = { ...target }
-      refreshEditors()
+      bigEditors.forEach((e) => e.redraw())
       return
     }
     const p = Math.min(1, (now - started) / duration)
@@ -419,50 +297,200 @@ function settleLevels(index) {
       black: Math.round(from.black + (target.black - from.black) * e),
       white: Math.round(from.white + (target.white - from.white) * e),
     }
-    onLevelsChanged()
-    if (p < 1) requestAnimationFrame(step)
+    onLevelsChanged(index)
+    if (p < 1) requestAnimationFrame(tick)
   }
-  requestAnimationFrame(step)
+  requestAnimationFrame(tick)
 }
 
 // ── 1. live ─────────────────────────────────────────────────────────────────
 
 async function boot() {
-  setStage('live')
+  initPerf()
+  if (CAM_ROT) {
+    document.body.dataset.rot = String(CAM_ROT)
+    setInfo('rotation', `${CAM_ROT}deg (?rot=)`)
+  }
 
+  // Four separate things have to be true for a picture to appear, and when one of them is not,
+  // every one of the others still looks fine. So report all four, live:
+  //   metadata   videoWidth/Height are 0 until the stream describes itself
+  //   decoding   currentTime advancing is the only proof frames are actually arriving
+  //   layout     an element with no size shows nothing however well the stream is running
+  //   source     a track can be live but muted, which means the camera is delivering nothing
+  setProbe('video', () => {
+    const box = feed.getBoundingClientRect()
+    const track = feed.srcObject?.getVideoTracks?.()[0]
+    const state = ['nothing', 'metadata', 'current', 'future', 'enough'][feed.readyState] ?? '?'
+    return (
+      `${feed.videoWidth}x${feed.videoHeight} ${state} ${feed.paused ? 'PAUSED' : 'playing'} clock ${feed.currentTime.toFixed(1)}s
+` +
+      `on screen ${Math.round(box.width)}x${Math.round(box.height)}` +
+      (track
+        ? ` · track ${track.readyState}${track.muted ? ' MUTED(no frames)' : ''}${track.enabled ? '' : ' DISABLED'}`
+        : ' · no track')
+    )
+  })
+
+  // `resize` as well as `loadedmetadata`: Android reports the intrinsic size later than
+  // desktop and sometimes changes it again once the stream settles, and the frame is sized
+  // from that ratio — so a viewfinder that never gets the second one is a viewfinder with
+  // the wrong shape, or none. Attached once, outside the retry, so a recovery cannot stack
+  // duplicate listeners.
+  feed.addEventListener('loadedmetadata', () => setAspect(feed.videoWidth, feed.videoHeight))
+  feed.addEventListener('resize', () => setAspect(feed.videoWidth, feed.videoHeight))
+
+  // ?step=edit opens one step directly, without running the ones before it. That is the whole
+  // point of keeping them separable: a step can be worked on without sitting through the piece.
+  const jump = new URLSearchParams(location.search).get('step')
+  if (jump && STEP_IDS.includes(jump)) {
+    setInfo('step jump', jump)
+    // It still needs a picture to work on, so take one as soon as the camera is ready.
+    openCamera().then(async () => {
+      if (jump === 'camera') return
+      await wait(400)
+      takePhoto().then(() => goToStep(jump))
+    })
+    return
+  }
+
+  goToStep('camera', { animate: false })
+  openCamera()
+}
+
+let camAttempt = 0
+
+/**
+ * Open the camera, and keep trying if it will not open.
+ *
+ * A camera can be unavailable for reasons that have nothing to do with this page and that clear
+ * up on their own — another app holding it, or the device's camera service wedged until
+ * something releases it. Without this, a fault at 9am is a dead exhibit until somebody notices
+ * and reloads, even if the camera freed itself a minute later. Deliberately not on the
+ * generation counter that `reset()` bumps: recovery has to outlive a visitor's turn.
+ */
+async function openCamera() {
   try {
     await startCamera(feed, { want: new URLSearchParams(location.search).get('cam') })
     setAspect(feed.videoWidth, feed.videoHeight)
-    feed.addEventListener('loadedmetadata', () => setAspect(feed.videoWidth, feed.videoHeight))
+    $('camError').hidden = true
     shutter.disabled = false
+    setInfo('camera error', null)
+    if (camAttempt) setInfo('camera', `recovered on attempt ${camAttempt + 1}`)
+    camAttempt = 0
   } catch (err) {
-    shutter.disabled = true
-    const box = $('camError')
-    box.hidden = false
-    box.textContent =
-      err instanceof CameraSetupError ? err.message : `No camera: ${err.message}`
+    camAttempt++
+    showCameraFault(err)
+    setTimeout(openCamera, TIMELINE.cameraRetryAt)
   }
 }
 
-// ── 2. countdown ────────────────────────────────────────────────────────────
+function showCameraFault(err) {
+  shutter.disabled = true
+  const box = $('camError')
+  box.hidden = false
+  // Each of these has a completely different fix, and "no camera" tells whoever is standing
+  // in front of the screen none of them. NotReadableError in particular almost always means
+  // something else already has the camera, which is a thirty-second fix if you know it.
+  const SAID = {
+    NotFoundError: 'No camera is connected to this machine.',
+    NotReadableError:
+      'The camera could not be opened. Another app may be using it — if not, restart the device.',
+    TrackStartError:
+      'The camera could not be opened. Another app may be using it — if not, restart the device.',
+    OverconstrainedError: 'This camera cannot provide the video format the exhibit asked for.',
+    NotAllowedError:
+      'Camera permission was refused for this address. Clear it in the browser’s site settings and reload.',
+    SecurityError:
+      'The browser blocked camera access for this address. It needs to be served over https://.',
+    AbortError: 'The camera stopped responding while starting up. Reload this page.',
+  }
+  box.replaceChildren(
+    err instanceof CameraSetupError ? err.message : (SAID[err.name] ?? `No camera: ${err.message}`)
+  )
+
+  // And the technical detail right underneath it, on the screen, not only in the overlay.
+  // Whoever is standing in front of a kiosk that will not start has no debugger and often no
+  // second machine; a photograph of the screen should be enough to diagnose it. Small and
+  // muted, so it reads as a service note rather than as part of the piece.
+  const detail = document.createElement('small')
+  detail.className = 'err-detail'
+  detail.textContent =
+    `retrying every ${Math.round(TIMELINE.cameraRetryAt / 1000)}s · attempt ${camAttempt} · ` +
+    `${err.name}` +
+    ` · ${location.protocol}//${location.host}` +
+    ` · secure ${window.isSecureContext}` +
+    ` · ${navigator.userAgent.includes('Firefox') ? 'firefox' : 'chromium'}`
+  box.append(detail)
+
+  // The visitor-facing line is deliberately gentle. The overlay gets the raw fault, because
+  // "no camera" covers a dozen different causes with completely different fixes.
+  setInfo('camera error', `${err.name}: ${err.message}`)
+  // The overlay is also the only way to see the device list on a tablet, so fill it in even
+  // though nothing started.
+  reportCameras()
+}
+
+// ── the four steps ──────────────────────────────────────────────────────────
+
+/**
+ * What each step does when it is opened.
+ *
+ * Kept as a lookup rather than a chain of calls so that no step knows about any other. That is
+ * what lets `?step=astro` work: the step builds whatever it needs from `frame` and `levels`,
+ * and does not care how the visitor got there.
+ */
+const STEP_ENTER = {
+  camera() {
+    shutter.disabled = !feed.videoWidth
+  },
+
+  edit() {
+    if (!frame) return
+    buildChannelEditors(channelsEl, '.channel-editor')
+    paint((c) => drawComposite(c, frame, lutsNow()))
+    later(t(TIMELINE.levelsSettleAt), () => {
+      bigEditors.forEach((_, i) => settleLevels(i))
+      later(t(TIMELINE.levelsSettle + TIMELINE.handlePulseAt), () =>
+        bigEditors.forEach((e) => e.setPulsing(true))
+      )
+    })
+  },
+
+  share() {
+    if (!frame) return
+    drawComposite(shareCanvas, previewFrame ?? frame, lutsNow())
+    submitBtn.disabled = false
+    $('shareHint').textContent = 'This goes up on the gallery wall'
+  },
+
+  astro() {
+    if (!frame) return
+    buildChannelEditors(astroStrip, '.band-editor')
+    drawBands()
+    drawPreview()
+    later(t(TIMELINE.levelsSettleAt), () =>
+      bigEditors.forEach((e) => e.setPulsing(true))
+    )
+  },
+}
+
+/** Advance to the next step, or wrap back to the camera from the last one. */
+function nextStep() {
+  const next = STEPS[stepIndex + 1]
+  if (next) goToStep(next.id)
+  else reset()
+}
+
+// ── 1. camera ───────────────────────────────────────────────────────────────
 
 async function runCountdown() {
-  if (!feed.videoWidth || stage() !== 'live') return
-  setStage('countdown')
+  if (!feed.videoWidth || step() !== 'camera') return
   shutter.disabled = true
 
-  for (let n = TIMELINE.countdownFrom; n >= 1; n--) {
+  for (let n = TIMELINE.countdownFrom; n > 0; n--) {
     countdownEl.textContent = String(n)
-    track(
-      countdownEl.animate(
-        [
-          { opacity: 0, transform: 'scale(1.6)' },
-          { opacity: 1, transform: 'scale(1)', offset: 0.35 },
-          { opacity: 0, transform: 'scale(.85)' },
-        ],
-        { duration: t(TIMELINE.countdownTick), easing: 'ease-out', fill: 'both' }
-      )
-    )
+    pop(countdownEl)
     await wait(t(TIMELINE.countdownTick))
   }
   countdownEl.textContent = ''
@@ -474,165 +502,76 @@ async function takePhoto() {
   void flash.offsetWidth
   flash.classList.add('go')
 
-  frame = captureFrame(feed, CAPTURE_W)
+  frame = captureFrame(feed, CAPTURE_W, CAM_ROT)
   if (!frame) {
-    setStage('live')
     shutter.disabled = false
     return
   }
 
-  // Freeze the viewfinder. The photo is about to slide out of it, and a live frame still
-  // moving underneath during that flight reads as a double exposure.
+  // Freeze the viewfinder while the photo is handed on; a live frame still moving under a
+  // still picture reads as a fault.
   feed.pause()
 
+  // Opens at the ends of the track; settleLevels() walks them in to the channel's own range,
+  // which is the movement that says these handles can be moved.
   levels = CHANNELS.map(() => ({ black: 0, white: 255 }))
-  setAspect(frame.width, frame.height)
-  buildEditors()
+  thumbFrame = downscaleFrame(frame, 260)
+  previewFrame = downscaleFrame(frame, 560)
+  // The *camera's* dimensions, not the frame's: captureFrame has already applied the rotation
+  // to the frame, and setAspect applies it again — feeding it the rotated size inverts the
+  // aspect ratio for every screen after this one.
+  setAspect(feed.videoWidth, feed.videoHeight)
 
-  // The photo appears exactly as taken.
-  paint((c) => drawComposite(c, frame, lutsIdentity()))
   await wait(t(TIMELINE.freezeHold))
-  runIntro()
+  goToStep('edit')
 }
 
-// ── 3–4. the didactic beats ─────────────────────────────────────────────────
+// ── 2 and 4. the editors ────────────────────────────────────────────────────
 
-async function runIntro() {
-  setStage('intro')
-  $('photoTag').textContent = 'Your photo'
-  morphPhotoIntoBay()
+/**
+ * Build one levels chart per channel into whichever step is asking.
+ *
+ * Both editing steps use the same three controls over the same three values, so they are the
+ * same component built into a different mount — a visitor who adjusts red on step 2 and then
+ * looks at step 4 sees their own red, because there is only ever one set of numbers.
+ */
+function buildChannelEditors(host, slot) {
+  destroyEditors()
+  host.querySelectorAll(slot).forEach((el) => el.replaceChildren())
 
-  // The caption belongs to the bay, so hold it back until the photo is nearly home — otherwise
-  // it sits under an empty space for the whole flight.
-  track(
-    $('photoTag').animate([{ opacity: 0 }, { opacity: 1 }], {
-      duration: t(300),
-      delay: t(TIMELINE.photoSwell + TIMELINE.photoSettle * 0.55),
-      fill: 'both',
-    })
-  )
-
-  // beat1 is timed from the end of the swell, not from the cut: a sentence arriving while the
-  // photo is still in the air competes with the movement for the same attention.
-  await wait(t(TIMELINE.photoSwell + TIMELINE.beat1))
-  pop($('beat1'))
-  await typeOut(beat1Line)
-
-  await wait(t(TIMELINE.lightIn))
-  revealLightWord()
-
-  await wait(t(TIMELINE.beat2))
-  pop($('beat2'))
-  // The sentence says the light was split, so the shafts split with it: the white beam
-  // becomes a dull rainbow. No band is picked out yet — that starts with the first channel.
-  lightRays.classList.add('rainbow')
-  // R, then G, then B light up as the sentence lands.
-  document.querySelectorAll('#beat2 .chip').forEach((chip, i) => {
-    later(t(TIMELINE.chipStagger * (i + 1)), () => chip.classList.add('lit'))
-  })
-
-  await wait(t(TIMELINE.editorIn))
-  enterTune(0)
-}
-
-// ── 4–5. one channel at a time ──────────────────────────────────────────────
-
-function enterTune(index) {
-  // The editor arriving changes the panel's height, which would otherwise jerk every line of
-  // text above it upward in one frame.
-  flipPanelText(() => setStage(TUNE_STAGES[index]))
-  const channel = CHANNELS[index]
-
-  // The same band of the rainbow the chip is lighting.
-  lightRays.dataset.band = channel.key.toLowerCase()
-  $('photoTag').textContent = `${channel.label} channel`
-
-  // Only this channel's chip stays lit, so the highlight tracks the walkthrough.
-  document.querySelectorAll('.chip').forEach((chip) => {
-    chip.classList.toggle('lit', chip.classList.contains(`chip-${channel.key.toLowerCase()}`))
-  })
-
-  paint((c) => drawChannel(c, frame, index, levelsLut(levels[index].black, levels[index].white)))
-  pop(bigEditors[index].root)
-
-  // Next is earned rather than given: it stays hidden until a handle has actually moved. The
-  // previous channel's reveal has to be cancelled explicitly — rise() fills forwards, so its
-  // opacity would otherwise carry over and leave the button visible on this channel too.
-  nextBtn.getAnimations().forEach((a) => a.cancel())
-  nextBtn.disabled = true
-  later(t(TIMELINE.nextFallbackAt), () => revealNext(index))
-
-  // After the editor has arrived, not during: handles moving while the panel is still
-  // animating in is movement nobody is looking at yet.
-  later(t(TIMELINE.levelsSettleAt), () => {
-    settleLevels(index)
-    later(t(TIMELINE.levelsSettle + TIMELINE.handlePulseAt), () =>
-      bigEditors[index].setPulsing(true)
+  CHANNELS.forEach((channel, i) => {
+    bigEditors.push(
+      createLevels({
+        mount: host.querySelector(`[data-ch="${i}"] ${slot}`),
+        channelIndex: i,
+        bins: frame.histograms[i],
+        get: () => levels[i],
+        set: (next) => (levels[i] = next),
+        compact: true,
+        onInput: onLevelsChanged,
+      })
     )
   })
 }
 
-/**
- * Bring Next up. Fired by the first handle movement, and again on a fallback timer.
- *
- * The timer is the important half. Gating the only way forward on a gesture the visitor has to
- * discover is exactly the kind of thing that strands somebody at an unattended exhibit, and a
- * screen with no visible way out is a floor-staff problem rather than a design one.
- */
-function revealNext(index) {
-  if (stage() !== TUNE_STAGES[index] || !nextBtn.disabled) return
-  nextBtn.disabled = false
-  rise(nextBtn)
+/** Each channel on its own, for the astrophotography step. */
+function drawBands(only = -1) {
+  if (!thumbFrame) return
+  astroStrip.querySelectorAll('.band-img').forEach((canvas, i) => {
+    if (only !== -1 && only !== i) return
+    drawChannel(canvas, thumbFrame, i, levelsLut(levels[i].black, levels[i].white))
+  })
 }
 
-function onNext() {
-  const idx = TUNE_STAGES.indexOf(stage())
-  if (idx === -1) return
-  if (idx < TUNE_STAGES.length - 1) enterTune(idx + 1)
-  else runReveal()
+/** The three together, which is the picture the visitor is actually making. */
+function drawPreview() {
+  if (previewFrame) drawComposite(previewCanvas, previewFrame, lutsNow())
 }
 
-// ── 6–7. the reveal, then final touches ─────────────────────────────────────
-
-async function runReveal() {
-  flipPanelText(() => setStage('reveal'))
-  document.querySelectorAll('.chip').forEach((chip) => chip.classList.add('lit'))
-  // The whole spectrum lights as the first sentence lifts away — the split light going back
-  // together, which is exactly what the photo is about to do.
-  lightRays.dataset.band = 'all'
-  dismiss([$('beat1')])
-
-  // Brightness only — what the sensor actually measured.
-  $('photoTag').textContent = 'Brightness only'
-  crossfadeTo((c) => drawGrey(c, frame), 700)
-  await wait(t(TIMELINE.revealGrey))
-
-  // What the camera handed over, untouched.
-  $('photoTag').textContent = 'As the camera captured it'
-  crossfadeTo((c) => drawComposite(c, frame, lutsIdentity()), 900)
-  await wait(t(TIMELINE.revealOriginal))
-
-  // And slowly into the visitor's version.
-  $('photoTag').textContent = 'Your version'
-  crossfadeTo((c) => drawComposite(c, frame, lutsNow()), TIMELINE.revealUser)
-
-  // Clear the second sentence *during* the last crossfade rather than on the way into the
-  // finale. It has done its work by now, and holding it until the stage change meant it sat
-  // there through the whole reveal and then vanished in one frame. Dismissing it here costs
-  // no extra time — the panel is simply already empty when the essay arrives.
-  later(t(TIMELINE.revealUser * 0.55), () => dismiss([$('beat2')]))
-  await wait(t(TIMELINE.revealUser))
-
-  flipPanelText(() => setStage('finale'))
-  refreshEditors()
-  revealAll($('finale'))
-  rise(submitBtn, TIMELINE.finaleIn)
-}
-
-// ── 8. send-off ─────────────────────────────────────────────────────────────
+// ── 3. share ────────────────────────────────────────────────────────────────
 
 async function onSubmit() {
-  if (stage() !== 'finale') return
+  if (step() !== 'share') return
   submitBtn.disabled = true
 
   publishToWall({
@@ -640,33 +579,10 @@ async function onSubmit() {
     levels: levels.map((l) => ({ ...l })),
   })
 
-  // Blow the photo off to a random edge, as if caught by wind.
-  const edge = Math.floor(Math.random() * 4)
-  const dist = 120
-  const [dx, dy] = [[0, -dist], [dist, 0], [0, dist], [-dist, 0]][edge]
-  const spin = (Math.random() > 0.5 ? 1 : -1) * (420 + Math.random() * 260)
-
-  track(
-    photoStack.animate(
-      [
-        { transform: 'translate(0, 0) rotate(0deg) scale(1)', opacity: 1 },
-        {
-          transform: `translate(${dx * 0.25}vw, ${dy * 0.25}vh) rotate(${spin * 0.2}deg) scale(1.04)`,
-          opacity: 1,
-          offset: 0.25,
-        },
-        { transform: `translate(${dx}vw, ${dy}vh) rotate(${spin}deg) scale(.35)`, opacity: 0 },
-      ],
-      { duration: t(TIMELINE.blowAway), easing: 'cubic-bezier(.3,.1,.6,1)', fill: 'both' }
-    )
-  )
-
-  await wait(t(TIMELINE.blowAway * 0.7))
-  setStage('thanks')
-  revealAll(document.querySelector('.stage-thanks'))
-
-  later(t(TIMELINE.resetButtonAt), () => rise(resetBtn))
-  later(t(TIMELINE.autoResetAt), reset)
+  $('shareHint').textContent = 'Shared. It is on the wall now.'
+  pop($('shareHint'))
+  await wait(t(TIMELINE.shareHold))
+  goToStep('astro')
 }
 
 // ── reset ───────────────────────────────────────────────────────────────────
@@ -676,24 +592,22 @@ function reset() {
 
   frame = null
   levels = null
-  bigEditors = []
-  smallEditors = []
-  editorMount.replaceChildren()
-  touchupMount.replaceChildren()
+  thumbFrame = null
+  previewFrame = null
+  destroyEditors()
+  channelsEl.querySelectorAll('.channel-editor').forEach((el) => el.replaceChildren())
+  astroStrip.querySelectorAll('.band-editor').forEach((el) => el.replaceChildren())
 
-  // Undo anything the animations left behind on the persistent elements.
+  // Undo anything left on the elements that outlive a visitor.
   front = photoA
-  nextBtn.disabled = true
   feed.play().catch(() => {}) // takePhoto() paused it for the hand-off
   countdownEl.textContent = ''
   submitBtn.disabled = false
-  document.querySelectorAll('.chip').forEach((chip) => chip.classList.remove('lit'))
-  beat1Line.querySelectorAll('.ch').forEach((c) => c.classList.remove('on', 'at'))
-  lightRays.classList.remove('rainbow')
-  delete lightRays.dataset.band
-  ;[photoA, photoB].forEach((c) => c.getContext('2d').clearRect(0, 0, c.width, c.height))
+  ;[photoA, photoB, shareCanvas, previewCanvas, ...astroStrip.querySelectorAll('.band-img')].forEach(
+    (c) => c.getContext('2d').clearRect(0, 0, c.width, c.height)
+  )
 
-  setStage('live')
+  goToStep('camera', { animate: false })
   setAspect(feed.videoWidth, feed.videoHeight)
   shutter.disabled = !feed.videoWidth
 }
@@ -701,7 +615,7 @@ function reset() {
 // ── wiring ──────────────────────────────────────────────────────────────────
 
 shutter.addEventListener('click', runCountdown)
-nextBtn.addEventListener('click', onNext)
+nextBtn.addEventListener('click', nextStep)
 submitBtn.addEventListener('click', onSubmit)
 resetBtn.addEventListener('click', reset)
 

@@ -20,15 +20,11 @@ const HANDLES = [
  * shoulders are the whole point: the visitor should see what they are discarding.
  */
 export function drawHistogram(canvas, bins, accent, black, white) {
-  // Match the backing store to the canvas's actual on-screen size. The chart is laid out with
-  // width:100% and a fixed aspect-ratio, so it is routinely displayed much wider than its
-  // authored size and would otherwise be a blurry upscale.
+  // The backing store is sized by the ResizeObserver in createLevels, not here. Reading
+  // clientWidth on every draw forced a synchronous layout six times per pointer move — and on
+  // a display:none editor it reads 0, so the canvas was being reallocated to 1px and redrawn
+  // into, every move, for nothing.
   const dpr = Math.min(2, window.devicePixelRatio || 1)
-  const wantW = Math.max(1, Math.round((canvas.clientWidth || canvas.width) * dpr))
-  const wantH = Math.max(1, Math.round((canvas.clientHeight || canvas.height) * dpr))
-  if (canvas.width !== wantW) canvas.width = wantW
-  if (canvas.height !== wantH) canvas.height = wantH
-
   const w = canvas.width
   const h = canvas.height
   const ctx = canvas.getContext('2d')
@@ -110,6 +106,7 @@ export function createLevels({
   mount.append(root)
 
   const chart = root.querySelector('.levels-chart')
+  const plot = root.querySelector('.levels-plot')
   const track = root.querySelector('.levels-track')
   const readBlack = root.querySelector('.lv-black')
   const readWhite = root.querySelector('.lv-white')
@@ -118,15 +115,45 @@ export function createLevels({
     white: root.querySelector('.handle-white'),
   }
 
+  // Match the backing store to the on-screen size, but off the layout pass rather than by
+  // asking for it. The chart is laid out width:100% with a fixed aspect-ratio, so it is
+  // routinely displayed far wider than its authored size and would otherwise be a blurry
+  // upscale; this keeps that true without a forced reflow on the hot path.
+  let sized = false
+  const observer = new ResizeObserver((entries) => {
+    const box = entries[0]?.contentRect
+    if (!box || !box.width) return
+    const dpr = Math.min(2, window.devicePixelRatio || 1)
+    const w = Math.max(1, Math.round(box.width * dpr))
+    const h = Math.max(1, Math.round(box.height * dpr))
+    if (chart.width === w && chart.height === h) return
+    chart.width = w
+    chart.height = h
+    sized = true
+    redraw()
+  })
+  observer.observe(chart)
+
+  /**
+   * The cheap half: where the handles sit and what the numbers say. This is what runs on the
+   * handle you are actually dragging, so it tracks your finger without waiting for a frame.
+   */
   function refresh() {
     const { black, white } = get()
-    drawHistogram(chart, bins, channel.accent, black, white)
     handles.black.style.left = `${(black / 255) * 100}%`
     handles.white.style.left = `${(white / 255) * 100}%`
     handles.black.setAttribute('aria-valuenow', String(black))
     handles.white.setAttribute('aria-valuenow', String(white))
     readBlack.textContent = String(black)
     readWhite.textContent = String(white)
+  }
+
+  /** The expensive half: 256 bars and the ramp. Coalesced to one a frame by the owner. */
+  function redraw() {
+    if (!sized) return
+    const { black, white } = get()
+    drawHistogram(chart, bins, channel.accent, black, white)
+    refresh()
   }
 
   // Whether this instance has ever been moved by the visitor. Only real input reaches commit()
@@ -154,7 +181,7 @@ export function createLevels({
         : { black: cur.black, white: Math.max(v, cur.black + 1) }
     set(next)
     refresh()
-    onInput?.()
+    onInput?.(channelIndex)
   }
 
   const valueAt = (clientX) => {
@@ -164,9 +191,27 @@ export function createLevels({
 
   let dragging = null
 
+  const nearest = (v) => {
+    const cur = get()
+    return Math.abs(v - cur.black) <= Math.abs(v - cur.white) ? 'black' : 'white'
+  }
+
+  /**
+   * The whole plot is the drag surface, not just the handles.
+   *
+   * Two things were losing touches. The handle is a 52px target on a chart nearly five times
+   * that wide, so a finger that starts a few pixels off it started nothing at all. And the
+   * pointer was captured on the handle, so a drag that began anywhere else was never captured
+   * and every move outside went somewhere else. Pressing anywhere on the chart now grabs the
+   * nearer handle and keeps it until the finger lifts.
+   */
   function onDown(e) {
-    dragging = e.currentTarget.dataset.kind
-    e.currentTarget.setPointerCapture?.(e.pointerId)
+    const v = valueAt(e.clientX)
+    const onHandle = e.target?.dataset?.kind
+    dragging = onHandle ?? nearest(v)
+    // Grab a handle where it already is; jump to the touch anywhere else.
+    if (!onHandle) commit(dragging, v)
+    plot.setPointerCapture?.(e.pointerId)
     e.preventDefault()
   }
   function onMove(e) {
@@ -177,11 +222,12 @@ export function createLevels({
     dragging = null
   }
 
+  plot.addEventListener('pointerdown', onDown)
+  plot.addEventListener('pointermove', onMove)
+  plot.addEventListener('pointerup', onUp)
+  plot.addEventListener('pointercancel', onUp)
+
   Object.values(handles).forEach((h) => {
-    h.addEventListener('pointerdown', onDown)
-    h.addEventListener('pointermove', onMove)
-    h.addEventListener('pointerup', onUp)
-    h.addEventListener('pointercancel', onUp)
     h.addEventListener('keydown', (e) => {
       const step = e.shiftKey ? 10 : 1
       const kind = h.dataset.kind
@@ -193,14 +239,20 @@ export function createLevels({
     })
   })
 
-  // Clicking the chart moves whichever handle is nearer — the usual levels behaviour.
-  track.addEventListener('pointerdown', (e) => {
-    if (e.target !== track) return
-    const v = valueAt(e.clientX)
-    const cur = get()
-    commit(Math.abs(v - cur.black) <= Math.abs(v - cur.white) ? 'black' : 'white', v)
-  })
-
   refresh()
-  return { refresh, root, setPulsing }
+
+  /**
+   * Let go of the observer.
+   *
+   * Editors are rebuilt on every capture, so without this each visitor leaves six live
+   * ResizeObservers behind holding on to canvases that are no longer in the document. On a
+   * desk that is invisible; on a memory-constrained kiosk running all day it is a leak with a
+   * few hundred visitors in it.
+   */
+  function destroy() {
+    observer.disconnect()
+    root.remove()
+  }
+
+  return { refresh, redraw, root, setPulsing, destroy }
 }
