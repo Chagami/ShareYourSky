@@ -14,14 +14,19 @@
   --ch-g: #3ddc6b;
   --ch-b: #4d94ff;
   --ir: #b3421f;
+  /* The step indicator's blob. Warm enough to be unmistakably "you are here" against a screen
+     that is otherwise black, blue and the three channel colours. */
+  --hot: #ff8a2b;
 
   --ease: cubic-bezier(0.16, 1, 0.3, 1);
   --shot-ar: 1.3333;
+  /* Replaced from the image's own dimensions the moment it loads; this is only so the frame
+     has a shape to reserve before then. */
+  --pillars-ar: 0.9588;
 
   /* One definition of the viewfinder's width, so the rotated case can be derived from it
      instead of guessed at again. */
   --frame-w: min(90vw, calc(64vh * var(--shot-ar)));
-  --bay-h: min(52vh, calc(44vw / var(--shot-ar)));
 }
 
 * { box-sizing: border-box; }
@@ -51,7 +56,9 @@ body {
 
 body {
   display: grid;
-  grid-template-rows: 1fr auto;
+  /* The progress bar, the screen, the one button. The bar reads as a heading at the top and the
+     button stays at the foot where a hand already is. */
+  grid-template-rows: auto 1fr auto;
   height: 100dvh;
   overflow: hidden;
 }
@@ -70,10 +77,12 @@ body {
   text-align: center;
   overflow-y: auto;
 }
-body[data-step="camera"] .step[data-step="camera"],
-body[data-step="edit"] .step[data-step="edit"],
-body[data-step="share"] .step[data-step="share"],
-body[data-step="astro"] .step[data-step="astro"] { display: flex; }
+/* Which screen is showing is a class on the section, put there by goToStep, not a list of pairs
+   here. The list was `body[data-step="x"] .step[data-step="x"]` for every step — and renaming
+   one step to `adjust` left `body[data-step="share"] .step[data-step="adjust"]`, a selector that
+   matches nothing. The screen rendered into a box zero pixels wide: the pictures drew, the text
+   was there, and none of it could be touched or seen. */
+.step.on { display: flex; }
 
 .title {
   margin: 0;
@@ -82,14 +91,6 @@ body[data-step="astro"] .step[data-step="astro"] { display: flex; }
   font-weight: 700;
   letter-spacing: -0.035em;
   line-height: 1.02;
-  text-wrap: balance;
-}
-.step-title {
-  margin: 0;
-  font-size: clamp(1.4rem, 4.2vw, 3rem);
-  font-weight: 700;
-  letter-spacing: -0.025em;
-  line-height: 1.1;
   text-wrap: balance;
 }
 .hint {
@@ -204,71 +205,345 @@ body[data-rot="270"] .framed { transform: translate(-50%, -50%) rotate(270deg) s
 .flash.go { animation: flash 460ms ease-out; }
 @keyframes flash { 0% { opacity: 0.92; } 100% { opacity: 0; } }
 
-/* ─── 2 and 4. the pictures ─── */
+/* ─── the two-column arrangement, used by steps 2 and 4 ───
 
-.photo-stack {
+   Two columns that say the same thing twice: on the left the picture and the sentence about
+   what was done to it, on the right the three channels it was taken apart into. On step 2 the
+   sentence names a colour, the colour crosses the gap, and the chart it lands on is the answer
+   to the word — so the columns have to be side by side for the beam to have anywhere to go.
+
+   Step 4 reuses it unchanged, and that is the point: what the visitor did to their own photo is
+   laid out identically to what was done to the famous one. */
+
+/* Centred rather than pinned to the top. Top-aligned, the whole piece sat in the upper third
+   of a 3840-tall screen with half the panel empty underneath it; centred, the same content
+   reads as a composition with margin, and the photo still arrives up and to the left of where
+   the viewfinder was standing, which is what the flight has to say. */
+.step[data-step="astro"] {
+  justify-content: center;
+  padding: 3vh 5vw;
+}
+
+/* `hidden` has to be spelled out here. The attribute's `display: none` lives in the user-agent
+   stylesheet, and *any* author rule beats it — so `.split { display: grid }` quietly un-hides
+   the element, and step 4 opened with an empty picture frame on the screen it is meant to open
+   blank. */
+.split[hidden] { display: none; }
+
+.split {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  /* Centred against each other, so the three charts bracket the sentence rather than all
+     three sitting above it — which is also what keeps the beams a fan instead of three lines
+     to the same corner. */
+  align-items: center;
+  gap: 4vw;
+  width: min(94vw, 2000px);
+  text-align: left;
+}
+
+.split-left {
+  display: flex;
+  flex-direction: column;
+  gap: 3vh;
+  min-width: 0;
+}
+
+/* The sentence. min-height is reserved for the finished line so that nothing below it moves
+   while it types — a paragraph that grows a row mid-sentence drags the whole column with it. */
+.story {
+  margin: 0;
+  min-height: 6.5em;
+  font-size: clamp(1rem, 2.1vw, 2.3rem);
+  font-weight: 500;
+  line-height: 1.45;
+  letter-spacing: -0.01em;
+  text-wrap: pretty;
+}
+
+/* A sentence that begins its own line. Step 3's question is two thoughts — what they did, and
+   what to try next — and running them together reads as one long one. */
+.story-line { display: block; margin-top: 0.75em; }
+
+.caret {
+  display: inline-block;
+  width: 0.075em;
+  height: 1em;
+  margin-left: 0.06em;
+  vertical-align: -0.12em;
+  background: currentColor;
+  animation: caret 1s steps(2, start) infinite;
+}
+@keyframes caret { 50% { opacity: 0; } }
+
+/* A channel's name inside the sentence: white while it is being typed, and then it takes the
+   channel's own colour at the moment its beam leaves — the word turning into the light. */
+.w-ch {
+  font-weight: 700;
+  transition: color 300ms ease, text-shadow 300ms ease;
+}
+.w-ch.lit {
+  color: var(--acc);
+  text-shadow: 0 0 0.65em var(--acc);
+}
+
+/* Three charts stacked down the right, each waiting for its own beam. pointer-events is off
+   until then: an element at opacity 0 is still there to be touched, and three invisible charts
+   over the right half of the screen is three ways to break the piece before it has begun. */
+.channels {
+  display: flex;
+  flex-direction: column;
+  gap: 5vh;
+  min-width: 0;
+}
+.channel {
+  min-width: 0;
+  opacity: 0;
+  transform: translateX(-26px);
+  pointer-events: none;
+  transition: opacity 420ms linear, transform 620ms var(--ease);
+}
+.channel.in {
+  opacity: 1;
+  transform: none;
+  pointer-events: auto;
+}
+
+/* ─── the pictures ───
+
+   One framed picture, three sizes. Each carries its own aspect ratio: the visitor's photo is
+   whatever shape the camera is (turned, if it is mounted sideways), and the nebula is its own
+   shape entirely, so neither can be given the other's. */
+
+.pic {
   position: relative;
-  width: min(88vw, calc(42vh * var(--shot-ar)));
-  max-height: 42vh;
-  aspect-ratio: var(--shot-ar);
   border-radius: 16px;
   overflow: hidden;
+  background: #0b0d11;
   box-shadow: 0 26px 70px rgba(0, 0, 0, 0.6), 0 0 0 1px var(--line);
 }
 .photo { position: absolute; inset: 0; width: 100%; height: 100%; display: block; background: #0b0d11; }
+
+/* The picture at the top of a left-hand column — steps 2 and 3's second phase. The height cap
+   is expressed as a width so that aspect-ratio stays in charge and the sentence underneath
+   never falls off the screen. */
+.pic-col {
+  width: min(100%, calc(52vh * var(--shot-ar)));
+  aspect-ratio: var(--shot-ar);
+}
 #photoB { opacity: 0; }
 
-.shot { margin: 0; display: flex; flex-direction: column; align-items: center; gap: 1vh; }
-.shot-img {
-  display: block;
-  /* Capped in both directions: the step has a title, a hint, three channel images, three charts
-     and this, and on a portrait screen the only one that can give is this. */
-  width: auto;
-  height: auto;
-  max-width: min(78vw, 900px);
-  max-height: 26vh;
-  border-radius: 16px;
-  background: #0b0d11;
-  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.6), 0 0 0 1px var(--line);
+/* Step 4, in step 2's place in the left column. */
+.pic-pillars {
+  width: min(100%, calc(52vh * var(--pillars-ar)));
+  aspect-ratio: var(--pillars-ar);
 }
-.shot-tag {
+
+/* Whose photograph this is. Quiet, but not optional: it is somebody else's picture on a
+   museum wall, and the credit travels with it. */
+.credit {
   margin: 0;
-  font-size: clamp(0.68rem, 1.5vw, 1rem);
+  max-width: 46ch;
+  font-size: clamp(0.6rem, 1.05vw, 0.95rem);
+  line-height: 1.4;
+  letter-spacing: 0.02em;
+  color: var(--muted);
+}
+
+/* ─── 3. the share screen, phase one ───
+
+   One column: the picture alone in the middle and larger than it has been, with the question
+   under it. Everything here is an override of the two-column split, so that moving to phase
+   two is a single attribute change and not a different screen. */
+
+.step[data-step="adjust"] {
+  justify-content: flex-start;
+  padding: 5vh 5vw 2vh;
+}
+
+.split[data-phase="ask"] {
+  grid-template-columns: minmax(0, 1fr);
+  justify-items: center;
+  width: min(90vw, 1300px);
+}
+.split[data-phase="ask"] .channels { display: none; }
+.split[data-phase="ask"] .split-left { align-items: center; gap: 4vh; }
+.split[data-phase="ask"] .pic-col {
+  width: min(74vw, calc(58vh * var(--shot-ar)));
+  border-radius: 20px;
+}
+.split[data-phase="ask"] .story {
+  min-height: 0;
+  max-width: 26ch;
+  text-align: center;
+}
+
+/* Step 2: the picture and two paragraphs on the left, the three channels it is made of down the
+   right. The columns are uneven because the parts are evidence rather than the subject — the
+   composite is what the visitor made, and the layers are what it is made of.
+
+   The picture is smaller here than on the share screen because there are two blocks of text
+   under it rather than one, and at the share screen's size the second fell off the bottom. */
+.step[data-step="edit"] {
+  justify-content: center;
+  padding: 3vh 4vw;
+  gap: 1.6vh;
+}
+.split-parts {
+  grid-template-columns: minmax(0, 2fr) minmax(0, 1fr);
+  gap: 3vw;
+  /* Both columns start at the same line, so the frame's top edge and the first layer's top edge
+     are the same edge. Centred, they missed each other by whatever the two columns differed in
+     height, which read as carelessness rather than as a pairing. */
+  align-items: start;
+}
+.step[data-step="edit"] .split-left {
+  align-items: center;
+  gap: 2.4vh;
+}
+.step[data-step="edit"] .pic-col { width: min(100%, calc(42vh * var(--shot-ar))); }
+.step[data-step="edit"] .story {
+  max-width: 26ch;
+  text-align: center;
+  font-size: clamp(0.95rem, 2.1vw, 2.2rem);
+  min-height: 0;
+}
+
+/* The three channels, stacked. Sized by height rather than by width: three portrait frames at
+   the column's width would be twice the height of the screen. */
+.chan-layers {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2vh;
+  min-width: 0;
+}
+.chan-layer {
+  position: relative;
+  margin: 0;
+  width: min(100%, calc(20vh * var(--shot-ar)));
+  aspect-ratio: var(--shot-ar);
+  border-radius: 10px;
+  overflow: hidden;
+  background: #05070c;
+  box-shadow: 0 0 0 1px var(--line);
+  /* Not there until its colour is named. pointer-events because an element at opacity 0 is
+     still there to be touched, and there is nothing here to touch. */
+  opacity: 0;
+  transform: translateX(26px);
+  pointer-events: none;
+  transition: opacity 420ms linear, transform 620ms var(--ease);
+}
+.chan-layer.in {
+  opacity: 1;
+  transform: none;
+}
+.chan-img {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
+/* A copy of a layer, on its way into the frame. Position and size are set from the two
+   rectangles it travels between, and the whole trip is one transform — animating width and
+   position instead would relayout the column it left on every frame.
+
+   No z-index here, deliberately. A stacking context would seal the copies off from what is
+   underneath them, and being able to see through to it is the entire point — the copies still
+   paint on top because they are positioned and last in the markup. */
+.fliers {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+
+/* Light adds. `plus-lighter` is literally that: the copy's colour is added to whatever it is
+   over, so it looks like the pure channel while it is over black and like the two channels
+   combined the moment it reaches the frame. Painted normally, an opaque copy of the green
+   channel simply covered the red already in the frame, and for the length of the landing the
+   picture showed green alone — the one frame of the whole sequence that is a lie about how
+   light works.
+
+   No shadow either: a drop shadow on a layer of light is a contradiction, and under an additive
+   blend it lightens rather than darkens. */
+.flier {
+  position: absolute;
+  transform-origin: top left;
+  border-radius: 10px;
+  mix-blend-mode: plus-lighter;
+}
+/* The second paragraph sits quieter than the first — it is the summary, not the explanation. */
+.story-second { color: rgba(255, 255, 255, 0.78); }
+
+/* A line that is on its own on the screen and is asking a question, rather than one sitting
+   beside the controls it describes. Wider, centred, and bigger than the columns' text. */
+.story-wide,
+.split[data-phase="ask"] .story {
+  max-width: 26ch;
+  margin-inline: auto;
+  text-align: center;
+  font-size: clamp(1.15rem, 2.9vw, 3.1rem);
+  font-weight: 600;
+  line-height: 1.35;
+  letter-spacing: -0.02em;
+  text-wrap: balance;
+}
+
+/* The one label on a picture in the whole piece. It is here because by this screen the visitor
+   has three of their own pictures in front of them — the composite and the three channels — and
+   nothing else says which is the one they are making. */
+.pic-title {
+  margin: 0;
+  font-size: clamp(0.72rem, 1.5vw, 1.15rem);
+  font-weight: 600;
   letter-spacing: 0.16em;
   text-transform: uppercase;
   color: var(--muted);
 }
+/* Only once there is something to call final. In the first phase the question has not been
+   asked yet and the picture is simply their photograph. */
+.split[data-phase="ask"] .pic-title { display: none; }
 
-/* Three channels across, each with its chart under it. */
-.channels, .astro-strip {
+/* The label over the charts. It arrives with the first of them rather than with the column, so
+   it is never a caption on an empty space. */
+.sliders-title {
+  align-self: center;
+  margin-bottom: 0.6vh;
+  opacity: 0;
+  transition: opacity 420ms linear;
+}
+.sliders-title.in { opacity: 1; }
+
+/* ─── the share question ─── */
+
+/* The question on the left, the picture they are being asked about on the right. */
+.step[data-step="confirm"] {
+  justify-content: center;
+  padding: 3vh 5vw;
+}
+.confirm-row {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 1.6vw;
-  width: min(94vw, 1800px);
-  align-items: start;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  align-items: center;
+  gap: 4vw;
+  width: min(94vw, 2000px);
 }
-.channel, .band { min-width: 0; }
-.band-img {
-  display: block;
-  width: 100%;
-  height: auto;
-  max-height: 16vh;
-  object-position: center;
-  aspect-ratio: var(--shot-ar);
-  object-fit: cover;
-  margin-bottom: 1vh;
-  border-radius: 10px;
-  background: #05070c;
-  box-shadow: 0 0 0 1px var(--line);
-}
+.confirm-row .story-wide { margin-inline: 0; }
+.confirm-row .pic-col { width: min(100%, calc(56vh * var(--shot-ar))); }
+
+/* ─── 4. the famous photo ─── */
+
+/* The step opens with nothing but the lead line on it, so the line is the only thing centred;
+   once the split arrives the line rides up to the top and the two columns take the rest. */
+.step[data-step="astro"] .story-wide { min-height: 0; }
+.step[data-step="astro"] .split { margin-top: 1vh; }
 
 /* ─── the dock ─── */
 
 .dock {
   display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 2.2vh;
+  justify-content: center;
+  gap: 3vw;
   padding: 2vh 5vw calc(2.6vh + env(safe-area-inset-bottom, 0px));
   border-top: 1px solid var(--line);
   background: linear-gradient(to top, rgba(255, 255, 255, 0.04), transparent);
@@ -314,114 +589,153 @@ body[data-rot="270"] .framed { transform: translate(-50%, -50%) rotate(270deg) s
 }
 .btn:active { transform: scale(0.97); }
 .btn:disabled { opacity: 0.35; cursor: default; }
+/* Not yet offered, but still holding its place. Hiding it outright shortens the dock, and
+   because the step above is vertically centred the whole screen then shifts by half of what
+   the dock lost at the exact moment the visitor is being invited to look at it. */
+.btn.waiting { opacity: 0; pointer-events: none; }
+
+/* `Next` has to be found from a metre away by someone whose hands are on the charts. */
+.btn-lg {
+  padding: 1em 3.2em;
+  font-size: clamp(1.3rem, 3.4vw, 2.7rem);
+}
 .btn.ghost {
   background: transparent;
   color: var(--ink);
   border: 2px solid rgba(255, 255, 255, 0.35);
 }
 
-/* ─── the step indicator ─── */
+/* ─── the step indicator ───
+
+   Across the top: four numbered stations with a rule drawn through them, and one orange blob
+   that travels between them as the piece moves on. The rule is what makes it read as a route
+   rather than four separate badges; the blob is what says which station we are standing at.
+
+   Everything behind is greyed. It is context, not a control — nothing here is pressable, and it
+   must not compete with the one thing at the foot that is. */
+
+.topbar {
+  display: flex;
+  justify-content: center;
+  padding: 2.4vh 5vw 1.6vh;
+  border-bottom: 1px solid var(--line);
+  background: linear-gradient(to bottom, rgba(255, 255, 255, 0.04), transparent);
+}
+
+.steps-bar {
+  position: relative;
+  width: min(92vw, 1600px);
+  /* One definition of the mark's size. The rule between marks stops short of it and the blob is
+     sized from it, so all three stay in step with a single number. */
+  --mark: clamp(46px, 6.2vw, 92px);
+}
 
 .dots {
+  position: relative;
+  z-index: 1;
   display: grid;
   grid-template-columns: repeat(4, 1fr);
   align-items: start;
   gap: 0;
-  width: min(90vw, 1400px);
   margin: 0;
   padding: 0;
   list-style: none;
-  counter-reset: dot;
 }
+
 .dot {
   position: relative;
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 0.9vh;
-  color: var(--muted);
+  gap: 1vh;
+  color: rgba(255, 255, 255, 0.26);
   transition: color 320ms ease;
 }
-/* The rule between steps, drawn behind the marks so progress reads as a line being walked. */
+
+/* The rule between stations. It runs from the edge of one mark to the edge of the next rather
+   than passing behind them — which is what lets the marks stay transparent, and the marks have
+   to stay transparent or they paint over the blob sitting behind them. */
 .dot::before {
   content: "";
   position: absolute;
-  top: clamp(19px, 2.6vw, 38px);
-  right: 50%;
-  width: 100%;
+  top: calc(var(--mark) / 2);
+  right: calc(50% + var(--mark) / 2);
+  width: calc(100% - var(--mark));
   height: 2px;
-  background: var(--line);
+  background: rgba(255, 255, 255, 0.12);
   transition: background 320ms ease;
 }
 .dot:first-child::before { display: none; }
-.dot.now, .dot.done { color: var(--ink); }
-.dot.now ~ .dot { color: var(--muted); }
-.dot.done + .dot::before, .dot.now::before { background: rgba(255, 255, 255, 0.45); }
+
+/* Behind us: grey. Where we are: bright. Ahead: fainter still, which is the resting colour. */
+.dot.done { color: rgba(255, 255, 255, 0.42); }
+.dot.now { color: var(--ink); }
+.dot.done + .dot::before, .dot.now::before { background: rgba(255, 255, 255, 0.3); }
 
 .dot-mark {
   display: grid;
   place-items: center;
-  width: clamp(38px, 5.2vw, 76px);
+  width: var(--mark);
   aspect-ratio: 1;
   border-radius: 50%;
-  border: 2px solid currentColor;
-  background: var(--bg);
-  transition: transform 320ms var(--ease), background 320ms ease, color 320ms ease;
+  /* Transparent, not absent. The ring only belongs to stations that have been passed, but the
+     border has to keep its width on every mark: the blob is sized from whichever mark it sits
+     on, and a 2px difference between marks would make it grow and shrink as it travels. */
+  border: 2px solid transparent;
+  /* Transparent, so the blob shows through from behind. An opaque mark hid it completely. */
+  background: transparent;
+  transition: color 240ms ease, border-color 240ms ease;
 }
 .dot-mark svg {
-  width: 56%;
-  height: 56%;
+  width: 54%;
+  height: 54%;
   fill: none;
   stroke: currentColor;
   stroke-width: 1.8;
   stroke-linecap: round;
   stroke-linejoin: round;
 }
-.dot.done .dot-mark { background: rgba(255, 255, 255, 0.14); }
-.dot.now .dot-mark {
-  transform: scale(1.12);
-  background: #f4f5f7;
-  color: #0a0b0e;
-}
+.dot.done .dot-mark { border-color: rgba(255, 255, 255, 0.22); }
+
+/* Set by main.js when the blob has actually arrived, not when the step changed. Flipping the
+   icon dark on the step change would leave it dark on a dark ground for the length of the
+   journey — invisible for exactly as long as the animation is trying to draw the eye to it. */
+.dot.lit .dot-mark { color: #2a1002; }
+
 .dot-label {
-  font-size: clamp(0.62rem, 1.4vw, 1.05rem);
-  letter-spacing: 0.1em;
+  font-size: clamp(0.68rem, 1.5vw, 1.2rem);
+  letter-spacing: 0.09em;
   text-transform: uppercase;
   font-weight: 600;
+  white-space: nowrap;
 }
+/* The number carries the order, so the words do not have to. */
+.dot-no { opacity: 0.55; font-weight: 700; }
 
-/* R / G / B chips — dim until the beat lights them, then they hold their colour. */
-.chip {
-  display: inline-block;
-  min-width: 1.6em;
-  padding: 0.05em 0.3em;
-  border-radius: 6px;
-  text-align: center;
-  background: rgba(255, 255, 255, 0.07);
-  color: var(--muted);
-  transition: color 420ms ease, background 420ms ease, box-shadow 420ms ease, transform 420ms var(--ease);
+/* The blob. Position and size are written by main.js from the mark it is sitting on, so it
+   cannot drift out of step with a layout change or a different screen. A flat disc of one
+   colour — all of the life in it is in the way it moves, which is transform only and so stays
+   on the compositor. */
+.dot-blob {
+  position: absolute;
+  top: 0;
+  left: 0;
+  z-index: 0;
+  border-radius: 50%;
+  background: var(--hot);
+  pointer-events: none;
 }
-.chip-r.lit { color: #fff; background: var(--ch-r); box-shadow: 0 0 26px var(--ch-r); }
-.chip-g.lit { color: #06240f; background: var(--ch-g); box-shadow: 0 0 26px var(--ch-g); }
-.chip-b.lit { color: #04142e; background: var(--ch-b); box-shadow: 0 0 26px var(--ch-b); }
-.chip.lit { transform: translateY(-1px) scale(1.06); }
 
 /* ─── the levels editor ─── */
 
-/* Three across, so the final touch-ups are visibly smaller than the guided editor and leave
-   the essay room to breathe. Stacked full-width copies ate 690px of the panel. */
-.touchups {
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 0.7vw;
-  align-items: start;
-}
-
 .levels {
-  /* The handles hang below the chart and their touch targets hang below them; the bottom
-     padding is in px because it has to cover a fixed 26px overhang, not scale with the
-     viewport. Without it the target reaches into whatever sits underneath. */
-  padding: 1.1vh 1vw 26px;
+  /* One number the whole control is built from: the handle's diameter. The card's side padding
+     is a full handle wide because a handle at 0 or 255 hangs entirely past the end of the track
+     (see .handle-black / .handle-white below), and the bottom padding covers the half that
+     hangs under the chart plus its touch target. Everything here is px, not vw: it has to cover
+     a fixed overhang, not scale with the viewport. */
+  --hw: 52px;
+  padding: 1.1vh var(--hw) calc(var(--hw) / 2 + 16px);
   border-radius: 12px;
   border: 1px solid var(--line);
   background: var(--panel);
@@ -441,11 +755,106 @@ body[data-rot="270"] .framed { transform: translate(-50%, -50%) rotate(270deg) s
   width: 10px;
   height: 10px;
   border-radius: 50%;
-  background: var(--acc);
-  box-shadow: 0 0 12px var(--acc);
+  /* The light itself, not the colour it is being shown in: on step 3 the histogram takes on
+     whatever colour the visitor has assigned, and this stays put so the row can still be read
+     as "this is the red filter's exposure". */
+  background: var(--src);
+  box-shadow: 0 0 12px var(--src);
 }
-.levels-read { font-variant-numeric: tabular-nums; }
-.levels-read b { color: var(--ink); font-weight: 600; }
+
+/* ─── the spectrum strip ───
+
+   Across the top of a chart on step 3 only: the colour this channel's light is being shown in,
+   anywhere on the hue circle rather than one of three. A marker stays behind at the colour the
+   light actually is, so however far the picture is pushed there is always something on screen
+   saying where it started.
+
+   touch-action:none for the same reason the chart below has it — without it the browser decides
+   a horizontal drag might be a page pan and fires pointercancel, which silently ends the drag. */
+.spectrum {
+  position: relative;
+  height: clamp(34px, 3.4vw, 58px);
+  margin: 0 0 1.4vh;
+  touch-action: none;
+  cursor: pointer;
+}
+.spectrum-bar {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 50%;
+  height: clamp(12px, 1.4vw, 22px);
+  transform: translateY(-50%);
+  border-radius: 999px;
+  background: linear-gradient(
+    to right,
+    hsl(0, 100%, 50%), hsl(60, 100%, 50%), hsl(120, 100%, 50%),
+    hsl(180, 100%, 50%), hsl(240, 100%, 50%), hsl(300, 100%, 50%), hsl(360, 100%, 50%)
+  );
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.22);
+}
+
+/* Where this light's own colour sits. A line through the strip so it can be aimed at, and a
+   dot of the colour itself below it so the marker says what it means without a caption. */
+.spectrum-home {
+  position: absolute;
+  top: 50%;
+  height: clamp(20px, 2.1vw, 34px);
+  width: 2px;
+  margin: 0 0 0 -1px;
+  transform: translateY(-50%);
+  border-radius: 1px;
+  background: rgba(255, 255, 255, 0.92);
+  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.55);
+  pointer-events: none;
+}
+.spectrum-home::after {
+  content: "";
+  position: absolute;
+  left: 50%;
+  bottom: -0.55em;
+  width: 0.62em;
+  height: 0.62em;
+  margin-left: -0.31em;
+  border-radius: 50%;
+  background: var(--src);
+  box-shadow: 0 0 0 2px rgba(255, 255, 255, 0.92), 0 0 0 3px rgba(0, 0, 0, 0.5);
+}
+
+/* The colour it is being shown in now. Sized like the black and white points below it, because
+   it is the same kind of object: a thing on a track that can be dragged. */
+.spectrum-pick {
+  position: absolute;
+  top: 50%;
+  width: clamp(26px, 2.7vw, 44px);
+  aspect-ratio: 1;
+  margin-left: calc(clamp(26px, 2.7vw, 44px) / -2);
+  padding: 0;
+  transform: translateY(-50%);
+  border: 3px solid #fff;
+  border-radius: 50%;
+  background: var(--acc);
+  cursor: grab;
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.6), 0 0 18px var(--acc);
+  transition: transform 160ms var(--ease);
+}
+/* The finger-sized target, which is larger than the thing it is drawn as. */
+.spectrum-pick::before {
+  content: "";
+  position: absolute;
+  inset: -14px;
+}
+.spectrum-pick:active { cursor: grabbing; }
+.spectrum-pick:focus-visible { outline: 3px solid #fff; outline-offset: 4px; }
+
+/* Until it has been moved. linear, and on transform only: an eased opacity pulse this short
+   moves far enough between two frames to read as a dropped one, which is a trap this file has
+   fallen into twice. */
+.spectrum.asking .spectrum-pick { animation: pick-ask 1.6s linear infinite; }
+@keyframes pick-ask {
+  0%, 64%, 100% { transform: translateY(-50%) scale(1); }
+  30% { transform: translateY(-50%) scale(1.24); }
+}
 
 /* touch-action:none is the fix for a drag that keeps stopping. Without it the browser runs
    gesture detection on every touch, decides a horizontal drag might be a pan, and fires
@@ -472,33 +881,41 @@ body[data-rot="270"] .framed { transform: translate(-50%, -50%) rotate(270deg) s
   touch-action: none;
   left: 0;
   right: 0;
-  bottom: -14px;
-  height: 28px;
+  bottom: calc(var(--hw) / -2);
+  height: var(--hw);
   cursor: pointer;
 }
 .levels-handle {
   position: absolute;
   touch-action: none;
   top: 0;
-  width: 26px;
-  height: 26px;
-  margin-left: -13px;
+  width: var(--hw);
+  height: var(--hw);
   padding: 0;
   border: 2px solid rgba(255, 255, 255, 0.9);
-  border-radius: 6px;
+  border-radius: 50%;
   cursor: grab;
   transition: transform 140ms var(--ease), box-shadow 300ms ease;
 }
 
-/* The target is bigger than the chip. 26px is a comfortable thing to look at and an
-   uncomfortable thing to hit with a finger; this inflates the hit area to 48x52 — past the
-   44px minimum — without drawing a 48px box on the chart. Inset resolves against the padding
-   box, so the 2px border is already inside these numbers. */
+/* Each handle sits outside the value it marks: the black one's right edge is on its value, the
+   white one's left edge is on its value, so together they bracket the range being kept.
+
+   Centred on their values instead, the two cover each other the moment they are dragged close —
+   and once they overlap only the one drawn last can be pressed at all, so whichever is
+   underneath is stuck there. Half a handle of clearance each is the least that guarantees they
+   can be pushed to the minimum gap and still both be grabbed. It is also the way every levels
+   dialogue has drawn this since Photoshop 1.0, and for the same reason. */
+.handle-black { margin-left: calc(var(--hw) * -1); }
+.handle-white { margin-left: 0; }
+
+/* The target is bigger than the thing it is drawn as. Inset resolves against the padding box,
+   so the 2px border is already inside these numbers. */
 .levels-handle::before {
   content: "";
   position: absolute;
-  inset: -13px -15px;
-  border-radius: 16px;
+  inset: -8px;
+  border-radius: 50%;
 }
 
 /* The pulse is the affordance. This runs on a touchscreen, so there is no hover state to hint
@@ -511,7 +928,7 @@ body[data-rot="270"] .framed { transform: translate(-50%, -50%) rotate(270deg) s
 .levels-handle::after {
   content: "";
   position: absolute;
-  inset: -6px;
+  inset: -9px;
   border-radius: 50%;
   background: radial-gradient(closest-side, transparent 54%, var(--acc) 74%, transparent 100%);
   opacity: 0;
@@ -548,128 +965,15 @@ body[data-rot="270"] .framed { transform: translate(-50%, -50%) rotate(270deg) s
 .handle-black { background: #0b0d11; }
 .handle-white { background: #fff; }
 
-.levels-compact { padding: 0.7vh 0.7vw 22px; }
+.levels-compact {
+  --hw: 40px;
+  padding: 0.7vh var(--hw) calc(var(--hw) / 2 + 16px);
+}
 .levels-compact .levels-chart { aspect-ratio: 280 / 110; }
 .levels-compact .levels-head { font-size: clamp(0.58rem, 0.72vw, 0.72rem); letter-spacing: 0.08em; }
 .levels-compact .levels-dot { width: 8px; height: 8px; }
-.levels-compact .levels-track { bottom: -11px; height: 22px; }
-.levels-compact .levels-handle { width: 20px; height: 20px; margin-left: -10px; }
-/* Narrower horizontally than the walkthrough handles: the three touch-up editors sit in a grid
-   with a ~11px gutter, and a wider target would reach into its neighbour. */
-.levels-compact .levels-handle::before { inset: -14px -12px; }
-
-/* ─── step 7: the essay, with the words that earn animation ─── */
-
-.finale { display: flex; flex-direction: column; gap: 2vh; }
-
-.essay {
-  margin: 0;
-  font-size: clamp(0.9rem, 1.2vw, 1.12rem);
-  line-height: 1.55;
-  color: #dfe3ea;
-}
-
-.w-astro { font-weight: 700; color: #fff; }
-
-/* infrared: sits just outside what you can see, so it glows rather than lights. */
-.w-ir {
-  font-weight: 700;
-  color: #ff8a5c;
-  animation: ir-glow 3.4s ease-in-out infinite;
-}
-@keyframes ir-glow {
-  0%, 100% { text-shadow: 0 0 6px rgba(179, 66, 31, 0.55); filter: brightness(0.92); }
-  50%      { text-shadow: 0 0 22px rgba(255, 138, 92, 0.95); filter: brightness(1.15); }
-}
-
-/* wavelengths: each letter rides a sine wave, phase-shifted along the word so the wiggle
-   travels through it. Most of the cycle is flat, so it only kicks in occasionally. */
-.w-wave { display: inline-block; font-weight: 700; color: #fff; white-space: nowrap; }
-.w-wave span {
-  display: inline-block;
-  animation: wave 5.5s ease-in-out infinite;
-}
-.w-wave span:nth-child(1)  { animation-delay: 0.00s; }
-.w-wave span:nth-child(2)  { animation-delay: 0.06s; }
-.w-wave span:nth-child(3)  { animation-delay: 0.12s; }
-.w-wave span:nth-child(4)  { animation-delay: 0.18s; }
-.w-wave span:nth-child(5)  { animation-delay: 0.24s; }
-.w-wave span:nth-child(6)  { animation-delay: 0.30s; }
-.w-wave span:nth-child(7)  { animation-delay: 0.36s; }
-.w-wave span:nth-child(8)  { animation-delay: 0.42s; }
-.w-wave span:nth-child(9)  { animation-delay: 0.48s; }
-.w-wave span:nth-child(10) { animation-delay: 0.54s; }
-.w-wave span:nth-child(11) { animation-delay: 0.60s; }
-@keyframes wave {
-  0%, 62%, 100% { transform: translateY(0); }
-  66%  { transform: translateY(-0.32em); }
-  70%  { transform: translateY(0); }
-  74%  { transform: translateY(0.32em); }
-  78%  { transform: translateY(0); }
-  82%  { transform: translateY(-0.22em); }
-  86%  { transform: translateY(0); }
-  90%  { transform: translateY(0.14em); }
-  94%  { transform: translateY(0); }
-}
-
-/* ─── buttons ─── */
-
-.actions { display: flex; gap: 1vw; }
-
-.btn {
-  padding: 0.9em 2.1em;
-  border: 0;
-  border-radius: 99px;
-  background: #f4f5f7;
-  color: #0a0b0e;
-  font: inherit;
-  font-size: clamp(0.9rem, 1.2vw, 1.12rem);
-  font-weight: 600;
-  cursor: pointer;
-  transition: transform 200ms var(--ease), background 200ms ease;
-}
-.btn:hover { transform: translateY(-2px); background: #fff; }
-.btn:active { transform: translateY(0) scale(0.98); }
-.btn:disabled { opacity: 0.35; cursor: default; transform: none; }
-/* A button that hasn't been revealed yet stays invisible even while disabled — and must not
-   be hit-testable either. `opacity: 0` gives it a stacking context, so without this it paints
-   over the levels handles below it and silently swallows taps meant for them. */
-.btn.rise:disabled { opacity: 0; pointer-events: none; }
-.btn.ghost {
-  background: transparent;
-  color: var(--ink);
-  border: 1px solid rgba(255, 255, 255, 0.35);
-}
-.btn.ghost:hover { background: rgba(255, 255, 255, 0.08); }
-
-/* ─── 8. send-off ─── */
-
-.stage-thanks {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  gap: 2vh;
-}
-.thanks-title {
-  margin: 0;
-  text-align: center;
-  font-size: clamp(2rem, 5vw, 4.4rem);
-  font-weight: 700;
-  letter-spacing: -0.035em;
-}
-.thanks-note { margin: 0 0 2vh; color: var(--muted); font-size: clamp(0.95rem, 1.4vw, 1.3rem); }
-
-/* ─── shorter displays ─── */
-
-@media (max-height: 880px) {
-  :root { --bay-h: min(44vh, calc(40vw / var(--shot-ar))); }
-  .stage-work { gap: 2.5vw; }
-  .panel { gap: 1.4vh; }
-}
-@media (max-width: 1240px) {
-  .stage-work { grid-template-columns: auto minmax(360px, 46vw); }
-}
+/* Nothing to override for the track or the handles: both are sized from --hw, so the one
+   value above is the whole difference between the two scales. */
 
 /* ─── ?fx=lite ───
    Everything on this page that a weak GPU hates, in one place, switchable from the URL. Blur
@@ -677,27 +981,20 @@ body[data-rot="270"] .framed { transform: translate(-50%, -50%) rotate(270deg) s
    completely differently on an Android TV SoC than they do on a desktop — and a kiosk that
    crashes is worth more with plain gradients than it is pretty. Also the fastest way to find
    out whether the GPU is what is wrong: load with ?fx=lite and see if it stops. */
-body[data-fx="lite"] .rays i { filter: none; opacity: 0.5; animation: none; }
-body[data-fx="lite"] .rays.rainbow i,
-body[data-fx="lite"] .rays[data-aim] i { filter: none; }
-body[data-fx="lite"] .lightword-inner::after,
-body[data-fx="lite"] .rays { mix-blend-mode: normal; }
 body[data-fx="lite"] .shutter { backdrop-filter: none; }
 body[data-fx="lite"] .levels.pulsing .levels-handle::after { animation: none; opacity: 0.55; }
-body[data-fx="lite"] .w-ir,
-body[data-fx="lite"] .w-wave span { animation: none; }
-body[data-fx="lite"] .photo-stack { will-change: auto; }
+body[data-fx="lite"] .caret { animation: none; }
+body[data-fx="lite"] .spectrum.asking .spectrum-pick { animation: none; }
+body[data-fx="off"] .spectrum.asking .spectrum-pick { animation: none; }
 
 /* ?fx=off drops the light shafts entirely — the last resort that still leaves a working piece. */
-body[data-fx="off"] .rays { display: none; }
-body[data-fx="off"] .lightword-inner::after { display: none; }
 body[data-fx="off"] .shutter { backdrop-filter: none; }
+/* The beam still travels — it is the point of the beat — but nothing glows or blinks. */
+body[data-fx="off"] .caret { animation: none; }
+body[data-fx="off"] .w-ch.lit { text-shadow: none; }
 body[data-fx="off"] .levels.pulsing .levels-handle::after { animation: none; opacity: 0.55; }
-body[data-fx="off"] .w-ir,
-body[data-fx="off"] .w-wave span { animation: none; }
 
 @media (prefers-reduced-motion: reduce) {
-  .w-wave span, .w-ir, .typed .ch.at::after,
-  .levels.pulsing .levels-handle::after { animation: none; }
-  .photo-stack { transition-duration: 200ms; }
+  .caret, .levels.pulsing .levels-handle::after { animation: none; }
+  .channel { transition-duration: 200ms; }
 }

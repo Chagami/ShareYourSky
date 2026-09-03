@@ -1,0 +1,165 @@
+/* The photos page. A tool, not the exhibit — so it borrows app.css for the palette and then
+   behaves like an ordinary dense web page: scrolls, wraps, reads at arm's length rather than
+   across a gallery. */
+
+html:has(body.admin), body.admin {
+  height: auto;
+  min-height: 100%;
+  overflow-y: auto;
+}
+body.admin {
+  display: block; /* app.css makes the exhibit body a two-row grid; this page is a document */
+  padding: 0 0 6vh;
+  user-select: auto;
+}
+
+.admin-head {
+  position: sticky;
+  top: 0;
+  z-index: 5;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem 2rem;
+  padding: 1.1rem clamp(1rem, 3vw, 2.5rem);
+  border-bottom: 1px solid var(--line);
+  /* Opaque, not translucent: photographs scrolling under a blurred bar is a paint of the whole
+     bar every frame, and this page can hold hundreds of them. */
+  background: #0a0c10;
+}
+.admin-head h1 {
+  margin: 0;
+  font-size: clamp(1.1rem, 2vw, 1.6rem);
+  font-weight: 700;
+  letter-spacing: -0.02em;
+}
+.admin-count {
+  margin: 0.25em 0 0;
+  color: var(--muted);
+  font-size: 0.82rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.admin-tools { display: flex; flex-wrap: wrap; gap: 0.6rem; }
+
+.abtn {
+  padding: 0.6em 1.1em;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.07);
+  color: var(--ink);
+  font: inherit;
+  font-size: 0.85rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 160ms ease, border-color 160ms ease, color 160ms ease;
+}
+.abtn:hover:not(:disabled) { background: rgba(255, 255, 255, 0.13); }
+.abtn:disabled { opacity: 0.35; cursor: default; }
+.abtn.danger { border-color: rgba(255, 120, 100, 0.45); color: #ffb3a6; }
+.abtn.danger.ghost { background: transparent; }
+
+/* Armed: pressed once, waiting for the second press. It has to look like a different button
+   from the one that was pressed, or the second press is the same press. */
+.abtn.armed {
+  background: #c62f16;
+  border-color: #ff7043;
+  color: #fff;
+}
+
+.admin-note {
+  max-width: 70ch;
+  margin: 1.4rem clamp(1rem, 3vw, 2.5rem) 0;
+  padding: 0.9em 1.1em;
+  border-radius: 8px;
+  border: 1px solid rgba(255, 120, 100, 0.4);
+  background: rgba(198, 47, 22, 0.14);
+  color: #ffcfc6;
+  font-size: 0.85rem;
+  line-height: 1.5;
+}
+.admin-note[hidden] { display: none; }
+
+.admin-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(190px, 1fr));
+  gap: clamp(0.7rem, 1.4vw, 1.2rem);
+  padding: clamp(1rem, 3vw, 2.5rem);
+}
+
+.shot {
+  position: relative;
+  margin: 0;
+  border-radius: 10px;
+  overflow: hidden;
+  border: 2px solid transparent;
+  background: var(--panel);
+  box-shadow: 0 0 0 1px var(--line);
+  cursor: pointer;
+  transition: border-color 160ms ease, transform 160ms var(--ease);
+}
+.shot:hover { transform: translateY(-2px); }
+.shot img {
+  display: block;
+  width: 100%;
+  height: auto;
+  aspect-ratio: 3 / 4;
+  object-fit: cover;
+  background: #0c0e12;
+}
+/* Selected. The exhibit's orange, so "picked out" means the same thing on both screens. */
+.shot.picked { border-color: var(--hot); }
+.shot.picked::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: rgba(255, 138, 43, 0.16);
+  pointer-events: none;
+}
+
+.shot-x {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  z-index: 2;
+  min-width: 30px;
+  height: 30px;
+  padding: 0 0.5em;
+  border: 0;
+  border-radius: 15px;
+  background: rgba(8, 9, 12, 0.82);
+  color: #ffb3a6;
+  font: inherit;
+  font-size: 1rem;
+  line-height: 1;
+  cursor: pointer;
+  transition: background 160ms ease, color 160ms ease;
+}
+.shot-x:hover { background: #c62f16; color: #fff; }
+.shot-x.armed {
+  background: #c62f16;
+  color: #fff;
+  font-size: 0.72rem;
+  font-weight: 700;
+  padding: 0 0.8em;
+}
+
+.shot-meta {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.6em;
+  padding: 0.55em 0.7em 0.65em;
+  color: var(--muted);
+  font-size: 0.68rem;
+  font-variant-numeric: tabular-nums;
+}
+.tag {
+  padding: 0.15em 0.5em;
+  border-radius: 4px;
+  border: 1px solid var(--line);
+  white-space: nowrap;
+}
+/* On the wall right now, as against kept but scrolled off it. */
+.tag.on { border-color: rgba(255, 138, 43, 0.5); color: var(--hot); }

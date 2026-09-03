@@ -7,18 +7,18 @@
 <link rel="stylesheet" href="css/app.css">
 <link rel="stylesheet" href="css/gallery.css">
 </head>
+<!-- One of four screens. Prints are laid down into a grid and never taken away; when a grid is
+     full a new one begins over it, leaning a little, and the pile grows. Which pictures this
+     screen gets is decided by the server, so the four do not repeat each other.
+
+     The earlier rows design is kept at gallery2.html for comparison. -->
 <body class="wall">
 
 <div class="sky" aria-hidden="true"></div>
 
-<header class="wall-head">
-  <h1>Every one of these is the same light, shown differently.</h1>
-  <p>Each visitor chose how much of the red, green and blue their camera captured would show.</p>
-</header>
+<p class="wall-empty" id="empty" hidden>Gallery wall</p>
 
-<p class="wall-empty" id="empty">No skies shared yet.</p>
-
-<div class="wall-grid" id="grid"></div>
+<div class="stack" id="wall"></div>
 
 <script type="module" src="js/gallery.js"></script>
 </body>

@@ -3,24 +3,25 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Share Your Sky — Gallery Wall</title>
-  <script type="module" crossorigin src="./assets/gallery-BpgdCoRn.js"></script>
-  <link rel="modulepreload" crossorigin href="./assets/store-DZXuHRRB.js">
-  <link rel="stylesheet" crossorigin href="./assets/store-BYBdcepK.css">
-  <link rel="stylesheet" crossorigin href="./assets/gallery-CtRcLvEQ.css">
+<title>Share Your Sky — Gallery Wall</title>
+  <script type="module" crossorigin src="./assets/gallery-BvSVQTn4.js"></script>
+  <link rel="modulepreload" crossorigin href="./assets/app-BEhvGRNW.js">
+  <link rel="modulepreload" crossorigin href="./assets/store-rxx7YgbC.js">
+  <link rel="stylesheet" crossorigin href="./assets/app-DyRVcQPX.css">
+  <link rel="stylesheet" crossorigin href="./assets/gallery-CptZypN1.css">
 </head>
+<!-- One of four screens. Prints are laid down into a grid and never taken away; when a grid is
+     full a new one begins over it, leaning a little, and the pile grows. Which pictures this
+     screen gets is decided by the server, so the four do not repeat each other.
+
+     The earlier rows design is kept at gallery2.html for comparison. -->
 <body class="wall">
 
 <div class="sky" aria-hidden="true"></div>
 
-<header class="wall-head">
-  <h1>Every one of these is the same light, shown differently.</h1>
-  <p>Each visitor chose how much of the red, green and blue their camera captured would show.</p>
-</header>
+<p class="wall-empty" id="empty" hidden>Gallery wall</p>
 
-<p class="wall-empty" id="empty">No skies shared yet.</p>
+<div class="stack" id="wall"></div>
 
-<div class="wall-grid" id="grid"></div>
-
 </body>
 </html>

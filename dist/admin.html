@@ -1,0 +1,34 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Share Your Sky — Photos</title>
+  <script type="module" crossorigin src="./assets/admin-qWPUpz1h.js"></script>
+  <link rel="modulepreload" crossorigin href="./assets/app-BEhvGRNW.js">
+  <link rel="stylesheet" crossorigin href="./assets/app-DyRVcQPX.css">
+  <link rel="stylesheet" crossorigin href="./assets/admin-DnxMXr-6.css">
+</head>
+<!-- Not the exhibit. This is the page for whoever is running it: every picture ever shared,
+     what is on the wall, and a way to take one down. Deliberately linked from nowhere. -->
+<body class="admin">
+
+<header class="admin-head">
+  <div>
+    <h1>Photos</h1>
+    <p class="admin-count" id="count">Loading…</p>
+  </div>
+  <div class="admin-tools">
+    <button class="abtn" id="refresh">Refresh</button>
+    <button class="abtn" id="selectAll">Select all</button>
+    <button class="abtn danger" id="removeSel" disabled>Delete selected</button>
+    <button class="abtn danger ghost" id="clearAll">Delete everything</button>
+  </div>
+</header>
+
+<p class="admin-note" id="note" hidden></p>
+
+<div class="admin-grid" id="grid"></div>
+
+</body>
+</html>

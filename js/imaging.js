@@ -6,9 +6,12 @@
 // measurement is never destroyed no matter how far the levels are pushed.
 
 export const CHANNELS = [
-  { key: 'R', label: 'Red', accent: '#ff5252', rgb: [255, 82, 82] },
-  { key: 'G', label: 'Green', accent: '#3ddc6b', rgb: [61, 220, 107] },
-  { key: 'B', label: 'Blue', accent: '#4d94ff', rgb: [77, 148, 255] },
+  // `hue` is where this channel's light actually sits on the spectrum, which is not quite
+  // where `accent` sits — the accents are softened for a dark screen, and a marker claiming to
+  // show "the colour this light really is" has to point at the real thing.
+  { key: 'R', label: 'Red', accent: '#ff5252', rgb: [255, 82, 82], hue: 0 },
+  { key: 'G', label: 'Green', accent: '#3ddc6b', rgb: [61, 220, 107], hue: 120 },
+  { key: 'B', label: 'Blue', accent: '#4d94ff', rgb: [77, 148, 255], hue: 240 },
 ]
 
 // Rec. 709 luma, matching CSS `filter: grayscale()` so a CSS-desaturated preview and the
@@ -53,6 +56,42 @@ export function captureFrame(video, maxW = 900, rotate = 0) {
   ctx.drawImage(video, (-vw * scale) / 2, (-vh * scale) / 2, vw * scale, vh * scale)
   ctx.setTransform(1, 0, 0, 1, 0, 0)
 
+  return framePixels(ctx, width, height)
+}
+
+/**
+ * The same frame structure, from a still image instead of the camera.
+ *
+ * No rotation and no mirror. Those exist because a camera bolted to a bracket delivers a
+ * sideways picture of a room that a person is standing in front of; a photograph of a nebula
+ * is already the right way up, and flipping it would be a small lie about the sky.
+ */
+export function frameFromImage(img, maxW = 900) {
+  const iw = img.naturalWidth
+  const ih = img.naturalHeight
+  if (!iw || !ih) return null
+
+  const scale = Math.min(1, maxW / iw)
+  const width = Math.round(iw * scale)
+  const height = Math.round(ih * scale)
+
+  const canvas = document.createElement('canvas')
+  canvas.width = width
+  canvas.height = height
+  const ctx = canvas.getContext('2d', { willReadFrequently: true })
+  ctx.drawImage(img, 0, 0, width, height)
+
+  return framePixels(ctx, width, height)
+}
+
+/**
+ * Read a drawn canvas into the three 8-bit planes everything downstream works on.
+ *
+ * De-interleaving once here is what makes every later pass cheap: a levels change is then a
+ * lookup per plane rather than a stride-4 walk of RGBA, and a histogram is a count over a flat
+ * array. `rest` is where each channel's light actually sits, which is where its handles open.
+ */
+function framePixels(ctx, width, height) {
   const data = ctx.getImageData(0, 0, width, height).data
   const n = width * height
   const planes = [new Uint8ClampedArray(n), new Uint8ClampedArray(n), new Uint8ClampedArray(n)]
@@ -161,6 +200,9 @@ export function levelsLut(black, white) {
 
 export const IDENTITY_LUT = levelsLut(0, 255)
 
+/** A channel switched off. Step 2 builds a picture up out of these, one colour at a time. */
+export const ZERO_LUT = new Uint8ClampedArray(256)
+
 function fit(canvas, frame) {
   if (canvas.width !== frame.width || canvas.height !== frame.height) {
     canvas.width = frame.width
@@ -182,17 +224,70 @@ function bufferFor(canvas, ctx, w, h) {
 }
 
 /** All three planes through their own levels curve, recombined. */
-export function drawComposite(canvas, frame, luts) {
+/**
+ * The colour a hue is, as weights on the three outputs.
+ *
+ * This is hsl(deg, 100%, 50%) with the algebra done in the open: fully saturated, so one weight
+ * is always 1 and one is always 0. The three primaries land exactly on 0, 120 and 240, which is
+ * what makes an untouched picture come out of the tinted path bit-for-bit identical to a plain
+ * copy of the sensor's own channels.
+ */
+export function hueTint(deg) {
+  // Anything that is not a number is red. A hue of NaN indexes the table below with NaN, which
+  // returns undefined, and an undefined tint takes the whole composite down — every picture
+  // after it is a blank canvas. Better a wrong colour than a broken exhibit.
+  const safe = Number.isFinite(deg) ? deg : 0
+  const h = ((((safe % 360) + 360) % 360) / 60)
+  const x = 1 - Math.abs((h % 2) - 1)
+  return [
+    [1, x, 0], [x, 1, 0], [0, 1, x],
+    [0, x, 1], [x, 0, 1], [1, 0, x],
+  ][Math.floor(h) % 6]
+}
+
+/** Each channel shown as its own colour — what a camera does. */
+export const RGB_TINTS = CHANNELS.map((c) => hueTint(c.hue))
+
+/**
+ * Add the three channels together, each in whatever colour it has been given.
+ *
+ * This is the narrowband composite: every filter produces one greyscale exposure, the
+ * astrophotographer assigns each of them a colour, and the picture is their sum. Feed it the
+ * three primaries and the sum collapses back to plain RGB, so there is only one code path here
+ * and every screen in the piece uses it.
+ *
+ * The nine 256-entry tables are the whole trick. Doing it directly would be nine multiplies a
+ * pixel — a million and a third of those per frame, on a tablet, while a finger is moving. With
+ * each channel's levels folded into a per-value table it is nine array reads instead, and the
+ * destination being a Uint8ClampedArray means the sums clamp themselves for free.
+ */
+export function drawComposite(canvas, frame, luts, tints = RGB_TINTS) {
   const ctx = fit(canvas, frame)
   const out = bufferFor(canvas, ctx, frame.width, frame.height)
   const d = out.data
-  const [pr, pg, pb] = frame.planes
-  const [lr, lg, lb] = luts
+  const [p0, p1, p2] = frame.planes
 
-  for (let p = 0, i = 0; p < pr.length; p++, i += 4) {
-    d[i] = lr[pr[p]]
-    d[i + 1] = lg[pg[p]]
-    d[i + 2] = lb[pb[p]]
+  const table = []
+  for (let src = 0; src < 3; src++) {
+    // The lookup table follows its plane, not the colour it is being shown in: a channel's
+    // black and white points belong to the light it collected, wherever that light ends up.
+    const lut = luts[src]
+    for (let outIdx = 0; outIdx < 3; outIdx++) {
+      const weight = tints[src][outIdx]
+      const column = new Uint8Array(256)
+      if (weight) for (let v = 0; v < 256; v++) column[v] = lut[v] * weight
+      table.push(column)
+    }
+  }
+  const [r0, g0, b0, r1, g1, b1, r2, g2, b2] = table
+
+  for (let p = 0, i = 0; p < p0.length; p++, i += 4) {
+    const a = p0[p]
+    const b = p1[p]
+    const c = p2[p]
+    d[i] = r0[a] + r1[b] + r2[c]
+    d[i + 1] = g0[a] + g1[b] + g2[c]
+    d[i + 2] = b0[a] + b1[b] + b2[c]
     d[i + 3] = 255
   }
   ctx.putImageData(out, 0, 0)
@@ -231,8 +326,8 @@ export function drawGrey(canvas, frame) {
 }
 
 /** The finished image, for the gallery wall. */
-export function compositeURL(frame, luts, quality = 0.88) {
+export function compositeURL(frame, luts, tints = RGB_TINTS, quality = 0.88) {
   const canvas = document.createElement('canvas')
-  drawComposite(canvas, frame, luts)
+  drawComposite(canvas, frame, luts, tints)
   return canvas.toDataURL('image/jpeg', quality)
 }

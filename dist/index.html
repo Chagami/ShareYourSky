@@ -4,9 +4,10 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Share Your Sky</title>
-  <script type="module" crossorigin src="./assets/main-oR3MqMbI.js"></script>
-  <link rel="modulepreload" crossorigin href="./assets/store-DZXuHRRB.js">
-  <link rel="stylesheet" crossorigin href="./assets/store-BYBdcepK.css">
+  <script type="module" crossorigin src="./assets/main-K8N229HJ.js"></script>
+  <link rel="modulepreload" crossorigin href="./assets/app-BEhvGRNW.js">
+  <link rel="modulepreload" crossorigin href="./assets/store-rxx7YgbC.js">
+  <link rel="stylesheet" crossorigin href="./assets/app-DyRVcQPX.css">
 </head>
 <body data-step="camera">
 
@@ -23,6 +24,35 @@
      Each is a self-contained section that owns its own content. Only one is ever on screen,
      chosen by body[data-step]. `?step=edit` jumps straight to one while working on it. -->
 
+<!-- ═══════════ Where the visitor is ═══════════
+     Across the top, so it reads as a heading rather than as something to press. The one thing
+     to press is the button at the foot, on its own. -->
+<header class="topbar">
+  <!-- The blob lives outside the list because an <ol> may only contain <li>, and it has to
+       share a positioning context with the marks it travels between. -->
+  <div class="steps-bar" id="stepsBar">
+    <i class="dot-blob" id="stepBlob" aria-hidden="true"></i>
+    <ol class="dots" id="stepBar" aria-label="Progress">
+      <li class="dot" data-step="camera">
+        <span class="dot-mark"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 8.5A2.5 2.5 0 0 1 5.5 6h1.7l1.2-2h6.2l1.2 2h1.7A2.5 2.5 0 0 1 20 8.5v8A2.5 2.5 0 0 1 17.5 19h-11A2.5 2.5 0 0 1 4 16.5z"/><circle cx="12" cy="12.5" r="3.4"/></svg></span>
+        <span class="dot-label"><b class="dot-no">1.</b> Photo</span>
+      </li>
+      <li class="dot" data-step="edit">
+        <span class="dot-mark"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16M4 12h16M4 17h16"/><circle cx="9" cy="7" r="2.3"/><circle cx="15.5" cy="12" r="2.3"/><circle cx="7.5" cy="17" r="2.3"/></svg></span>
+        <span class="dot-label"><b class="dot-no">2.</b> Adjust</span>
+      </li>
+      <li class="dot" data-step="share">
+        <span class="dot-mark"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 15V4M12 4 8 8M12 4l4 4"/><path d="M5 13v5.5A1.5 1.5 0 0 0 6.5 20h11a1.5 1.5 0 0 0 1.5-1.5V13"/></svg></span>
+        <span class="dot-label"><b class="dot-no">3.</b> Share</span>
+      </li>
+      <li class="dot" data-step="astro">
+        <span class="dot-mark"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M13 3.5 15 9l5.5 2-5.5 2-2 5.5L11 13l-5.5-2L11 9z"/><circle cx="5" cy="5" r="1.1"/><circle cx="19.2" cy="17.5" r="1.1"/></svg></span>
+        <span class="dot-label"><b class="dot-no">4.</b> Channels</span>
+      </li>
+    </ol>
+  </div>
+</header>
+
 <main class="steps">
 
   <!-- 1 ─ CAMERA ─────────────────────────────────────────────────────────── -->
@@ -37,46 +67,104 @@
     <p class="err" id="camError" hidden></p>
   </section>
 
-  <!-- 2 ─ EDITING ────────────────────────────────────────────────────────── -->
+  <!-- 2 ─ WHAT THE CAMERA DID ─────────────────────────────────────────────── -->
+  <!-- The photo and two paragraphs on the left, the three channels it is made of down the
+       right. Nothing to touch — the adjusting happens on the next screen. The photo arrives
+       black and is built up a colour at a time as each colour's name lights and its own layer
+       appears beside it. Nothing is authored in place; see js/main.js. -->
   <section class="step" data-step="edit">
-    <h2 class="step-title">Your photo</h2>
-    <p class="hint">Drag the handles to change how much red, green and blue show up</p>
-    <div class="photo-stack">
-      <canvas id="photoA" class="photo"></canvas>
-      <canvas id="photoB" class="photo"></canvas>
+    <div class="split split-parts">
+      <div class="split-left">
+        <div class="pic pic-col" id="photoStack">
+          <canvas id="photoA" class="photo"></canvas>
+          <canvas id="photoB" class="photo"></canvas>
+        </div>
+        <p class="story" id="story"></p>
+        <p class="story story-second" id="storyAfter"></p>
+      </div>
+
+      <!-- The same light, taken apart. Each one arrives at the moment its name lights in the
+           sentence and its colour appears in the picture on the left, so the composite and its
+           three parts are visibly the same thing. -->
+      <div class="chan-layers" id="chanLayers" aria-hidden="true">
+        <figure class="chan-layer" data-ch="0"><canvas class="chan-img"></canvas></figure>
+        <figure class="chan-layer" data-ch="1"><canvas class="chan-img"></canvas></figure>
+        <figure class="chan-layer" data-ch="2"><canvas class="chan-img"></canvas></figure>
+      </div>
     </div>
-    <div class="channels" id="channels">
-      <div class="channel" data-ch="0"><div class="channel-editor"></div></div>
-      <div class="channel" data-ch="1"><div class="channel-editor"></div></div>
-      <div class="channel" data-ch="2"><div class="channel-editor"></div></div>
+
+    <!-- The copies that fly from a layer into the frame. Over the whole step rather than inside
+         either column, because they travel between the two. -->
+    <div class="fliers" id="fliers" aria-hidden="true"></div>
+  </section>
+
+  <!-- 3 ─ ADJUST ─────────────────────────────────────────────────────────── -->
+  <!-- Two phases in one layout, switched by data-phase:
+
+         ask    one column, the picture large and alone, the question underneath it
+         tune   the same split as steps 2 and 4, with the three charts back on the right
+
+       The charts are the same controls over the same numbers, but with the colour each
+       channel's light is *shown* as now loose. Nothing is offered until they have moved one. -->
+  <section class="step" data-step="adjust">
+    <div class="split" id="adjustSplit" data-phase="ask">
+      <div class="split-left">
+        <h2 class="pic-title" id="adjustTitle">Your final image</h2>
+        <div class="pic pic-col" id="adjustPic">
+          <canvas id="adjustCanvas" class="photo"></canvas>
+        </div>
+        <p class="story" id="adjustStory"></p>
+      </div>
+      <div class="channels" id="adjustChannels">
+        <h3 class="pic-title sliders-title" id="slidersTitle">Try moving the sliders</h3>
+        <div class="channel" data-ch="0"><div class="channel-editor"></div></div>
+        <div class="channel" data-ch="1"><div class="channel-editor"></div></div>
+        <div class="channel" data-ch="2"><div class="channel-editor"></div></div>
+      </div>
     </div>
   </section>
 
-  <!-- 3 ─ SHARE ──────────────────────────────────────────────────────────── -->
-  <section class="step" data-step="share">
-    <h2 class="step-title">Share your sky</h2>
-    <p class="hint" id="shareHint">This goes up on the gallery wall</p>
-    <figure class="shot">
-      <canvas id="shareCanvas" class="shot-img"></canvas>
-    </figure>
+  <!-- 4 ─ SHARE? ─────────────────────────────────────────────────────────── -->
+  <!-- The one question the exhibit asks that has a wrong answer, so it gets a screen of its own
+       rather than a button on a screen about something else: the picture they made, and Yes or
+       No. No starts the whole thing again; nothing is kept. -->
+  <section class="step" data-step="confirm">
+    <div class="confirm-row">
+      <p class="story story-wide" id="confirmAsk"></p>
+      <div class="pic pic-col" id="confirmPic">
+        <canvas id="confirmCanvas" class="photo"></canvas>
+      </div>
+    </div>
   </section>
 
   <!-- 4 ─ ASTROPHOTOGRAPHY ───────────────────────────────────────────────── -->
+  <!-- Opens blank. The line arrives first, on its own; then the famous photo and the same three
+       controls the visitor has just used, in the same arrangement as step 2 — which is the
+       whole argument of the piece: what they did to their photo is what was done to this one. -->
   <section class="step" data-step="astro">
-    <h2 class="step-title">This is what astrophotographers do</h2>
-    <p class="hint">
-      Their cameras capture light through one filter at a time. Each of these is your photo
-      through a single colour &mdash; adjust them and watch the picture change.
-    </p>
-    <div class="astro-strip" id="astroStrip">
-      <div class="band" data-ch="0"><canvas class="band-img"></canvas><div class="band-editor"></div></div>
-      <div class="band" data-ch="1"><canvas class="band-img"></canvas><div class="band-editor"></div></div>
-      <div class="band" data-ch="2"><canvas class="band-img"></canvas><div class="band-editor"></div></div>
+    <p class="story story-wide" id="astroLead"></p>
+
+    <div class="split" id="astroSplit" hidden>
+      <div class="split-left">
+        <div class="pic pic-pillars" id="pillarsPic">
+          <canvas id="pillarsCanvas" class="photo"></canvas>
+        </div>
+        <p class="credit">
+          Pillars of Creation, Eagle Nebula &mdash; NASA, ESA and the Hubble Heritage Team (STScI/AURA)
+        </p>
+        <p class="story" id="astroStory"></p>
+      </div>
+      <div class="channels" id="astroChannels">
+        <div class="channel" data-ch="0"><div class="channel-editor"></div></div>
+        <div class="channel" data-ch="1"><div class="channel-editor"></div></div>
+        <div class="channel" data-ch="2"><div class="channel-editor"></div></div>
+      </div>
     </div>
-    <figure class="shot">
-      <canvas id="previewCanvas" class="shot-img"></canvas>
-      <figcaption class="shot-tag">All three together</figcaption>
-    </figure>
+
+    <!-- Loaded and taken apart into channels at boot, long before this step is reached: pulling
+         a megapixel of image into three planes is not something to start doing while a visitor
+         is watching an empty screen. Hidden, because what is shown is the canvas built from it. -->
+    <img id="pillarsSrc" src="./assets/pillars-BM_S8Gg1.jpg" alt="" hidden>
   </section>
 
 </main>
@@ -84,34 +172,21 @@
 <!-- ═══════════ The dock ═══════════
      Always on screen at the foot: the one action this step offers, and where the visitor is in
      the sequence. Nothing else competes for the bottom of a very tall screen. -->
+<!-- ═══════════ The dock ═══════════
+     The one action this step offers, at the foot and within reach. Nothing else competes for
+     the bottom of a very tall screen. -->
 <footer class="dock">
   <div class="dock-action">
     <button id="shutter" class="shutter" aria-label="Take a photo" disabled>
       <span class="shutter-dot"></span>
     </button>
-    <button id="nextBtn" class="btn">Next</button>
-    <button id="submitBtn" class="btn">Share my sky</button>
+    <button id="nextBtn" class="btn btn-lg">Next</button>
+    <button id="submitBtn" class="btn btn-lg">Share my sky</button>
+    <button id="noBtn" class="btn ghost btn-lg">No</button>
+    <button id="yesBtn" class="btn btn-lg">Yes</button>
     <button id="resetBtn" class="btn ghost">Start again</button>
   </div>
 
-  <ol class="dots" id="stepBar" aria-label="Progress">
-      <li class="dot" data-step="camera">
-        <span class="dot-mark"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 8.5A2.5 2.5 0 0 1 5.5 6h1.7l1.2-2h6.2l1.2 2h1.7A2.5 2.5 0 0 1 20 8.5v8A2.5 2.5 0 0 1 17.5 19h-11A2.5 2.5 0 0 1 4 16.5z"/><circle cx="12" cy="12.5" r="3.4"/></svg></span>
-        <span class="dot-label">Photo</span>
-      </li>
-      <li class="dot" data-step="edit">
-        <span class="dot-mark"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16M4 12h16M4 17h16"/><circle cx="9" cy="7" r="2.3"/><circle cx="15.5" cy="12" r="2.3"/><circle cx="7.5" cy="17" r="2.3"/></svg></span>
-        <span class="dot-label">Adjust</span>
-      </li>
-      <li class="dot" data-step="share">
-        <span class="dot-mark"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 15V4M12 4 8 8M12 4l4 4"/><path d="M5 13v5.5A1.5 1.5 0 0 0 6.5 20h11a1.5 1.5 0 0 0 1.5-1.5V13"/></svg></span>
-        <span class="dot-label">Share</span>
-      </li>
-      <li class="dot" data-step="astro">
-        <span class="dot-mark"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M13 3.5 15 9l5.5 2-5.5 2-2 5.5L11 13l-5.5-2L11 9z"/><circle cx="5" cy="5" r="1.1"/><circle cx="19.2" cy="17.5" r="1.1"/></svg></span>
-        <span class="dot-label">Channels</span>
-      </li>
-  </ol>
 </footer>
 
 <div class="flash" id="flash" aria-hidden="true"></div>

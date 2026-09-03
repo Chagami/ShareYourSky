@@ -1,0 +1,151 @@
+/* The gallery wall. One screen of four, edge to edge: no header, no captions, no scrollbar.
+   Loads app.css first for the palette and the ambient background. */
+
+html:has(body.wall), body.wall {
+  height: 100%;
+  overflow: hidden;
+}
+body.wall { padding: 0; }
+
+/* Squares of --unit, sized by fit() in js/gallery.js from what the browser actually packed.
+   `dense` is what fills the holes a mixed bag of shapes leaves behind — without it the wall is
+   a column of gaps down whichever side the tallest tile landed on. */
+/* The wall is cut into rectangles by js/gallery.js, and each tile is given its piece as
+   percentages — so the layout fills the monitor exactly and scales with it, with nothing left
+   over anywhere. See partition() for why cutting beats packing.
+
+   Absolute children resolve their percentages against the padding box, so the padding here is
+   what holds the pictures off the bezel. Half the gutter, so the outside reads a little tighter
+   than the space between pictures rather than twice as loose. */
+body.wall { height: 100dvh; }
+.wall-grid {
+  position: relative;
+  box-sizing: border-box;
+  width: 100vw;
+  height: 100dvh;
+  padding: calc(var(--gap, 12px) / 2);
+}
+
+/* The tile owns its piece of the wall; the picture inside it is inset by half the gutter on
+   every side, so every pair of neighbours ends up a full gutter apart however they meet. Giving
+   the tiles margins instead would have shrunk them away from a layout that was exact. */
+.tile {
+  position: absolute;
+  margin: 0;
+  /* Nothing should ever paint outside its own piece of the wall — the layout is a partition,
+     and a tile that spills is a tile sitting on its neighbour. */
+  overflow: hidden;
+  --pad: calc(var(--gap, 12px) / 2);
+}
+
+/* Two stacked copies, crossfading. The outgoing one is not removed until the incoming one has
+   decoded, so a slow picture leaves a picture on the wall rather than a hole. */
+/* Width and height spelled out, not `inset`. An absolutely positioned *replaced* element — an
+   <img> — with all four offsets set but width:auto renders at its intrinsic size and lets the
+   offsets go hang: every picture was drawing at full resolution over its neighbours. */
+.layer {
+  position: absolute;
+  left: var(--pad);
+  top: var(--pad);
+  width: calc(100% - var(--gap, 12px));
+  height: calc(100% - var(--gap, 12px));
+  /* contain, not cover. The layout gives every tile its picture's own proportions, so there is
+     normally nothing to fit — and on the rare frame where a rotation lands a slightly different
+     shape, this shows a hair of background rather than quietly cutting into a photograph. */
+  object-fit: contain;
+  background: #06070a;
+  opacity: 0;
+  transition: opacity 1800ms linear;
+}
+.layer.on { opacity: 1; }
+
+/* A visitor's own picture. Warm hairline, so it is findable among the curated ones without a
+   caption saying so. On the picture, not the tile, so it follows the inset. */
+.tile-community::after {
+  content: "";
+  position: absolute;
+  inset: var(--pad);
+  box-shadow: inset 0 0 0 2px rgba(255, 138, 43, 0.5);
+  pointer-events: none;
+}
+
+/* The two things worth keeping: the colours they gave each channel, and when. */
+.tile-meta {
+  position: absolute;
+  left: var(--pad);
+  right: var(--pad);
+  bottom: var(--pad);
+  z-index: 1;
+  display: flex;
+  align-items: center;
+  gap: 0.5em;
+  padding: 0.7em 0.8em 0.6em;
+  background: linear-gradient(to top, rgba(0, 0, 0, 0.72), transparent);
+  color: rgba(255, 255, 255, 0.72);
+  font-size: clamp(0.55rem, 0.62vw, 0.85rem);
+  letter-spacing: 0.08em;
+  font-variant-numeric: tabular-nums;
+  pointer-events: none;
+}
+.tile-meta i {
+  width: 0.7em;
+  height: 0.7em;
+  border-radius: 50%;
+  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.6);
+}
+.tile-meta span { margin-left: auto; }
+
+/* Just shared. It arrives, and then it is lit for a while so the person who made it can find it
+   from across the room. The glow is on the tile's own ::after rather than a filter: a blurred
+   filter over a picture repaints the picture, and there are forty of them on this wall. */
+.tile.fresh { animation: arrive 900ms cubic-bezier(0.16, 1, 0.3, 1) both; z-index: 2; }
+.tile.fresh::after {
+  content: "";
+  position: absolute;
+  inset: var(--pad);
+  box-shadow: inset 0 0 0 3px #ff8a2b, inset 0 0 40px rgba(255, 138, 43, 0.55);
+  animation: attention 2.6s linear 3 both;
+  pointer-events: none;
+}
+@keyframes arrive {
+  0% { transform: scale(0.86); }
+  60% { transform: scale(1.03); }
+  100% { transform: scale(1); }
+}
+@keyframes attention {
+  0%, 100% { opacity: 0.25; }
+  50% { opacity: 1; }
+}
+
+.wall-empty {
+  position: fixed;
+  inset: 0;
+  display: grid;
+  place-content: center;
+  margin: 0;
+  text-align: center;
+  color: var(--muted);
+  font-size: clamp(0.75rem, 1vw, 1rem);
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+}
+.wall-empty[hidden] { display: none; }
+
+/* For whoever is fixing the exhibit, not for a visitor — but it has to be on the screen,
+   because the person fixing it is usually holding nothing but a phone to photograph it with. */
+.wall-note {
+  display: block;
+  max-width: 60ch;
+  margin: 1.4em auto 0;
+  font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  font-size: 0.72rem;
+  letter-spacing: 0.02em;
+  line-height: 1.7;
+  text-transform: none;
+  opacity: 0.75;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .tile.fresh { animation-duration: 200ms; }
+  .tile.fresh::after { animation-iteration-count: 1; }
+}

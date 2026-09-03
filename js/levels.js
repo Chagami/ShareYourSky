@@ -24,7 +24,6 @@ export function drawHistogram(canvas, bins, accent, black, white) {
   // clientWidth on every draw forced a synchronous layout six times per pointer move — and on
   // a display:none editor it reads 0, so the canvas was being reallocated to 1px and redrawn
   // into, every move, for nothing.
-  const dpr = Math.min(2, window.devicePixelRatio || 1)
   const w = canvas.width
   const h = canvas.height
   const ctx = canvas.getContext('2d')
@@ -54,16 +53,6 @@ export function drawHistogram(canvas, bins, accent, black, white) {
     ctx.fillRect(x(v), h - bar, barW, bar)
   }
   ctx.globalAlpha = 1
-
-  // the levels ramp itself, drawn over the histogram
-  ctx.strokeStyle = 'rgba(255, 255, 255, 0.55)'
-  ctx.lineWidth = 1.5 * dpr
-  ctx.beginPath()
-  ctx.moveTo(0, h)
-  ctx.lineTo(x(black), h)
-  ctx.lineTo(x(white), 0)
-  ctx.lineTo(w, 0)
-  ctx.stroke()
 }
 
 /**
@@ -80,18 +69,37 @@ export function createLevels({
   compact = false,
   onInput,
   onFirstTouch,
+  // Optional, and only step 3 passes it. With it the chart grows a spectrum across its top and
+  // is drawn in whatever colour this light has been given; without it a chart is simply its own
+  // colour. The head keeps naming the *source* either way — which filter's light this is does
+  // not change, only what colour it is being shown in.
+  //   { get: () => degrees, set: (degrees) => void }
+  hue = null,
 }) {
   const channel = CHANNELS[channelIndex]
+  /** The colour this chart is wearing: its own, unless something else is choosing. */
+  const shownColor = () => (hue ? `hsl(${hue.get()}, 100%, 50%)` : channel.accent)
 
   const root = document.createElement('div')
   root.className = 'levels' + (compact ? ' levels-compact' : '')
-  root.style.setProperty('--acc', channel.accent)
+  root.style.setProperty('--src', channel.accent) // the light itself — never changes
+  root.style.setProperty('--acc', shownColor()) // the colour it is being shown in
 
   root.innerHTML = `
     <div class="levels-head">
       <span class="levels-name"><i class="levels-dot"></i>${channel.label}</span>
-      <span class="levels-read"><b class="lv-black">0</b> — <b class="lv-white">255</b></span>
     </div>
+    ${
+      hue
+        ? `<div class="spectrum">
+             <div class="spectrum-bar"></div>
+             <i class="spectrum-home" style="left:${(channel.hue / 360) * 100}%"
+                title="${channel.label} light's own colour"></i>
+             <button class="spectrum-pick" role="slider" aria-valuemin="0" aria-valuemax="360"
+               aria-label="Colour to show ${channel.label} light as"></button>
+           </div>`
+        : ''
+    }
     <div class="levels-plot">
       <canvas class="levels-chart" width="${compact ? 280 : 520}" height="${compact ? 60 : 150}"></canvas>
       <div class="levels-track">
@@ -108,8 +116,9 @@ export function createLevels({
   const chart = root.querySelector('.levels-chart')
   const plot = root.querySelector('.levels-plot')
   const track = root.querySelector('.levels-track')
-  const readBlack = root.querySelector('.lv-black')
-  const readWhite = root.querySelector('.lv-white')
+  const spectrum = root.querySelector('.spectrum')
+  const spectrumBar = root.querySelector('.spectrum-bar')
+  const spectrumPick = root.querySelector('.spectrum-pick')
   const handles = {
     black: root.querySelector('.handle-black'),
     white: root.querySelector('.handle-white'),
@@ -139,20 +148,25 @@ export function createLevels({
    * handle you are actually dragging, so it tracks your finger without waiting for a frame.
    */
   function refresh() {
+    if (hue) {
+      const deg = hue.get()
+      root.style.setProperty('--acc', shownColor())
+      spectrumPick.style.left = `${(deg / 360) * 100}%`
+      spectrumPick.setAttribute('aria-valuenow', String(Math.round(deg)))
+    }
+
     const { black, white } = get()
     handles.black.style.left = `${(black / 255) * 100}%`
     handles.white.style.left = `${(white / 255) * 100}%`
     handles.black.setAttribute('aria-valuenow', String(black))
     handles.white.setAttribute('aria-valuenow', String(white))
-    readBlack.textContent = String(black)
-    readWhite.textContent = String(white)
   }
 
   /** The expensive half: 256 bars and the ramp. Coalesced to one a frame by the owner. */
   function redraw() {
     if (!sized) return
     const { black, white } = get()
-    drawHistogram(chart, bins, channel.accent, black, white)
+    drawHistogram(chart, bins, shownColor(), black, white)
     refresh()
   }
 
@@ -166,12 +180,23 @@ export function createLevels({
     root.classList.toggle('pulsing', on)
   }
 
+  /**
+   * Ask for the spectrum to be noticed.
+   *
+   * Separate from the handle pulse, and never both at once: on step 3 the handles have already
+   * been used and the spectrum is the new thing, so two things asking for a finger at the same
+   * time would only split the attention of someone who has one question to answer.
+   */
+  function setAsking(on) {
+    spectrum?.classList.toggle('asking', on)
+  }
+
   /** Keep at least one unit of range, so the levels curve can never divide by zero. */
   function commit(kind, value) {
     if (!touched) {
       touched = true
       root.classList.remove('pulsing')
-      onFirstTouch?.()
+      onFirstTouch?.(channelIndex)
     }
     const cur = get()
     const v = Math.max(0, Math.min(255, Math.round(value)))
@@ -222,6 +247,60 @@ export function createLevels({
     dragging = null
   }
 
+  /**
+   * Give this light a different colour.
+   *
+   * The whole strip is the drag surface for the same reason the whole chart is: a 40px handle
+   * on a strip five times that wide means a finger that lands a little wide of it starts
+   * nothing at all. Measured against the bar rather than the strip, so the ends of the gradient
+   * are 0 and 360 exactly.
+   */
+  function hueAt(clientX) {
+    const r = spectrumBar.getBoundingClientRect()
+    // A strip with no width divides by zero and hands back NaN, and a NaN hue is not a wrong
+    // colour — it is no colour at all: it poisons the tint, the tint poisons the composite, and
+    // every picture from then on is a blank canvas and a thrown error. Happens whenever the
+    // strip is measured while its column is display:none, which is most of the piece.
+    if (!r.width) return hue.get()
+    return Math.max(0, Math.min(1, (clientX - r.left) / r.width)) * 360
+  }
+
+  function commitHue(deg) {
+    if (!Number.isFinite(deg)) return
+    hue.set(Math.round(deg))
+    refresh()
+    onInput?.(channelIndex)
+  }
+
+  if (spectrum) {
+    let picking = false
+    spectrum.addEventListener('pointerdown', (e) => {
+      picking = true
+      // Commit before capturing, and never let the capture take the tap down with it.
+      // setPointerCapture throws if the pointer is already gone by the time the handler runs,
+      // and with the order the other way round that turns a tap into nothing at all.
+      commitHue(hueAt(e.clientX))
+      try {
+        spectrum.setPointerCapture?.(e.pointerId)
+      } catch {
+        /* the drag still works, it just will not follow a finger off the strip */
+      }
+      e.preventDefault()
+    })
+    spectrum.addEventListener('pointermove', (e) => picking && commitHue(hueAt(e.clientX)))
+    const release = () => (picking = false)
+    spectrum.addEventListener('pointerup', release)
+    spectrum.addEventListener('pointercancel', release)
+
+    spectrumPick.addEventListener('keydown', (e) => {
+      const by = e.shiftKey ? 30 : 5
+      if (e.key === 'ArrowLeft' || e.key === 'ArrowDown') commitHue((hue.get() - by + 360) % 360)
+      else if (e.key === 'ArrowRight' || e.key === 'ArrowUp') commitHue((hue.get() + by) % 360)
+      else return
+      e.preventDefault()
+    })
+  }
+
   plot.addEventListener('pointerdown', onDown)
   plot.addEventListener('pointermove', onMove)
   plot.addEventListener('pointerup', onUp)
@@ -254,5 +333,5 @@ export function createLevels({
     root.remove()
   }
 
-  return { refresh, redraw, root, setPulsing, destroy }
+  return { refresh, redraw, root, setPulsing, setAsking, destroy }
 }

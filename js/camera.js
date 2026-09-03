@@ -58,6 +58,41 @@ ${st.width}x${st.height} facing ${st.facingMode ?? '?'}`)
   }
 }
 
+// How long to wait for a camera before giving up on it and trying again.
+const OPEN_TIMEOUT = 10000
+
+/**
+ * getUserMedia, but it always answers.
+ *
+ * On a wedged Android camera service the call does not reject — it simply never settles. That
+ * is worse than an error, because an error can be caught and retried while a promise that
+ * never resolves leaves start-up parked forever: no stream, no exception, no message on
+ * screen, and no retry, because a retry that lives in a catch is never reached.
+ *
+ * If the real request turns up after we have stopped waiting for it, its stream is handed
+ * straight back. Otherwise the camera would be left running with nobody holding it.
+ */
+function openStream(constraints, ms = OPEN_TIMEOUT) {
+  let abandoned = false
+  const real = navigator.mediaDevices.getUserMedia(constraints)
+
+  real
+    .then((s) => abandoned && s.getTracks().forEach((t) => t.stop()))
+    .catch(() => {})
+
+  return Promise.race([
+    real,
+    new Promise((_, reject) =>
+      setTimeout(() => {
+        abandoned = true
+        const err = new Error(`the camera did not answer within ${ms / 1000}s`)
+        err.name = 'TimeoutError'
+        reject(err)
+      }, ms)
+    ),
+  ])
+}
+
 export async function startCamera(video, { want = null, width = 1280, height = 720 } = {}) {
   if (!navigator.mediaDevices?.getUserMedia) {
     // Two very different faults land here and the fix for each is nothing like the other,
@@ -86,11 +121,11 @@ export async function startCamera(video, { want = null, width = 1280, height = 7
   // for nothing in particular and take what arrives.
   let stream
   try {
-    stream = await navigator.mediaDevices.getUserMedia({ video: base, audio: false })
+    stream = await openStream({ video: base, audio: false })
   } catch (err) {
     if (err.name === 'NotAllowedError' || err.name === 'SecurityError') throw err
     setInfo('fallback', `${err.name} on preferred constraints - retried with plain video`)
-    stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: false })
+    stream = await openStream({ video: true, audio: false })
   }
 
   if (want !== null && want !== '') {
@@ -109,7 +144,7 @@ export async function startCamera(video, { want = null, width = 1280, height = 7
         // track. No facingMode here either: on a phone every camera has one, so asking for a
         // specific deviceId *and* the front camera contradicts itself the moment the chosen
         // device is the rear one.
-        const next = await navigator.mediaDevices.getUserMedia({
+        const next = await openStream({
           video: { ...size, deviceId: { exact: deviceId } },
           audio: false,
         })

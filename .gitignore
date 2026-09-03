@@ -1,1 +1,9 @@
 node_modules/
+
+# Pictures visitors have shared. Data, not source — and the folder doubles as the archive,
+# since every picture ever shared stays here even after it scrolls off the wall.
+wall/
+
+# A set of NASA images kept aside on the exhibit machine as a fallback pool. Not part of the
+# wall — rename it to img/sky/ (or move files into it) to put them back in circulation.
+img/sky-old-test/

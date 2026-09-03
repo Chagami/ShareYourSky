@@ -22,10 +22,60 @@ npm run dev
 ```
 
 - Interaction screen → `https://localhost:5173/`
-- Gallery wall → `https://localhost:5173/gallery.html`
+- Gallery wall → `https://localhost:5173/gallery.html` (one per monitor; open it four times)
+- The earlier rows design → `https://localhost:5173/gallery2.html`
+- Photos (view and delete) → `https://localhost:5173/admin.html`
+
+**Both screens must be served by the same machine.** One computer runs this; the tablet opens the
+interaction over the LAN and the wall opens the gallery — from that same server, at whatever
+address reaches it. The pictures live on the serving machine, not in either browser (see
+[The gallery wall](#the-gallery-wall)).
 
 Chrome or Edge, full screen (F11). Vanilla JS, no framework — Vite is here for the dev server,
 HMR and a bundled build, not for a component model.
+
+## Running it on the exhibit machine
+
+One computer serves everything and holds the visitors' pictures. Every other screen — the tablet
+with the camera, the four gallery monitors — is a browser pointed at it. It does not have to be
+the machine this was written on, and it does not need a checkout of anything else.
+
+```bash
+git clone https://github.com/Chagami/IsItReal-experiment.git
+cd IsItReal-experiment
+npm ci
+npm run preview
+```
+
+`preview` serves the built copy in `dist/`, which is committed — so there is nothing to build on
+the exhibit machine and nothing that can fail there for a reason that did not exist here. It
+prints two addresses; the **Network** one is what the other screens open:
+
+| screen | opens |
+| --- | --- |
+| the tablet | `https://<that machine>:4173/` |
+| each gallery monitor | `https://<that machine>:4173/gallery.html` |
+| whoever is running it | `https://<that machine>:4173/admin.html` |
+
+Three things to know before the first opening.
+
+**The certificate is self-signed**, so every client meets one "Your connection is not private"
+screen: Advanced → Proceed. Once per browser, and then the camera works. The camera needs a
+secure context and only `localhost` gets one for free, which is the whole reason for HTTPS here.
+To lose the warning, swap `basicSsl()` in `vite.config.js` for `server.https` pointing at an
+mkcert pair and install the mkcert root on each client.
+
+**Give the machine a fixed address.** The tablet's kiosk shortcut has the address baked into it,
+and a DHCP lease that moves overnight is an exhibit that does not open. A reserved IP or a name
+on the local network, either is fine.
+
+**The pictures live on that machine and are not in git.** `wall/` is created on first use and
+gitignored — a fresh clone starts with an empty gallery, and pulling never overwrites what
+visitors have made. It is also the archive: every picture ever shared stays there even after it
+scrolls off the wall, so it is the folder to back up and the folder to clear before an opening
+(`admin.html` → Delete everything).
+
+Updating later is `git pull` and restart. `npm ci` again only if `package-lock.json` moved.
 
 ### Why HTTPS
 
@@ -109,6 +159,18 @@ the secure-context state, the browser engine and the retry count. Whoever is sta
 of a kiosk that will not start has no debugger and usually no second machine, so a photograph of
 the screen has to be enough to work from.
 
+**A hung `getUserMedia` is worse than a failed one.** On a wedged Android camera service the
+call does not reject — it never settles at all. That produces no stream, no exception, no
+message on screen and *no retry*, because a retry that lives in a `catch` is never reached: the
+page simply parks. `openStream()` races every request against a 10s timeout so the call always
+answers one way or the other, and if the real request turns up later its stream is handed
+straight back rather than leaving the camera lit with nobody holding it.
+
+**The camera is released on `pagehide`.** Nothing else does it. On a reload the browser is
+supposed to free it when the old document is torn down, but that is a race the new document can
+lose — and losing it means the fresh page asks for a camera the dying one still holds.
+`pagehide` rather than `beforeunload`, which mobile browsers frequently decline to fire.
+
 > **Suspect the device before the code.** A wedged camera service reports `NotReadableError` and
 > is cleared by restarting the device. From the browser's side it looks exactly like a
 > permissions or constraints bug, and it is neither — this cost a long debugging session once
@@ -122,9 +184,10 @@ part and the one thing to press is always at the foot, within reach.
 | Step | Screen | The dock offers |
 | --- | --- | --- |
 | `camera` | Title, viewfinder, countdown | the shutter |
-| `edit` | Their photo, and three levels charts under it | `Next` |
-| `share` | The picture they made | `Share my sky` |
-| `astro` | The same photo through each colour on its own, with a chart each, and all three recombined below | `Start again` |
+| `edit` | Their photo built up a colour at a time, the three channels it is made of beside it, and the two paragraphs that explain both | `Next`, once the picture is made |
+| `adjust` | The picture alone and large with the question; then the same charts back, each with a spectrum across its top | `Share my sky`, once a colour has been moved |
+| `confirm` | "Would you like to share your sky to the gallery?", the picture beside it | `No` / `Yes` |
+| `astro` | The Pillars of Creation in step 2's exact arrangement, with the same three charts | `Start again` |
 
 Each step is a self-contained `<section>`; only one is on screen, chosen by `body[data-step]`.
 `STEP_ENTER[id]` is the only place a step's content is built, and **no step knows about any
@@ -140,12 +203,210 @@ That is what makes them separable, and it buys the thing worth having while buil
 It takes a photo as soon as the camera is ready and then jumps, so the step has something real
 to work with.
 
-### The dock
+### Three of the four steps are sequences, not screens
 
-Always on screen: the one action this step offers, and where the visitor is in the sequence.
-Which button shows is derived from `STEPS[i].action`, so there is exactly one place to look when
-a step offers the wrong control. The indicator marks the current step and everything passed,
-with the rule between marks drawn behind them so progress reads as a line being walked.
+Everything on steps 2, 3 and 4 arrives; nothing is authored in place. Each `STEP_ENTER` handler
+is one async function, and reads in the order it happens.
+
+**Step 2 — what the camera did.** Nothing to touch: the adjusting happens on the next screen.
+
+1. The photo flies out of the viewfinder — FLIP, so what is animated is the difference between
+   where it was and where it now is. It arrives **black**.
+2. The sentence arrives **whole**, and fades in. It used to be typed a character at a time;
+   reading speed is not typing speed, and a visitor who has finished the line is left watching
+   the rest of it turn up. The line arrives at once and the *beats* carry the pacing instead.
+3. Then each colour's name lights in turn, and **its own layer appears beside it** — the three
+   channels stacking down the right. The frame stays black through all of this. The light is
+   being taken *apart* here; putting it back together is the second paragraph's job, and doing
+   both at once left nothing for the rest of the screen to say.
+4. The second paragraph fades in **underneath the first, and both stay**. It used to appear only
+   when somebody dragged a chart; there are no charts here any more, and waiting for a gesture
+   that cannot happen would have left it invisible.
+5. Then the sentence is acted out: each layer sends **a copy of itself flying into the frame**,
+   red then green then blue, and the picture is built out of the three the visitor has just been
+   shown. A copy, not the layer — the three stay where they are, so what is watched is the
+   picture being assembled *from* them rather than them being used up. The composite only gains
+   a channel when its copy lands, so the frame and the flight agree; the other order flickers
+   black for a frame between the two.
+
+   **The copies add rather than cover** (`mix-blend-mode: plus-lighter`), which is what light
+   does and what makes the overlap seamless: a copy looks like the pure channel while it is over
+   black, and like the two channels combined the moment it reaches the frame. Painted normally,
+   an opaque copy of the green channel covered the red already in the frame, and for the length
+   of the landing the picture showed green alone — the one frame of the whole sequence that was
+   a lie about how light works. There is deliberately **no `z-index` on `.fliers`**: a stacking
+   context would seal the copies off from what is under them, and seeing through to it is the
+   entire point. They still paint on top because they are positioned and last in the markup.
+
+   Measured: the frame reads `[0,0,0]` through the whole first half, then
+   `[84,0,0] → [84,98,0] → [84,98,61]` as the copies land. The three layers read `[84,0,0]`,
+   `[0,98,0]`, `[0,0,61]` — **they add up to the picture exactly**, because a layer is the same
+   composite with the other two channels switched off rather than a separate drawing path. One
+   place to change if the colours ever move, and a layer is provably a part of the picture
+   rather than an approximation of one.
+
+The frame's top edge and the first layer's top edge are **the same edge** — both columns start at
+the same line. Centred, they missed each other by whatever the two columns differed in height,
+which read as carelessness rather than as a pairing. Measured at 0px apart.
+
+**Step 3 — the question, and then the means of answering it.** Two phases in one layout,
+switched by `data-phase` on `#shareSplit`, so moving between them is one attribute and a FLIP
+rather than a second screen:
+
+5. `ask` — one column. Their photo flies up out of step 2's left column into the middle of the
+   screen, half again as large as they have yet seen it, and the question types underneath in
+   two sentences: what they did, and what to try next.
+6. A second's pause, and then `tune` — the two-column split returns. The picture moves aside,
+   the question moves with it, and the same three charts come back over the same three sets of
+   numbers. The black and white points are still theirs to move, but each chart has grown a
+   **spectrum across its top**: the colour a channel's light is shown in is now the variable,
+   and it can be anywhere on the hue circle rather than one of three.
+7. `Share my sky` is not offered until a colour has been moved *off its own hue*. Touching the
+   strip and landing back where you started has not answered the question. It no longer shares
+   anything either — it asks.
+
+**Step 4 — the one question with a wrong answer.** Sharing is not a side effect of finishing the
+adjusting, so it gets a screen of its own: *"Would you like to share your sky to the gallery?"*,
+the picture beside it, and **No** or **Yes**. No starts the whole thing again and publishes
+nothing; Yes publishes and goes on to the last screen.
+
+The picture arrives by being **pulled out of shape and snapping back**: the first movement drags
+the top left corner away — the origin is the opposite corner, so that corner is the only one that
+travels — and the second lets go, snapping back to size and turning a full revolution about its
+own centre. Two animations, not one, because they turn about different points and rotating about
+the bottom right corner swings the picture off the side of the screen. Both are cancelled at the
+end rather than left filling, because a full turn lands exactly where no transform would.
+
+The charts carry **"Try moving the sliders"** over them, arriving with the first chart rather than
+with the column so it is never a caption on an empty space, and the picture carries **"Your final
+image"** — the only label on a picture in the whole piece, and it is there because by that screen
+the visitor has four of their own pictures in front of them.
+
+Each strip carries a **marker at the colour that light actually is** — a line through the
+gradient with a dot of the channel's own colour beneath it. However far the picture gets pushed,
+there is always something on screen saying where it started. The chart's heading keeps naming
+the source (`Red`, `Green`, `Blue`) and its dot keeps the source's colour, because which
+filter's exposure you are looking at does not change; only the colour it is drawn in does.
+
+Colours are **free, not traded**. Two channels can be given the same hue and the picture is
+still a picture, because the composite adds them.
+
+### The composite
+
+`drawComposite(canvas, frame, luts, tints)` is the whole model, and every screen uses it.
+`tints[src]` is that channel's colour as weights on the three outputs — `hueTint(deg)`, which is
+hsl(deg, 100%, 50%) with the algebra written out. The picture is the **sum** of the three tinted
+channels, which is exactly what a narrowband composite is: one greyscale exposure per filter,
+each assigned a colour, added together. Feed it the three primaries and the sum collapses back
+to plain RGB, so there is no second code path and no "special" screen.
+
+Two properties are worth not breaking:
+
+- **The primaries are exact.** `hueTint(0/120/240)` is `[1,0,0]`/`[0,1,0]`/`[0,0,1]`, so an
+  untouched picture comes out of the tinted path bit-for-bit identical to a straight channel
+  copy — verified at zero difference across every pixel of a test gradient. Steps 2 and 4 depend
+  on that; if it ever drifts, every screen in the piece shifts colour at once.
+- **The lookup table follows the plane, not the output.** A channel's black and white points
+  belong to the light it collected, wherever that light ends up on screen.
+
+The nine 256-entry tables in there are not premature. Done directly this is nine multiplies a
+pixel, 1.3 million pixels a frame, on a tablet, while a finger is moving; with each channel's
+levels folded into a per-value table it is nine array reads, and the destination being a
+`Uint8ClampedArray` means the sums clamp themselves. Measured at 1000×1333: **8.16ms a frame for
+the primaries, 8.56ms for arbitrary hues** — the general case costs 5%, not double.
+
+The chosen hues are stored with the shared image, because they are the one thing about a
+visitor's picture that is a choice rather than a measurement.
+
+**Step 4 — the famous photo:**
+
+8. Opens blank, deliberately. The line about the gallery types on an empty screen, holds, and
+   then rides up to the top as the two columns arrive underneath it.
+9. The Pillars of Creation appears in step 2's place, and the same three charts arrive down the
+   right, one at a time, each sliding its handles in off the ends of the track. **The whole
+   arrangement is step 2's, reused unchanged** — that likeness is the argument the step is
+   making, so if you restyle one, restyle both.
+10. The explanation types where step 2's sentence was.
+
+The nebula is `img/pillars.jpg` — ESA/Hubble `heic1501a`, the 2015 WFC3 revisit, public domain
+with credit. Swapping it for another picture needs nothing but the file: its aspect ratio is
+read from the image and written to `--pillars-ar`, and it is decoded and split into channels at
+boot rather than on step 4, because doing that work while a visitor watches an empty screen is
+exactly the wrong moment for it. **The credit line under it is not decoration** — it is somebody
+else's photograph on a museum wall.
+
+Steps 2 and 4 edit **different numbers over different pictures** (`levels` / `frame` against
+`astroLevels` / `pillarsFrame`). `buildEditors` is given both, rather than reaching for module
+state, so adjusting the nebula cannot quietly rewrite the picture the visitor already shared.
+
+Three things are worth knowing before changing any of it:
+
+- The sentence lives in `STORY`, as segments rather than as a string with markup in it. A
+  segment carrying a `ch` is a channel's name, and the word is read from `CHANNELS` rather than
+  written out again — so the sentence and the chart's own label cannot drift apart. The three
+  beats are the same code three times, not three hand-placed callbacks.
+- Beams are measured, never authored. Length and angle come from the word's rectangle and the
+  chart's, so the beat survives any change to the layout above it.
+- A button that is waiting its turn gets `.waiting`, not `hidden`. Hiding it outright shortens
+  the dock, and because the steps above are vertically centred, the whole screen then shifts by
+  half of what the dock lost — at the exact moment the visitor is being invited to look at it.
+- The marks in the bar are **transparent**, and the rule between them stops at their edges rather
+  than passing behind them. An opaque mark hides the blob completely — it sits behind them.
+- **Which section is on screen is a class**, set by `goToStep`, not a stylesheet list of
+  `body[data-step=x] .step[data-step=x]` pairs. That list stops matching the moment a step is
+  renamed, and the failure is silent and total: the screen renders into a box zero pixels wide,
+  so the pictures draw, the text is there, and none of it can be seen or touched.
+- The histogram has **no numbers and no ramp line** — the handles and the shaded shoulders say
+  everything the numbers did, without asking anybody to read a value off a wall.
+
+Step 2 runs about eight and a half seconds, step 3 about eight, step 4 about nine. It is
+`TIMELINE.typeChar` (26ms a character) that dominates all three; halve it and you halve the
+wait everywhere.
+
+Every pause is a `wait()`, which resolves only while the generation it was made in is still
+current — so an abandoned turn cannot type its way into the next visitor's screen. It stops
+where it stands.
+
+### The bar and the dock
+
+They are at opposite ends of the screen, and deliberately. The **bar across the top** says where
+the visitor is: four numbered stations — `1. Photo`, `2. Adjust`, `3. Share`, `4. Channels` —
+with a rule running between them and everything behind the current one greyed. It is context,
+not a control, and nothing on it is pressable. The **one thing that is** sits alone at the foot,
+where a hand already is; which button shows is derived from `STEPS[i].action`.
+
+A step's station is `STEPS[i].mark`, kept separate from its position in the sequence because
+they no longer line up. Step 2 has no controls left on it — it is the photograph being explained
+— so it stands at **Photo** with step 1. **Adjust** is step 3, where the colours are actually
+moved; **Share** lights for the moment between pressing the button and the last screen opening,
+which is the only time sharing is actually happening. Without that the station would never be
+the current one, and a station that is never current reads as a step that got skipped.
+
+Riding along the bar is **one orange blob**. When the step changes it stretches across to the
+next station and squashes as it lands.
+
+Squash and stretch, not a gooey filter. A metaball pinch needs a blurred SVG filter over a
+repainting element, which is one of the three things that behaves completely differently on the
+exhibit's Android SoC than it does on a desk; a ball that elongates as it leaves and squashes as
+it arrives reads as liquid just as well and never leaves the compositor.
+
+Three things in `moveBlob` are load-bearing:
+
+- **Its size and position are measured off the mark**, not computed from the column width, so
+  it cannot drift if the bar is restyled. A `ResizeObserver` re-places it — without animating,
+  because a blob sliding across because the window changed shape is a bug, not a transition.
+- **The last trip is cancelled before the new resting place is written.** A finished animation
+  with `fill: both` keeps painting its final keyframe, and an animation effect outranks inline
+  style — so without the cancel the blob ignores every repositioning after its first journey.
+  That is invisible until the screen changes size and the blob is left over the wrong mark.
+- **The icon under it goes dark only once the blob has arrived** (`.dot.lit`, set from a timer
+  at 72% of the trip), not when the step changed. Flipping it on the step change leaves a dark
+  glyph on a dark ground for the length of the journey — invisible for exactly as long as the
+  animation is trying to draw the eye to it.
+
+`goToStep`'s `animate` and `blob` are separate switches. `animate` is the section's own fade,
+which step 2 turns off because the photo's flight is its transition; the blob still has to
+travel. `reset()` turns both off — "Start again" is not a transition, it is the piece ending.
 
 ### A camera mounted sideways
 
@@ -237,12 +498,18 @@ is still there.
 
 ## Where to change things
 
-- `index.html` — **every word the visitor reads.**
+- `js/main.js` — **every word the visitor reads**, in `STORY`, `STORY_AFTER`, `SHARE_STORY`,
+  `ASTRO_LEAD` and `ASTRO_STORY`, near the top of the step-2 section. A segment marked
+  `block: true` starts its own line after a pause. They are typed rather
+  than rendered, so they live in the script and not in the markup.
+- `index.html` — the structure of each step, and the credit line.
+- `img/pillars.jpg` — the famous photo. Any image works; nothing is hard-coded to this one.
 - `js/main.js` — the `TIMELINE` object at the top is the entire pacing of the piece in one block:
   countdown cadence, the didactic beats, the three reveal crossfades, the reset timings.
-- `css/app.css` — `--live-h` and `--bay-h` are the two photo sizes; the beat-switching rules at
-  the bottom (`body[data-stage="..."]`) decide what is on screen when.
-- `js/levels.js` — the editor and the histogram drawing.
+- `css/app.css` — `--shot-ar` is the photo's shape, set from the camera; which screen is on is
+  decided by `body[data-step="..."]`. Step 2's two columns are `.edit-stage`.
+- `js/levels.js` — the editor and the histogram drawing. Pass `hue` to give a chart the
+  spectrum strip; without it a chart is simply its own colour and says so.
 - `js/store.js` — the gallery store (`MAX_ITEMS`, quota handling).
 - `js/perf.js` — the in-situ performance readout. See above for how to summon it.
 
@@ -317,16 +584,287 @@ Measured on a sustained 150-move drag: a full redraw went **4.9&nbsp;ms &rarr; 0
 with zero frames over 25&nbsp;ms. The remaining cost is the per-pixel JS, which is the next thing
 to move to a WebGL shader if a weaker machine needs it.
 
-## Exhibit-grade upgrade path
+## The gallery wall
 
-The wall is fed through `localStorage` plus `BroadcastChannel`: one machine, one browser, a
-24-image cap (`js/store.js` drops the oldest rather than losing the image a visitor just made). To
-run the wall on a different device, keep images permanently, or hand a visitor a QR code, replace
-`list()` and `publish()` with calls to a small server — nothing else touches storage.
+Two designs, both live, so they can be compared on a real wall rather than in the abstract.
+
+| | |
+| --- | --- |
+| `gallery.html` | **stacking.** Prints are laid down and never taken away; when a grid fills, a new one begins over it |
+| `gallery2.html` | **rows.** Justified rows, one tile crossfading to something new every half minute |
+
+What they share — joining the wall and holding pictures nobody else has — is `js/wallscreen.js`,
+because that half is the server's protocol and not a design choice. Two copies of it would drift
+out of step with `server/gallery.js` one at a time and only fail with four screens running.
+
+### The stacking wall
+
+Every picture arrives turning, into a place in the top grid. When that grid is full a new one
+starts over it, leaning a little further forward, and the ones underneath stay and show at their
+edges. Nothing fades and nothing is removed until it has been pushed four grids back.
+
+**A grid's places are all decided the moment it is made, and then filled in a shuffled order** —
+so pictures appear about the grid rather than marching along it. A wall filling left to right
+reads as a progress bar; one filling at random reads as a wall. Measured over four fresh layouts:
+every one a different order, all ten places used exactly once, none of them in reading order.
+
+Each print remembers *which place* it took rather than the order it was hung, which is what keeps
+it there when the stack re-leans or the window changes size. Matching prints to places by
+position would have dealt everybody a different spot on every resize — verified: same places
+before and after.
+
+```js
+tiles: 10,          // prints in one grid
+layers: 4,          // grids kept; below that they are covered anyway
+offset: 0.03,       // how far each grid leans from the one under it
+addEvery: 30000,    // a picture is laid down this often
+communityShare: 0.25,
+border: 9,          // the black mount around every print
+sizeRange: 2,       // the largest print in a grid, against the smallest
+freshScale: 1.5,    // the newest visitor's picture, against the largest of the others
+```
+
+### Sizes
+
+Prints are not all one size. Every grid deals its places sizes spanning exactly `sizeRange` —
+**pinned, not sampled**, because drawing ten numbers out of a range gives whatever spread it
+happens to give, and the wall came out looking uniform. One place is dealt the floor and another
+the ceiling and the rest fall between, all drawn again for every grid, so **the biggest picture
+is never in the same corner twice**. Measured over four thousand grids: largest ÷ smallest is
+2.0000 every time, and which place gets it lands evenly across all ten (10% each).
+
+The sizes are normalised on **area**, not on width, so a grid of mixed sizes covers about as much
+wall as a grid of equal ones — normalising on width would have grown the total by half. Measured:
+mean area 1.0000 against uniform. On screen that is prints from about 270px to 650px wide.
+
+The newest visitor's picture is `freshScale` times **the largest of the other visitors'
+pictures**, not times its own place. The places are different sizes now, and landing in a small
+one must not make the newest picture on the wall smaller than one somebody left twenty minutes
+ago. Measured after a share: 1.50× the biggest other.
+
+One consequence worth seeing before it ships: the larger prints overlap their neighbours rather
+than sitting inside their own cell. On a wall of stacked, black-mounted prints that reads as a
+pile — which is the point — but it is a real change from the tidy grid, and `sizeRange: 1` turns
+it off entirely.
+
+Every print gets a **black mount**. On a near-black wall it does almost nothing on its own —
+what it is for is the moment two prints overlap, where it is the edge that says which is on top.
+
+The **newest visitor's picture** is half again the size of the other visitors' pictures and turns
+a full revolution coming in, where an ordinary print turns about fifteen degrees. Larger by
+transform rather than by taking a bigger slot, so the grid underneath is untouched and it simply
+overlaps its neighbours — which on a wall of stacked prints is what being on top of the pile
+looks like anyway. Position and size are the same transform, so neither costs a reflow.
+
+Nothing is cropped here either: `object-fit: contain` inside a uniform cell, and the column count
+is chosen to bring a cell's shape near the pictures' own, because a landscape photograph in a
+tall cell is mostly black mount.
+
+### Keeping the visitors' share on a wall that only grows
+
+Every submission goes up the moment it is made — that is the promise the exhibit makes to the
+person who just pressed the button, and it is not negotiable against a ratio. So the ratio is
+kept from the other side: a quarter share means three curated pictures for each one of theirs,
+laid down around it. A busy evening simply fills the wall faster.
+
+Measured, one visitor at a time — which is what an exhibit actually does:
+
+| shared | prints | visitors' | share |
+| --- | --- | --- | --- |
+| 0 | 10 | 0 | 0% |
+| 1 | 11 | 1 | 9% |
+| 2 | 12 | 2 | 17% |
+| 3 | 13 | 3 | 23% |
+| 4 | 16 | 4 | **25%** |
+
+A *rush* is different. Twelve submissions inside two seconds takes the wall to about 43%, and it
+cannot come straight back down: the wall holds forty prints, so twelve of theirs is thirty
+percent of it whatever else goes up. It settles as the pile rolls over. That is honest behaviour
+for a participatory wall and worth knowing rather than fixing.
+
+### This design eats pictures
+
+The rows wall holds seven curated pictures per screen and changes one every half minute. The
+stacking wall lays down a new one every half minute and keeps forty. Four screens running for an
+hour want a couple of hundred distinct pictures to never repeat; the folder has thirty, so it
+repeats heavily. **If the stacking design is the one that ships, `img/sky/` needs to be several
+times larger** — see below.
+
+### Four screens that do not repeat each other
+
+No screen can know what its neighbours are showing, so the server keeps the register —
+`server/gallery.js`:
+
+```
+POST api/gallery/join   { want }         join, and get `want` pictures nobody has
+POST api/gallery/beat   { id }           still here
+POST api/gallery/swap   { id, retire }   give one back, take a fresh one
+POST api/gallery/leave  { id }           done
+GET  api/gallery/state                   who is on the wall and what they hold
+```
+
+Allocation prefers what nobody holds, then what has been shown least, so a wall running all day
+works through the whole folder rather than orbiting the same dozen. Only when the wall wants more
+pictures than exist does it repeat — and then it repeats the rarest. Verified: four screens
+joining at once took **32 distinct pictures out of 32**, no duplicates.
+
+A screen that vanishes — unplugged, crashed, closed — stops beating and its pictures return to
+circulation after 45 seconds. A museum wall runs unattended for twelve hours; anything needing a
+person to tidy it up will not get tidied.
+
+### The visitors' pictures
+
+A quarter of each screen (`communityShare`), interleaved through the wall rather than blocked in
+a corner. Ten and a quarter share is two and a half pictures, which is not a number of pictures,
+so it rounds up: **three of ten**. Erring towards the visitors rather than away from them is the
+point of the exhibit.
+
+The share is filled as pictures arrive, and the wall is always full while it fills:
+
+| shared so far | tiles | visitors' |
+| --- | --- | --- |
+| 0 | 10 | 0 |
+| 1 | 10 | 1 |
+| 2 | 10 | 2 |
+| 3 or more | 10 | 3 |
+
+That needs the count *before* the curated pictures are asked for, which is why `join()` reads the
+gallery first. Asking first left the wall short — on a morning with nothing shared it reserved
+three slots for pictures that did not exist and hung seven pictures instead of ten.
+
+Growing the share while the wall is up means re-dealing, and that is the one time the layout
+moves. It only happens for the first few of the day: every visitor's picture is the same shape as
+every other, so once a slot of that shape exists the next one drops straight into it — but making
+the *first* one needs a slot that is not there yet, and nothing is cropped to force it.
+
+**The newest is on every screen** — a visitor who has just shared is being told to go and look,
+and finding it should not depend on which of four monitors they walk to. Beyond the newest, each
+screen strides through the list by its own slot number, so no two agree.
+
+When somebody shares, the oldest community tile takes the new picture and arrives with a light on
+it. Not a rebuild: one tile changes, the layout does not move, and the glow is how the person who
+made it finds it from across the room. Verified — exactly one tile goes `fresh`, and it is always
+a community tile.
+
+Kept per picture: the colours they gave each channel, and when. No names, no captions.
+
+### The curated pictures
+
+**Drop them in `img/sky/`.** That is the whole procedure: any filename, any of jpeg, png or webp.
+The server reads the folder itself and takes each picture's dimensions out of its own header —
+the screens need those to lay out before the pictures have loaded. It re-reads whenever the
+folder's timestamp changes, so pictures can be added or taken away while the wall is running and
+the screens pick it up on their next swap. No script, no manifest, no rebuild.
+
+It did require a `manifest.json`, and that was a trap: a folder full of pictures with no manifest
+showed a wall of black rectangles, which is exactly what dropping pictures into a folder gets you.
+Filenames were restricted to `[a-z0-9_-].jpg` too, which refused every hand-curated file — real
+ones have spaces and brackets and photographers' names in them. Pictures are now served from an
+allowlist of what the scan found, which permits any name and is the stricter check anyway: `..`
+is not the name of a picture in the folder.
+
+They are served by the middleware rather than from `public/`, which would copy the whole folder
+into `dist/` on every build — and `dist/` is committed.
+
+**How many to put in there.** Four screens holding seven curated pictures each is 28 in use at
+once. The folder has 30, which leaves **two** that nobody is holding — and those two are the only
+things a rotation has to bring in, so the wall cycles the same pair every half minute. For a wall
+that does not visibly repeat itself, the folder wants to be about twice what is on it: **sixty or
+more**. Verified: four screens take 28 distinct pictures out of 28, with nothing left over.
+
+```bash
+npm run sky        # optional: top up from NASA's image library
+```
+
+That never touches what is already there. Two things before running it: the search is
+indiscriminate — artists' impressions and diagrams come back alongside photographs — and NASA
+imagery being "generally public domain" is a general statement, not a licence. Both want a human
+pass. It writes `CREDITS-nasa.txt`, which covers only what it fetched.
+
+**Attribution is not handled.** The wall shows no captions by design, and the pictures now in
+`img/sky/` are individual photographers' work with their names in the filenames. If the exhibit
+needs to credit them on screen, that is a change to make — the names are already there to read.
+
+## Where the visitors' pictures live
+
+The exhibit is **two devices**: the interaction on a tablet over the LAN, the wall on a screen
+somewhere else. So the pictures live on whichever machine serves the pages, in `server/wall.js` —
+a Vite middleware rather than a second process, so the exhibit is still one command to start.
+
+```
+GET    api/wall               the newest pictures, newest first
+POST   api/wall               publish one { image: dataURL, levels, shownHue }
+GET    api/wall/stream        server-sent events: a picture arrives as it is made
+GET    api/wall/img/<id>.jpg  the picture itself
+DELETE api/wall               empty the wall
+```
+
+Pictures are written to `wall/` as ordinary `.jpg` files with an `index.json` beside them. The
+wall shows the newest 24; **every picture ever shared stays in that folder**, so a day's visitors
+can be recovered from it afterwards. The folder is gitignored — it is data, not source.
+
+### Why it is not localStorage
+
+It was, and it could not have worked. `localStorage` is scoped to one origin in one browser, so
+`https://localhost:4173` and `https://192.168.1.20:4173` are two separate walls served by the
+same machine — and two separate machines share nothing at all. Proven rather than assumed: writing
+at one hostname and reading at the other returned two different one-item walls.
+
+That is also why the store kept images as base64 data URLs, a third larger than the bytes they
+carry, against a quota of about 5MB. Twenty-four of a real capture is six to nine megabytes, so
+the wall silently dropped the oldest while claiming to show twenty-four. Files on disk have
+neither problem.
+
+### It still works when the wall machine does not
+
+`localStorage` is kept as the fallback, and this is the part not to break: **a visitor pressing
+Share must never wait on a network and must never lose their picture.** `publish()` is not
+awaited, resolves either way, and keeps the picture on the tablet if the server cannot be
+reached; the turn carries on identically. Where it actually went goes to the debug overlay
+(`shared`), because that is a question for whoever is running the exhibit, not for the person
+standing in front of it. Verified by blocking `api/wall` outright mid-visit: step 4 still ran, the
+picture was still kept, and the wall on that device still showed it.
+
+The wall keeps itself current three ways, because a picture that never appears is the one fault a
+visitor actually notices: the event stream, a 60-second poll behind it as a backstop for a stream
+that died quietly, and `BroadcastChannel` for the offline case where both screens are one browser.
+
+### The photos page
+
+`admin.html` is for whoever runs the exhibit: every picture ever shared, newest first, with when
+it was taken and whether it is currently on the wall or has scrolled off into the archive. It
+asks the store for `?all=1` rather than the wall's newest 24 — the picture somebody wants taken
+down is as likely to be one visitors can no longer see.
+
+Click a card to select it (the whole card, not a checkbox — this gets done on a tablet). The ×
+on a card removes just that one. The toolbar deletes the selection, or everything.
+
+**Every destructive button asks twice.** The first press turns the button itself into a red
+warning saying exactly what is about to happen; the second press does it, and it disarms on its
+own after four seconds so a half-pressed button cannot be finished by somebody walking past. Not
+a modal — an operator standing at a kiosk dismisses those without reading them. Deleting is
+permanent and reaches an open wall live, through the same event stream a new picture arrives on.
+
+It is **linked from nowhere** and **not authenticated**. On a staff LAN with no route in from
+outside that is the right trade: a password here is a thing for a technician to lose, not a
+defence. If the exhibit ever shares a network with the public, this page needs a door on it.
+
+### When the wall is empty
+
+It says why, in the same quiet register as the camera's service note: which address it is, whether
+it can reach the store, and whether the local fallback is usable. "No skies shared yet" is true
+both when nobody has used the exhibit and when the wall is looking somewhere nothing is written,
+and those need completely different fixes.
+
+## Still to do
+
+Hand a visitor a QR code for their own picture; put the wall behind a real host name so the
+tablet's kiosk shortcut does not carry an IP address; put a door on `admin.html` if the exhibit
+ever shares a network with the public; let a visitor put a name to their picture.
 
 ## Lineage
 
 Fifth prototype in `AstroProto/`, forked from `IsItReal`. The levels/histogram reasoning goes back
 to `FiltersGreyscale/web/index.html` (black point, contrast and brightness as a shared tone LUT),
-the multi-display + `BroadcastChannel` arrangement to `FiltersNew/`, and the mirrored-capture and
+the multi-display arrangement to `FiltersNew/`, and the mirrored-capture and
 camera-selection lessons to `Filters/`.

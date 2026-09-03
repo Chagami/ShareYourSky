@@ -1,0 +1,23 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Share Your Sky — Gallery Wall (rows)</title>
+<link rel="stylesheet" href="css/app.css">
+<link rel="stylesheet" href="css/gallery2.css">
+</head>
+<!-- The rows design, kept for comparison — the live wall is gallery.html.
+     Justified rows, every picture at its own proportions and nothing cropped, one tile
+     crossfading to something new every half minute. See js/gallery2.js. -->
+<body class="wall">
+
+<div class="sky" aria-hidden="true"></div>
+
+<p class="wall-empty" id="empty" hidden>Gallery wall</p>
+
+<div class="wall-grid" id="grid"></div>
+
+<script type="module" src="js/gallery2.js"></script>
+</body>
+</html>
