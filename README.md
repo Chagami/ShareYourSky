@@ -128,6 +128,62 @@ localport=443`), and set it to start on boot — a **Scheduled Task** at startup
 `npm run exhibit` in the repo folder, set to restart on failure. That is the whole of what a
 service manager would do here.
 
+### Starting at boot
+
+The exhibit has to come up on its own after a power cut, an overnight patch reboot, or somebody
+switching the machine off at the wall on Sunday. Two scripts do it:
+
+```
+scripts\start-exhibit.cmd        the server itself
+scripts\install-startup-task.ps1 registers it to run at boot
+```
+
+On the exhibit machine, once, from an **elevated** PowerShell in the repo folder:
+
+```powershell
+copy scripts\exhibit.env.example.cmd scripts\exhibit.env.cmd
+notepad scripts\exhibit.env.cmd
+powershell -ExecutionPolicy Bypass -File scripts\install-startup-task.ps1
+```
+
+`exhibit.env.cmd` is where the port and certificate paths go. It is deliberately not in git, so
+a `git pull` never overwrites one machine's settings with another's. Without it the server still
+runs, on 4173 with a self-signed certificate.
+
+The installer registers a scheduled task called **Share Your Sky** running as SYSTEM at startup,
+then starts it so you can check it without rebooting. SYSTEM rather than a named account for
+three reasons: it starts with nobody logged in, it is allowed to bind port 443, and it has no
+password to expire in the middle of a school holiday.
+
+Two settings in there are worth knowing about, because both are failure modes that produce no
+error message at all:
+
+- **`ExecutionTimeLimit` is zero.** The default is three days, after which Windows kills the task
+  and the exhibit goes dark with nothing in any log to say why.
+- **The launcher restarts the server itself**, in a loop with a five-second pause, rather than
+  relying on the task's restart-on-failure. That only fires when a task *fails*; a server that
+  exits cleanly would otherwise stay down until somebody noticed.
+
+To check on it: Task Scheduler shows the task, and `logs\exhibit.log` has what the server
+printed, with the previous run kept alongside it as `exhibit.prev.log`. A line reading
+`server exited with ... restarting in 5s` is the loop doing its job. `LastTaskResult` of 267009
+in Task Scheduler means "still running", which is the healthy state.
+
+To undo it, `install-startup-task.ps1 -Remove`.
+
+**The screens are a separate problem.** The task serves the pages; it does not put a browser on
+the wall, and it cannot — a browser needs a logged-in desktop session and SYSTEM has none. For
+the gallery machine, set Windows to log in automatically and put a shortcut in
+`shell:startup` along these lines:
+
+```
+"C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe" --kiosk https://sharedsky/gallery.html --edge-kiosk-type=fullscreen --no-first-run
+```
+
+**After a `git pull`**, restart the task (or reboot). `npm ci` again only if `package-lock.json`
+moved. No build step: `dist/` is committed, which is also why editing anything under `js/` or
+`css/` without running `npm run build` leaves the exhibit serving the old version.
+
 ### Is Docker worth it?
 
 Not for this. There is nothing to isolate — no database, no system libraries, no version of
