@@ -8,6 +8,9 @@
 //   press P              on a machine with a keyboard
 //   hold the top-left    1.5s anywhere in the top-left 72px, for a touchscreen in situ
 //
+// Alongside it, and deliberately a separate thing, is the debug menu at the bottom of this
+// file: the readout tells you what is happening, the menu lets you change it.
+//
 // It never persists across a reload, so a HUD left on by accident cannot outlive the session,
 // and it costs nothing while it is off — the sampling loop only runs when it is showing.
 
@@ -189,6 +192,135 @@ export function toggle(next = !on) {
 
 export const showing = () => on
 
+// ── the debug menu ─────────────────────────────────────────────────────────────
+//
+// The HUD above is a readout, and stays pointer-events:none because an overlay that can eat a
+// visitor's touch is a fault however useful it is. This is the other half: a panel that exists
+// to be clicked. Being interactive is safe here precisely because it cannot be opened by
+// touching the screen — it takes a keyboard, or a query string typed into the address bar.
+//
+//   ?debug=1             on from the URL
+//   ctrl + shift + D     on a machine with a keyboard
+//
+// Actions register themselves from wherever the state they change lives, rather than being
+// listed here, so this file never has to know what a camera rotation is.
+
+const actions = []
+let menu = null
+let rows = null
+let menuOn = false
+
+/**
+ * Add a button to the debug menu.
+ *
+ * `run` does the thing. `state`, if given, returns a short string shown beside the label and
+ * re-read on every redraw, so a button that changes something can show what it changed it to.
+ */
+export function addDebugAction({ label, hint, run, state }) {
+  actions.push({ label, hint, run, state })
+  if (menuOn) drawMenu()
+}
+
+function buildMenu() {
+  menu = document.createElement('div')
+  menu.id = 'debugMenu'
+  // Top right: the HUD has the top left, and so does the long-press corner that opens it.
+  menu.style.cssText = `
+    position: fixed; top: 10px; right: 10px; z-index: 99999;
+    width: 264px; padding: 11px; border-radius: 10px;
+    background: rgba(6, 8, 12, .93); color: #dfe6f2;
+    border: 1px solid rgba(255, 255, 255, .22);
+    font: 12px/1.45 ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+    box-shadow: 0 18px 50px rgba(0, 0, 0, .6);`
+
+  const head = document.createElement('div')
+  head.textContent = 'debug'
+  head.style.cssText =
+    'letter-spacing:.18em;text-transform:uppercase;opacity:.55;margin-bottom:9px'
+
+  rows = document.createElement('div')
+  rows.style.cssText = 'display:flex;flex-direction:column;gap:6px'
+
+  const foot = document.createElement('div')
+  foot.textContent = 'esc, or ctrl+shift+D, to close'
+  foot.style.cssText = 'margin-top:10px;opacity:.45'
+
+  menu.append(head, rows, foot)
+  document.body.append(menu)
+}
+
+function drawMenu() {
+  rows.replaceChildren()
+
+  if (!actions.length) {
+    const empty = document.createElement('div')
+    empty.textContent = 'nothing registered'
+    empty.style.opacity = '.5'
+    rows.append(empty)
+    return
+  }
+
+  for (const a of actions) {
+    const button = document.createElement('button')
+    button.type = 'button'
+    // Roomy enough to hit with a finger: this may well be opened on the kiosk itself with a
+    // keyboard plugged in, rather than at a desk with a mouse.
+    button.style.cssText = `
+      display:flex; justify-content:space-between; align-items:baseline; gap:10px;
+      width:100%; padding:9px 11px; text-align:left; cursor:pointer;
+      border-radius:7px; border:1px solid rgba(255,255,255,.18);
+      background:rgba(255,255,255,.06); color:inherit; font:inherit;`
+
+    const name = document.createElement('span')
+    name.textContent = a.label
+    button.append(name)
+
+    if (a.state) {
+      const value = document.createElement('span')
+      // A reporting function that throws must not take the whole menu down with it — the menu
+      // is most wanted on exactly the machine where something is already going wrong.
+      try {
+        value.textContent = String(a.state())
+      } catch (err) {
+        value.textContent = '?'
+      }
+      value.style.cssText = 'opacity:.65;white-space:nowrap'
+      button.append(value)
+    }
+
+    button.addEventListener('click', () => {
+      try {
+        a.run()
+      } catch (err) {
+        console.error(`debug action "${a.label}" failed`, err)
+      }
+      // Redraw every row, not the one that was pressed: one action may well change what
+      // another one reports.
+      drawMenu()
+    })
+
+    rows.append(button)
+
+    if (a.hint) {
+      const hint = document.createElement('div')
+      hint.textContent = a.hint
+      hint.style.cssText = 'opacity:.4;margin:-2px 2px 2px'
+      rows.append(hint)
+    }
+  }
+}
+
+export function toggleDebug(next = !menuOn) {
+  menuOn = next
+  if (menuOn) {
+    if (!menu) buildMenu()
+    menu.style.display = 'block'
+    drawMenu()
+  } else if (menu) {
+    menu.style.display = 'none'
+  }
+}
+
 /** Wire the three ways in. Safe to call once at boot; does nothing until something asks. */
 export function initPerf() {
   const q = new URLSearchParams(location.search)
@@ -202,8 +334,22 @@ export function initPerf() {
   }
 
   if (q.get('perf') === '1') toggle(true)
+  if (q.get('debug') === '1') toggleDebug(true)
 
   addEventListener('keydown', (e) => {
+    // A modifier for the menu, a bare key for the readout. The menu has buttons that *do*
+    // things, so it should not be one stray keystroke away.
+    if (e.ctrlKey && e.shiftKey && (e.key === 'd' || e.key === 'D')) {
+      e.preventDefault()
+      toggleDebug()
+      return
+    }
+    if (e.key === 'Escape') {
+      toggleDebug(false)
+      return
+    }
+    // Ctrl+P is print, and taking that over on a machine somebody is debugging on is rude.
+    if (e.ctrlKey || e.altKey || e.metaKey) return
     if (e.key === 'p' || e.key === 'P') toggle()
   })
 

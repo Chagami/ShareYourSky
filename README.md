@@ -534,8 +534,14 @@ travel. `reset()` turns both off — "Start again" is not a transition, it is th
 
 ### A camera mounted sideways
 
-`?rot=90`, `?rot=180`, `?rot=270`. A URL parameter for the same reason `?cam=` is: which way the
-camera sits is a property of the bracket it is screwed to, not of the exhibit.
+`?rot=90`, `?rot=180`, `?rot=270`, or the **Rotate camera** button in the debug menu. Set on the
+machine rather than in the code, for the same reason `?cam=` is: which way the camera sits is a
+property of the bracket it is screwed to, not of the exhibit.
+
+The button turns it a quarter at a time and remembers the answer in `localStorage`, so an
+installer can line the picture up on the machine itself instead of editing a shortcut. An
+explicit `?rot=` still wins over what was remembered, and does not overwrite it — so a shortcut
+can force a known orientation without destroying the machine's own setting.
 
 Two things that are easy to get wrong here, both of which did:
 
@@ -672,9 +678,29 @@ It never persists across a reload, so one left on by accident cannot outlive the
 `pointer-events: none`, so it can never eat a visitor's touch; and the sampling loop only runs
 while it is showing, so it costs nothing when off.
 
-Alongside the timings it reports the **build stamp**, the secure-context and camera-permission
-state, the camera list with the `?cam=` index for each, and running **node / canvas / heap**
-counts. Those last three are how you spot a leak on a machine you cannot attach a debugger to —
+### The debug menu
+
+The overlay above is a readout. The menu is the half that can be clicked:
+
+| | |
+| --- | --- |
+| `?debug=1` | on from the URL |
+| <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>D</kbd> | on a machine with a keyboard |
+| <kbd>Esc</kbd> | closes it |
+
+A modifier rather than a bare key, because unlike the readout these buttons *do* things. It
+holds **Rotate camera**, **Perf overlay** and **Restart**, each showing its current state beside
+the label.
+
+The two overlays are deliberately separate objects. The readout must never be able to eat a
+visitor's touch, so it stays `pointer-events: none` forever; the menu is interactive, which is
+only safe because there is no way to open it by touching the screen. Nothing is built until
+something asks for it, and the actions are registered by `js/main.js`, which owns the state they
+change — `perf.js` has no idea what a camera rotation is.
+
+Alongside the timings the readout reports the **build stamp**, the secure-context and
+camera-permission state, the camera list with the `?cam=` index for each, and running
+**node / canvas / heap** counts. Those last three are how you spot a leak on a machine you cannot attach a debugger to —
 they should be flat across visitors, and a kiosk never restarts, so anything that grows has all
 day to do it.
 

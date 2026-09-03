@@ -15,7 +15,16 @@ import {
   drawComposite, compositeURL,
 } from './imaging.js'
 import { createLevels } from './levels.js'
-import { initPerf, measure, count, setProbe, setInfo } from './perf.js'
+import {
+  initPerf,
+  measure,
+  count,
+  setProbe,
+  setInfo,
+  addDebugAction,
+  toggle as togglePerf,
+  showing as perfShowing,
+} from './perf.js'
 import { publish as publishToWall } from './store.js'
 
 // ── the knobs you'll actually want to turn ──────────────────────────────────
@@ -70,12 +79,24 @@ const VIEW_W = 1000
 const THUMB_W = 340
 const PILLARS_W = 900 // the famous photo, likewise sized for the column it sits in
 
-// A sideways-mounted camera, corrected on the kiosk shortcut rather than in the code, because
-// which way it is turned is a property of the bracket it is screwed to and not of the exhibit:
-//   ?rot=90   ?rot=180   ?rot=270
-const CAM_ROT = (() => {
-  const n = Number(new URLSearchParams(location.search).get('rot') ?? 270)
-  return Number.isFinite(n) ? ((Math.round(n / 90) * 90) % 360 + 360) % 360 : 0
+// A sideways-mounted camera. Which way it is turned is a property of the bracket it is screwed
+// to and not of the exhibit, so it is set on the machine rather than in the code — on the kiosk
+// shortcut as ?rot=90 / 180 / 270, or from the debug menu, which remembers it.
+const ROT_KEY = 'sharedsky.rot'
+const normRot = (n) => (Number.isFinite(n) ? (((Math.round(n / 90) * 90) % 360) + 360) % 360 : 0)
+
+// An explicit ?rot= beats anything remembered, so a machine can always be put back to a known
+// orientation from the address bar without clearing storage first.
+let camRot = (() => {
+  const asked = new URLSearchParams(location.search).get('rot')
+  if (asked != null) return normRot(Number(asked))
+  try {
+    const saved = localStorage.getItem(ROT_KEY)
+    if (saved != null) return normRot(Number(saved))
+  } catch {
+    // Storage disabled or private mode. The default below is a perfectly good answer.
+  }
+  return 270
 })()
 
 const PACE = matchMedia('(prefers-reduced-motion: reduce)').matches ? 0.3 : 1
@@ -382,9 +403,55 @@ new ResizeObserver(() => {
 function setAspect(w, h) {
   if (!w || !h) return
   // On a quarter turn the displayed shape is the camera's, turned — so the ratio flips too.
-  const upright = CAM_ROT === 90 || CAM_ROT === 270
+  const upright = camRot === 90 || camRot === 270
   const ar = upright ? h / w : w / h
   document.documentElement.style.setProperty('--shot-ar', ar.toFixed(4))
+}
+
+/** Push the current rotation into the page: the viewfinder's CSS, the frame's shape, the HUD. */
+function applyRotation() {
+  document.body.dataset.rot = String(camRot)
+  setInfo('rotation', `${camRot}deg`)
+  // A quarter turn changes the shape of the window as well as what is drawn in it, so the
+  // aspect has to be recomputed rather than merely redrawn.
+  setAspect(feed.videoWidth, feed.videoHeight)
+}
+
+/** Turn the camera, and remember it — the bracket will still be that way round tomorrow. */
+function setRotation(deg) {
+  camRot = normRot(deg)
+  try {
+    localStorage.setItem(ROT_KEY, String(camRot))
+  } catch {
+    // Not being able to remember it is no reason to refuse to do it.
+  }
+  applyRotation()
+}
+
+/**
+ * What the debug menu can do.
+ *
+ * Registered here rather than declared in perf.js, because these are this screen's own switches
+ * and the overlay has no business knowing what a camera rotation is. Actions only, no readouts:
+ * facts belong in the HUD, which is already showing them.
+ */
+function registerDebugActions() {
+  addDebugAction({
+    label: 'Rotate camera',
+    hint: 'quarter turn — viewfinder and capture together, remembered on this machine',
+    state: () => `${camRot}°`,
+    run: () => setRotation(camRot + 90),
+  })
+  addDebugAction({
+    label: 'Perf overlay',
+    state: () => (perfShowing() ? 'on' : 'off'),
+    run: () => togglePerf(),
+  })
+  addDebugAction({
+    label: 'Restart',
+    hint: 'back to the camera, keeping nothing',
+    run: () => reset(),
+  })
 }
 
 // ── the photo bay: two stacked canvases, so any change can crossfade ────────
@@ -497,11 +564,9 @@ function settleLevels(index) {
 
 async function boot() {
   initPerf()
+  registerDebugActions()
   loadPillars() // step 4's picture, decoded and split into planes while nobody is watching
-  if (CAM_ROT) {
-    document.body.dataset.rot = String(CAM_ROT)
-    setInfo('rotation', `${CAM_ROT}deg (?rot=)`)
-  }
+  applyRotation()
 
   // Four separate things have to be true for a picture to appear, and when one of them is not,
   // every one of the others still looks fine. So report all four, live:
@@ -761,7 +826,7 @@ async function takePhoto() {
   void flash.offsetWidth
   flash.classList.add('go')
 
-  frame = captureFrame(feed, CAPTURE_W, CAM_ROT)
+  frame = captureFrame(feed, CAPTURE_W, camRot)
   if (!frame) {
     shutter.disabled = false
     return
