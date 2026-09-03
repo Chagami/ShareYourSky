@@ -7,7 +7,8 @@
     "dev": "vite",
     "build": "vite build",
     "preview": "vite preview",
-    "sky": "node scripts/fetch-sky.mjs img/sky 40"
+    "sky": "node scripts/fetch-sky.mjs img/sky 40",
+    "exhibit": "vite preview"
   },
   "devDependencies": {
     "@vitejs/plugin-basic-ssl": "^2.3.0",

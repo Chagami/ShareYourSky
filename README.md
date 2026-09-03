@@ -65,9 +65,8 @@ secure context and only `localhost` gets one for free, which is the whole reason
 To lose the warning, swap `basicSsl()` in `vite.config.js` for `server.https` pointing at an
 mkcert pair and install the mkcert root on each client.
 
-**Give the machine a fixed address.** The tablet's kiosk shortcut has the address baked into it,
-and a DHCP lease that moves overnight is an exhibit that does not open. A reserved IP or a name
-on the local network, either is fine.
+**Give the machine a fixed address** — see below. The tablet's kiosk shortcut has the address
+baked into it, and a DHCP lease that moves overnight is an exhibit that does not open.
 
 **The pictures live on that machine and are not in git.** `wall/` is created on first use and
 gitignored — a fresh clone starts with an empty gallery, and pulling never overwrites what
@@ -76,6 +75,75 @@ scrolls off the wall, so it is the folder to back up and the folder to clear bef
 (`admin.html` → Delete everything).
 
 Updating later is `git pull` and restart. `npm ci` again only if `package-lock.json` moved.
+
+### A name instead of an IP
+
+`exhibits` works on this network because it is a record in the site's DNS, not a machine name:
+
+```
+exhibits  ->  exhibits.cssc.org  ->  192.168.66.56      (served by CSSC-DC1.cssc.org)
+```
+
+The bare word resolves because clients carry `cssc.org` in their DNS suffix search list. So
+`sharedsky` is the same request to whoever runs that DNS:
+
+> An **A record `sharedsky.cssc.org`** pointing at the exhibit machine, and that machine's
+> address **reserved** so it does not move. Alongside it, a **certificate for `sharedsky` and
+> `sharedsky.cssc.org`** from the internal CA.
+
+Ask for the certificate in the same breath, because of this:
+
+**`http://sharedsky` will not work for the tablet.** The camera is only available in a secure
+context, and only `https://` and `localhost` count — over plain http `navigator.mediaDevices`
+does not exist at all and the interaction cannot start. The gallery and admin screens have no
+camera and would be fine on http, but running the exhibit on two schemes to save one certificate
+is not worth the confusion. Use `https://sharedsky` for all of them.
+
+A certificate from the site's own CA is the one worth having: domain-joined machines already
+trust it, so nobody clicks through anything. Failing that, `mkcert -install` then
+`mkcert sharedsky sharedsky.cssc.org` produces a pair, and its root has to be installed on every
+client including the Android tablet — which is the fiddly one.
+
+Then point the exhibit at the name, on the default https port so the URL carries no port at all:
+
+```bash
+set SKY_PORT=443
+set SKY_CERT=C:\certs\sharedsky.crt
+set SKY_KEY=C:\certs\sharedsky.key
+npm run exhibit
+```
+
+`vite.config.js` reads those three. With a real certificate it drops the self-signed one; with a
+path that does not exist it says so and falls back rather than failing to start. Vite reads the
+names out of the certificate and prints them, so a correct setup announces itself:
+
+```
+➜  Local:  https://sharedsky/
+➜  Local:  https://sharedsky.cssc.org/
+```
+
+Two more things on the machine itself: allow the port inbound through Windows Firewall
+(`netsh advfirewall firewall add rule name="Share Your Sky" dir=in action=allow protocol=TCP
+localport=443`), and set it to start on boot — a **Scheduled Task** at startup, running
+`npm run exhibit` in the repo folder, set to restart on failure. That is the whole of what a
+service manager would do here.
+
+### Is Docker worth it?
+
+Not for this. There is nothing to isolate — no database, no system libraries, no version of
+anything that has to be pinned beyond what `package-lock.json` already pins — and the whole
+install is `npm ci`. Against that, a container on Windows means Docker Desktop has to be running
+and healthy before the exhibit can start, which is one more thing that can be broken on the
+morning of an opening. The camera never goes near it either: that is the tablet's browser talking
+to the server over the network.
+
+The problem Docker is usually reached for here is *keep it running and restart it if it dies*,
+and on Windows a Scheduled Task does that with nothing to install.
+
+It would start to earn its place with several exhibits sharing one machine, or the same image
+deployed to more than one venue. If it comes to that, the pieces are: a Node base image, `npm ci`,
+`CMD npm run exhibit`, the port published, and — the part not to miss — `wall/` bind-mounted to
+the host, because it is the visitors' pictures and it must outlive the container.
 
 ### Why HTTPS
 
