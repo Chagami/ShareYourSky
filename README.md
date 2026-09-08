@@ -711,6 +711,40 @@ camera-permission state, the camera list with the `?cam=` index for each, and ru
 they should be flat across visitors, and a kiosk never restarts, so anything that grows has all
 day to do it.
 
+### Banding on the exhibit panel
+
+The install screen showed flickering red and blue speckle in a ring around the live feed. Not on
+a desk monitor, not on a flat black image, and nowhere else on the page. That combination is the
+whole diagnosis.
+
+It was `.live-frame`'s drop shadow: `0 30px 90px rgba(0, 0, 0, .65)`. Measured against the same
+frame with the shadow removed, at its darkest it took the background from (6,7,10) to (4,4,6) —
+**five levels out of 255**, averaging 1.47 across the band. Invisible. To buy that nothing it
+laid a smooth ramp about 110px wide right around the frame, and 8-bit output quantises such a
+ramp into about nine steps: a contour every twelve pixels, in a ring, exactly where the
+viewfinder is. A patch of that ring held 9 distinct colours; with the shadow gone it holds 1.
+
+Chrome draws all of this perfectly steadily — eight captures in a row came back bit-identical —
+so the flicker was never the page redrawing. It is the panel. A display that cannot show every
+8-bit level fakes the ones in between by alternating rapidly between its two nearest, and the
+darkest few percent of the range is where that shimmer becomes visible. Give it nine adjacent
+near-black levels in a band and it shimmers in a band.
+
+**The rule that follows: no wide, soft, low-alpha shadows on the near-black ground.** A 1px
+hairline defines these edges anyway, and it is one hard step rather than a ramp. The same shadow
+was on `.pic` and went with it.
+
+Two related things left deliberately alone:
+
+- **The sky glow** behind everything is still there. It bands too — 33 distinct colours in one
+  patch, blue running 19..27 — but it is a broad screen-wide gradient, not a ring, and it is not
+  what was being reported. **Background glow** in the debug menu turns it off, so it can be
+  ruled in or out on the screen itself; with it off and the shadow gone the background measures
+  a single flat colour.
+- **The gallery's print shadows** stay. There the shadow falls on other prints as often as on
+  the wall, which is real work rather than a black blur on a black ground. Worth re-checking on
+  the wall panels, since the same defect would look the same.
+
 The `?fx` modes are applied by a small inline script **before the module loads**, because on
 hardware where the heavy effects are the problem, one painted frame of them is one too many.
 They are also the fastest way to find out whether the GPU is what is wrong: if `?fx=lite` stops
