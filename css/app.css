@@ -359,7 +359,20 @@ body[data-rot="270"] .framed { transform: translate(-50%, -50%) rotate(270deg) s
   /* No soft drop shadow — see "a black blur on a black ground" above. */
   box-shadow: 0 0 0 1px var(--line);
 }
-.photo { position: absolute; inset: 0; width: 100%; height: 100%; display: block; background: #0b0d11; }
+/* object-fit matters only when the frame is not the shape the picture is, which should never
+   happen: every .pic gives itself the right aspect-ratio. It can, though — these are flex items
+   in a column, and a column that runs short of room shrinks its items rather than overflowing,
+   which silently stretches faces. On the kiosk's own screen there is room and nothing shrinks;
+   this is so that a smaller window letterboxes instead of lying about what the camera saw. */
+.photo {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  display: block;
+  object-fit: contain;
+  background: #0b0d11;
+}
 
 /* The picture at the top of a left-hand column — steps 2 and 3's second phase. The height cap
    is expressed as a width so that aspect-ratio stays in charge and the sentence underneath
@@ -569,6 +582,10 @@ body[data-rot="270"] .framed { transform: translate(-50%, -50%) rotate(270deg) s
    the picture reaches the same 88vw and the question still has its room underneath. */
 .pic-hero {
   width: min(88vw, calc(68vh * var(--shot-ar)));
+  /* .pic has no height of its own — every one of these gives itself a shape, because the
+     visitor's photo and the nebula are different shapes and neither can be given the other's.
+     Without this the box is zero pixels tall and all that renders is the hairline. */
+  aspect-ratio: var(--shot-ar);
 }
 
 .story-ask {
