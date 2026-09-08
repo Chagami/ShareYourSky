@@ -408,6 +408,33 @@ function setAspect(w, h) {
   document.documentElement.style.setProperty('--shot-ar', ar.toFixed(4))
 }
 
+// The faint sky glow behind everything. Off is a flat black ground — the test for whether the
+// banding in the background is what someone is seeing shimmer. ?glow=off, or the debug menu.
+const GLOW_KEY = 'sharedsky.glow'
+let glowOn = (() => {
+  if (new URLSearchParams(location.search).get('glow') === 'off') return false
+  try {
+    return localStorage.getItem(GLOW_KEY) !== 'off'
+  } catch {
+    return true
+  }
+})()
+
+function applyGlow() {
+  document.body.dataset.glow = glowOn ? 'on' : 'off'
+  setInfo('glow', glowOn ? 'on' : 'off - flat background')
+}
+
+function setGlow(next) {
+  glowOn = next
+  try {
+    localStorage.setItem(GLOW_KEY, glowOn ? 'on' : 'off')
+  } catch {
+    // Not being able to remember it is no reason to refuse to do it.
+  }
+  applyGlow()
+}
+
 /** Push the current rotation into the page: the viewfinder's CSS, the frame's shape, the HUD. */
 function applyRotation() {
   document.body.dataset.rot = String(camRot)
@@ -441,6 +468,12 @@ function registerDebugActions() {
     hint: 'quarter turn — viewfinder and capture together, remembered on this machine',
     state: () => `${camRot}°`,
     run: () => setRotation(camRot + 90),
+  })
+  addDebugAction({
+    label: 'Background glow',
+    hint: 'off is a flat black — turn it off to test background banding',
+    state: () => (glowOn ? 'on' : 'off'),
+    run: () => setGlow(!glowOn),
   })
   addDebugAction({
     label: 'Perf overlay',
@@ -567,6 +600,7 @@ async function boot() {
   registerDebugActions()
   loadPillars() // step 4's picture, decoded and split into planes while nobody is watching
   applyRotation()
+  applyGlow()
 
   // Four separate things have to be true for a picture to appear, and when one of them is not,
   // every one of the others still looks fine. So report all four, live:

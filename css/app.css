@@ -50,6 +50,17 @@ body {
     radial-gradient(62vw 56vh at 86% 88%, rgba(196, 118, 96, 0.07), transparent 70%);
 }
 
+/* Off, for a flat black ground.
+ *
+ * Those two gradients are a very shallow ramp in the darkest few percent of the range: measured
+ * over one 87x220 patch they put 87 distinct colours on screen, blue running 14..27 against
+ * red's 7..14. Chrome renders that perfectly steadily — eight captures in a row were
+ * bit-identical — so any *flicker* is the panel, not the page: a 6-bit+FRC display simulates
+ * the levels in between by alternating between the two nearest it can actually show, and near
+ * black is exactly where that shimmer is visible. A flat ground gives it nothing to shimmer on.
+ */
+body[data-glow="off"] .sky { background: none; }
+
 /* ═══════════ four steps and a dock ═══════════
    Portrait first. The screen is 2160x3840 and reads like a very large phone: content fills the
    upper part, and the one thing to press is always at the bottom within reach. */
