@@ -409,6 +409,41 @@ function setAspect(w, h) {
   document.documentElement.style.setProperty('--shot-ar', ar.toFixed(4))
 }
 
+// The black behind everything.
+//
+// A display that cannot show every 8-bit level fakes the ones in between by alternating between
+// its two nearest, frame after frame — and in the darkest few percent of the range that reads
+// as static. #06070a was the worst value available: blue 10 sits exactly halfway between the 8
+// and the 12 a 6-bit panel can show, so 60% of the screen alternated 50/50 for ever.
+//
+// All three of these are levels such a panel can show exactly. Which one a given screen prefers
+// is a question about that screen, so it is answered on that screen rather than here.
+const GROUNDS = ['#040408', '#000000', '#06070a']
+const GROUND_KEY = 'sharedsky.ground'
+let groundAt = (() => {
+  try {
+    const found = GROUNDS.indexOf(localStorage.getItem(GROUND_KEY))
+    return found < 0 ? 0 : found
+  } catch {
+    return 0
+  }
+})()
+
+function applyGround() {
+  document.documentElement.style.setProperty('--bg', GROUNDS[groundAt])
+  setInfo('ground', GROUNDS[groundAt] + (groundAt === 2 ? ' - the old one, it shimmers' : ''))
+}
+
+function setGround(next) {
+  groundAt = ((next % GROUNDS.length) + GROUNDS.length) % GROUNDS.length
+  try {
+    localStorage.setItem(GROUND_KEY, GROUNDS[groundAt])
+  } catch {
+    // Not being able to remember it is no reason to refuse to do it.
+  }
+  applyGround()
+}
+
 // The faint sky glow behind everything. Off is a flat black ground — the test for whether the
 // banding in the background is what someone is seeing shimmer. ?glow=off, or the debug menu.
 const GLOW_KEY = 'sharedsky.glow'
@@ -469,6 +504,12 @@ function registerDebugActions() {
     hint: 'quarter turn — viewfinder and capture together, remembered on this machine',
     state: () => `${camRot}°`,
     run: () => setRotation(camRot + 90),
+  })
+  addDebugAction({
+    label: 'Ground',
+    hint: 'the black behind everything — if the screen shows static, try the next one',
+    state: () => GROUNDS[groundAt],
+    run: () => setGround(groundAt + 1),
   })
   addDebugAction({
     label: 'Background glow',
@@ -639,6 +680,7 @@ async function boot() {
   wireDebugKnock()
   loadPillars() // step 4's picture, decoded and split into planes while nobody is watching
   applyRotation()
+  applyGround()
   applyGlow()
 
   // Four separate things have to be true for a picture to appear, and when one of them is not,

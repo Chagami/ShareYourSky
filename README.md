@@ -734,13 +734,36 @@ near-black levels in a band and it shimmers in a band.
 hairline defines these edges anyway, and it is one hard step rather than a ramp. The same shadow
 was on `.pic` and went with it.
 
+Removing the shadow was not the end of it. With the shadow gone *and* the glow off the ring
+measured a single flat colour, and the panel still showed blue static — everywhere this time,
+not in a ring. The reason is the ground itself.
+
+`--bg` was `#06070a`, and blue 10 is the worst value in the neighbourhood. A 6-bit panel can
+show 8 and it can show 12; ten is exactly halfway, so it displays 8 for half the frames and 12
+for the other half, for ever. That was **60.1% of every dark pixel on the screen** alternating at
+maximum amplitude — which is what blue static is. A flat black image never does it because 0 is
+a level every panel can show exactly.
+
+So the ground is now `#040408`: the same slight blue lean (blue four levels above red, as
+before), every channel on a step such a panel displays exactly. Measured after the change,
+**98.4% of dark pixels sit on `4,4,8`, steady**, and only 1.5% land on a level needing dither —
+those being antialiased text and border edges, which are a pixel wide and not worth chasing.
+
+**Ground** in the debug menu cycles `#040408 → #000000 → #06070a`, because which levels a given
+panel can show is a fact about that panel, best settled in front of it. Pure black is the one
+value no display has to dither.
+
+The two `rgba(255, 255, 255, .04)` fades on `.dock` and `.topbar` went at the same time, for the
+same reason: a ten-level ramp each, over a hairline border that was already doing the separating.
+
 Two related things left deliberately alone:
 
-- **The sky glow** behind everything is still there. It bands too — 33 distinct colours in one
-  patch, blue running 19..27 — but it is a broad screen-wide gradient, not a ring, and it is not
-  what was being reported. **Background glow** in the debug menu turns it off, so it can be
-  ruled in or out on the screen itself; with it off and the shadow gone the background measures
-  a single flat colour.
+- **The sky glow** behind everything is still on by default, and on this panel it should not be.
+  It is a smooth gradient through the near-black range, so most of it lands between displayable
+  levels: with it on, **57.7%** of dark pixels need dithering, against 1.5% with it off. That is
+  the whole background shimmering. **Background glow** in the debug menu turns it off and
+  remembers it. The default is unchanged only because the glow is a deliberate part of the look
+  and is perfectly well behaved on an ordinary monitor — on the exhibit panel, turn it off.
 - **The gallery's print shadows** stay. There the shadow falls on other prints as often as on
   the wall, which is real work rather than a black blur on a black ground. Worth re-checking on
   the wall panels, since the same defect would look the same.

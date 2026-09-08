@@ -4,7 +4,12 @@
    screen is decided entirely by body[data-stage] at the bottom of this file. */
 
 :root {
-  --bg: #06070a;
+  /* Every channel here is a level a 6-bit panel can show exactly, which is not fussiness: see
+     "a black blur on a black ground" below. #06070a, which this was, is the worst value in the
+     neighbourhood — blue 10 sits precisely halfway between the 8 and the 12 such a panel can
+     actually display, so it has to show 8 half the frames and 12 the other half, for ever, over
+     every pixel of background. That is what blue static is. */
+  --bg: #040408;
   --ink: #f4f5f7;
   --muted: #949aa6;
   --panel: rgba(255, 255, 255, 0.045);
@@ -577,8 +582,9 @@ body[data-rot="270"] .framed { transform: translate(-50%, -50%) rotate(270deg) s
   justify-content: center;
   gap: 3vw;
   padding: 2vh 5vw calc(2.6vh + env(safe-area-inset-bottom, 0px));
+  /* The hairline separates the dock; there used to be a 4% white fade above it as well, and it
+     was another near-black ramp for the panel to shimmer on. The border was doing the work. */
   border-top: 1px solid var(--line);
-  background: linear-gradient(to top, rgba(255, 255, 255, 0.04), transparent);
 }
 
 .dock-action { display: flex; align-items: center; justify-content: center; min-height: 1px; }
@@ -650,8 +656,8 @@ body[data-rot="270"] .framed { transform: translate(-50%, -50%) rotate(270deg) s
   display: flex;
   justify-content: center;
   padding: 2.4vh 5vw 1.6vh;
+  /* No fade under it, for the reason given on .dock. */
   border-bottom: 1px solid var(--line);
-  background: linear-gradient(to bottom, rgba(255, 255, 255, 0.04), transparent);
 }
 
 .steps-bar {
