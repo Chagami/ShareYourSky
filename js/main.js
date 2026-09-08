@@ -22,6 +22,7 @@ import {
   setProbe,
   setInfo,
   addDebugAction,
+  toggleDebug,
   toggle as togglePerf,
   showing as perfShowing,
 } from './perf.js'
@@ -593,11 +594,49 @@ function settleLevels(index) {
   requestAnimationFrame(tick)
 }
 
+/**
+ * The way in with no keyboard: tap the camera step five times, then the adjust step.
+ *
+ * Those two are the progress bar's own indicators. They have no behaviour of their own — a tap
+ * on one is already a no-op — which is exactly what makes them safe to overload, and what keeps
+ * this from taking a press away from anything a visitor might want.
+ *
+ * The run has to be a run: any other station, or a pause longer than a couple of seconds, puts
+ * the count back to nothing. So a visitor idly prodding the bar cannot leave the exhibit armed
+ * for whoever touches it next.
+ */
+const KNOCK_TAPS = 5
+const KNOCK_GAP = 2500
+
+function wireDebugKnock() {
+  let taps = 0
+  let last = 0
+
+  stepsBar.addEventListener('click', (event) => {
+    const dot = event.target.closest('.dot')
+    if (!dot) return
+
+    const now = performance.now()
+    if (now - last > KNOCK_GAP) taps = 0
+    last = now
+
+    if (dot.dataset.step === 'camera') {
+      taps++
+    } else if (dot.dataset.step === 'edit' && taps >= KNOCK_TAPS) {
+      taps = 0
+      toggleDebug(true)
+    } else {
+      taps = 0
+    }
+  })
+}
+
 // ── 1. live ─────────────────────────────────────────────────────────────────
 
 async function boot() {
   initPerf()
   registerDebugActions()
+  wireDebugKnock()
   loadPillars() // step 4's picture, decoded and split into planes while nobody is watching
   applyRotation()
   applyGlow()

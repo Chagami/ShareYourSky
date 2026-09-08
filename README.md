@@ -686,11 +686,18 @@ The overlay above is a readout. The menu is the half that can be clicked:
 | --- | --- |
 | `?debug=1` | on from the URL |
 | <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>D</kbd> | on a machine with a keyboard |
+| tap **1. Photo** five times, then **2. Adjust** | on the kiosk, with nothing plugged in |
 | <kbd>Esc</kbd> | closes it |
 
 A modifier rather than a bare key, because unlike the readout these buttons *do* things. It
-holds **Rotate camera**, **Perf overlay** and **Restart**, each showing its current state beside
-the label.
+holds **Rotate camera**, **Background glow**, **Perf overlay** and **Restart**, each showing its
+current state beside the label.
+
+The tap sequence uses the progress bar's own station marks. They have no behaviour of their own,
+so a tap on one is already a no-op — which is what makes them safe to overload without taking a
+press away from anything a visitor might want. It has to be a run: any other station, or a pause
+over two and a half seconds, puts the count back to nothing, so idle prodding cannot leave the
+exhibit armed for whoever touches it next.
 
 The two overlays are deliberately separate objects. The readout must never be able to eat a
 visitor's touch, so it stays `pointer-events: none` forever; the menu is interactive, which is
