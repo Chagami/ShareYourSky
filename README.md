@@ -310,7 +310,7 @@ part and the one thing to press is always at the foot, within reach.
 | `camera` | Title, viewfinder, countdown | the shutter |
 | `edit` | Their photo built up a colour at a time, the three channels it is made of beside it, and the two paragraphs that explain both | `Next`, once the picture is made |
 | `adjust` | The picture alone and large with the question; then the same charts back, each with a spectrum across its top | `Share my sky`, once a colour has been moved |
-| `confirm` | "Would you like to share your sky to the gallery?", the picture beside it | `No` / `Yes` |
+| `confirm` | The picture across the screen, the question large underneath it | `No` / `Yes` |
 | `astro` | The Pillars of Creation in step 2's exact arrangement, with the same three charts | `Start again` |
 
 Each step is a self-contained `<section>`; only one is on screen, chosen by `body[data-step]`.
@@ -385,6 +385,40 @@ rather than a second screen:
    numbers. The black and white points are still theirs to move, but each chart has grown a
    **spectrum across its top**: the colour a channel's light is shown in is now the variable,
    and it can be anywhere on the hue circle rather than one of three.
+### The share question, and the two ways out of it
+
+The picture gets the whole width here — 88vw, centred, with the question underneath rather than
+beside it. It was a two-column row, and at half the width the photograph read as an illustration
+to the question instead of the subject of it. This is the last and longest look a visitor gets
+at what they made, so it gets the room. Two limits decide the size and which one binds depends
+on the shape of the photograph: a landscape picture stops at 88vw, and the 68vh cap is set just
+high enough that a portrait one reaches the same 88vw on the kiosk's 9:16 screen without
+crowding the question below it.
+
+The answers are in the dock, which is below the question anyway, and they are held back until
+the question has finished arriving — offering a choice before it has been put is a way of
+getting the wrong answer.
+
+Four movements carry the picture through, and they are one continuous gesture rather than four
+effects:
+
+| | |
+| --- | --- |
+| leaving `adjust` | it stretches out of shape, anchored at the bottom right so the top left is the corner that travels, and **holds** there |
+| arriving | the hold releases: it spins in from off the left edge, turning, into the middle |
+| **Yes** | away to the right, turning, off the edge |
+| **No** | it falls — slowly, swaying, like a feather, and then the piece restarts |
+
+The stretch runs on the screen being left, not the one arriving, which is why it reads as the
+picture being carried across rather than one picture leaving and another appearing. Nothing
+cancels that animation before the step changes: the cancel and the section swap happen in the
+same task, so the snap back never paints.
+
+The fall is deliberately not a drop. Gravity is the wrong feeling for something a visitor made
+being let go of, so there is no acceleration, and the sway and the tilt run at different rhythms
+so they never line up into something mechanical. It costs two and a half seconds, which is the
+point.
+
 7. `Share my sky` is not offered until a colour has been moved *off its own hue*. Touching the
    strip and landing back where you started has not answered the question. It no longer shares
    anything either — it asks.

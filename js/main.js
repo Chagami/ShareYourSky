@@ -49,13 +49,19 @@ const TIMELINE = {
   fly: 1000, // one layer's trip into the frame
   flyGap: 260, // and the pause before the next sets off
 
-  spin: 1200, // the picture stretching, snapping back and turning onto the share question
+  // The picture's journey through the share question. It pulls out of shape on the screen it is
+  // leaving, holds there, spins in from the left onto this one, and then leaves to one side or
+  // the other according to the answer.
+  stretch: 620, // pulling out of shape on the way out of the adjust screen
+  stretchHold: 420, // ...and held there, so the arrival reads as the release
+  spin: 1800, // in from the left, turning, into the middle of the share question
+  spinOut: 950, // yes: away to the right
+  feather: 2600, // no: down, slowly, the long way
 
   // Step 3, which asks its question and then hands back the controls.
   lineGap: 520, // between the two sentences of the question
   askHold: 1000, // the question, finished and read, before the colours are offered
   phaseSwap: 720, // the picture moving aside to make room for the charts
-  shareHold: 900, // the share button pressed, before the last step opens
 
   // Step 4, which opens on an empty screen.
   astroHold: 1200, // the line about the gallery, read before the famous photo arrives
@@ -885,11 +891,23 @@ const STEP_ENTER = {
     confirmAsk.replaceChildren()
     yesBtn.disabled = false
     noBtn.disabled = false
+    // The answers wait for the question. They are in the dock at the foot of the screen, which
+    // is below the text either way, and arriving with it would offer a choice before it has
+    // been put.
+    yesBtn.classList.add('waiting')
+    noBtn.classList.add('waiting')
     drawComposite(confirmCanvas, viewFrame ?? frame, lutsNow(), tints())
 
-    await spinIn(confirmPic, TIMELINE.spin)
+    await spinInFromLeft(confirmPic, TIMELINE.spin)
+    if (step() !== 'confirm') return
     await wait(t(TIMELINE.storyLeadIn))
     await fadeIn(confirmAsk, CONFIRM_ASK)
+    if (step() !== 'confirm') return
+
+    yesBtn.classList.remove('waiting')
+    noBtn.classList.remove('waiting')
+    pop(noBtn)
+    pop(yesBtn, 90)
   },
 
   // Opens blank, on purpose. The line arrives on its own, and only then the famous photo and
@@ -1160,7 +1178,7 @@ function clearBeats() {
   )
   document.querySelectorAll('.channel, .chan-layer').forEach((el) => el.classList.remove('in'))
   slidersTitle.classList.remove('in')
-  ;[nextBtn, submitBtn, resetBtn].forEach((b) => b.classList.remove('waiting'))
+  ;[nextBtn, submitBtn, yesBtn, noBtn, resetBtn].forEach((b) => b.classList.remove('waiting'))
   fliers.replaceChildren()
   astroSplit.hidden = true
   adjustSplit.dataset.phase = 'ask'
@@ -1202,41 +1220,98 @@ function flipTo(el, from, ms) {
 }
 
 /**
- * The picture arrives by being pulled out of shape and then snapping back.
+ * The picture pulls out of shape on the screen being left, and holds there.
  *
- * Two movements, not one. The first pulls the top left corner away — the origin is the opposite
- * corner, so that corner is the only one that travels. The second lets it go: it snaps back to
- * size and turns a full revolution about its own centre as it does.
- *
- * They cannot be one animation because they turn about different points, and rotating about the
- * bottom right corner swings the whole picture off the side of the screen. Both are cancelled at
- * the end rather than left filling, because a full turn lands exactly where no transform at all
- * would — so letting go changes nothing on screen and hands the element back.
+ * The anchor is the bottom right corner, so the top left is the one that travels. Nothing
+ * cancels it here: the caller changes step in the same task, so the snap back never paints.
  */
-async function spinIn(el, ms) {
-  const stretch = track(
+async function stretchAway(el, ms) {
+  const grow = track(
     el.animate(
       [
-        { transformOrigin: '100% 100%', transform: 'scale(0.5)', opacity: 0 },
-        { transformOrigin: '100% 100%', transform: 'scale(1.22)', opacity: 1 },
+        { transformOrigin: '100% 100%', transform: 'none' },
+        { transformOrigin: '100% 100%', transform: 'scale(1.16)' },
       ],
-      { duration: t(ms) * 0.42, easing: 'cubic-bezier(.16, 1, .3, 1)', fill: 'both' }
+      { duration: t(ms), easing: 'cubic-bezier(.34, 1.06, .48, 1)', fill: 'both' }
     )
   )
-  await stretch.finished.catch(() => {})
+  await grow.finished.catch(() => {})
+  await wait(t(TIMELINE.stretchHold))
+  grow.cancel()
+}
 
-  const snap = track(
+/**
+ * ...and arrives spinning, in from the left, landing in the middle of the new screen.
+ *
+ * The distance is measured from the picture's own box rather than being a fixed number, so it
+ * starts off the edge of the screen whatever shape the photograph turned out to be. Opacity is
+ * up by a fifth of the way in: a picture that fades in over the whole flight never reads as
+ * having travelled, it reads as having appeared.
+ */
+async function spinInFromLeft(el, ms) {
+  const box = el.getBoundingClientRect()
+  const from = -(box.right + box.width * 0.2)
+
+  const anim = track(
     el.animate(
       [
-        { transformOrigin: '50% 50%', transform: 'scale(1.22) rotate(0deg)' },
-        { transformOrigin: '50% 50%', transform: 'scale(1) rotate(360deg)' },
+        { transform: `translateX(${from}px) rotate(-330deg) scale(.45)`, opacity: 0, offset: 0 },
+        { opacity: 1, offset: 0.22 },
+        { transform: 'translateX(0) rotate(0deg) scale(1)', opacity: 1, offset: 1 },
       ],
-      { duration: t(ms) * 0.58, easing: 'cubic-bezier(.3, 0, .18, 1)', fill: 'both' }
+      { duration: t(ms), easing: 'cubic-bezier(.16, .82, .24, 1)', fill: 'both' }
     )
   )
-  await snap.finished.catch(() => {})
-  stretch.cancel()
-  snap.cancel()
+  await anim.finished.catch(() => {})
+  anim.cancel()
+}
+
+/** Yes: away to the right, turning, off the edge. */
+async function spinAwayRight(el, ms) {
+  const box = el.getBoundingClientRect()
+  const to = innerWidth - box.left + box.width * 0.2
+
+  const anim = track(
+    el.animate(
+      [
+        { transform: 'none', opacity: 1, offset: 0 },
+        { opacity: 1, offset: 0.72 },
+        { transform: `translateX(${to}px) rotate(330deg) scale(.45)`, opacity: 0, offset: 1 },
+      ],
+      { duration: t(ms), easing: 'cubic-bezier(.45, 0, .7, .45)', fill: 'both' }
+    )
+  )
+  await anim.finished.catch(() => {})
+  anim.cancel()
+}
+
+/**
+ * No: it falls.
+ *
+ * Not a drop — a feather. No acceleration, because gravity is the wrong feeling for a picture
+ * being let go of; and the sway and the tilt are given different rhythms so the two never line
+ * up into something mechanical. The ease between each pair of keyframes does the rest: it
+ * slows at the end of every swing, which is what a falling leaf actually does.
+ */
+async function featherDown(el, ms) {
+  const box = el.getBoundingClientRect()
+  const drop = innerHeight - box.top + box.height * 0.2
+  const sway = Math.max(24, box.width * 0.085)
+
+  const anim = track(
+    el.animate(
+      [
+        { transform: 'translate(0, 0) rotate(0deg)', opacity: 1, offset: 0 },
+        { transform: `translate(${-sway}px, ${drop * 0.22}px) rotate(-8deg)`, opacity: 1, offset: 0.24 },
+        { transform: `translate(${sway * 0.92}px, ${drop * 0.47}px) rotate(7deg)`, opacity: 1, offset: 0.5 },
+        { transform: `translate(${-sway * 0.66}px, ${drop * 0.73}px) rotate(-5.5deg)`, opacity: 1, offset: 0.76 },
+        { transform: `translate(${sway * 0.4}px, ${drop}px) rotate(4deg)`, opacity: 0, offset: 1 },
+      ],
+      { duration: t(ms), easing: 'ease-in-out', fill: 'both' }
+    )
+  )
+  await anim.finished.catch(() => {})
+  anim.cancel()
 }
 
 /** The same, out of wherever the step we have just left was showing its picture. */
@@ -1361,8 +1436,13 @@ function pickHue(src, deg) {
 }
 
 /** "Share my sky" no longer shares anything — it asks. */
-function onSubmit() {
+async function onSubmit() {
   if (step() !== 'adjust') return
+  submitBtn.disabled = true
+  // The picture leaves this screen before the next one has it: it stretches, holds, and the
+  // spin onto the question is the release of that hold.
+  await stretchAway(adjustPic, TIMELINE.stretch)
+  submitBtn.disabled = false
   goToStep('confirm')
 }
 
@@ -1388,8 +1468,22 @@ async function onYes() {
     (err) => setInfo('shared', `failed: ${err.message}`)
   )
 
-  await wait(t(TIMELINE.shareHold))
+  await spinAwayRight(confirmPic, TIMELINE.spinOut)
   goToStep('astro')
+}
+
+/**
+ * No.
+ *
+ * The picture falls rather than cutting away. It is the one moment in the piece where something
+ * a visitor made is discarded, and letting it go quietly is worth the two and a half seconds.
+ */
+async function onNo() {
+  if (step() !== 'confirm') return
+  yesBtn.disabled = true
+  noBtn.disabled = true
+  await featherDown(confirmPic, TIMELINE.feather)
+  reset()
 }
 
 // ── 4. the famous photo ─────────────────────────────────────────────────────
@@ -1504,7 +1598,7 @@ nextBtn.addEventListener('click', nextStep)
 submitBtn.addEventListener('click', onSubmit)
 yesBtn.addEventListener('click', onYes)
 // No keeps nothing: the picture is never published, and the next visitor starts clean.
-noBtn.addEventListener('click', reset)
+noBtn.addEventListener('click', onNo)
 resetBtn.addEventListener('click', reset)
 
 boot()

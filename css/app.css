@@ -553,20 +553,34 @@ body[data-rot="270"] .framed { transform: translate(-50%, -50%) rotate(270deg) s
 
 /* ─── the share question ─── */
 
-/* The question on the left, the picture they are being asked about on the right. */
+/* The picture across the screen, the question underneath it. This is the last and longest look
+   a visitor gets at what they made, and it was previously sharing a row with the text at half
+   the width — which read as an illustration to the question rather than the subject of it. */
 .step[data-step="confirm"] {
   justify-content: center;
   padding: 3vh 5vw;
+  gap: 3.4vh;
 }
-.confirm-row {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
-  align-items: center;
-  gap: 4vw;
-  width: min(94vw, 2000px);
+
+/* All the width there is, less a margin.
+   Two limits, and which one binds depends on the shape of the photograph. A landscape picture
+   runs out of width first and stops at 88vw. A portrait one would run out of height, so the
+   68vh cap is set just high enough that on the kiosk's 9:16 screen it does not bind either —
+   the picture reaches the same 88vw and the question still has its room underneath. */
+.pic-hero {
+  width: min(88vw, calc(68vh * var(--shot-ar)));
 }
-.confirm-row .story-wide { margin-inline: 0; }
-.confirm-row .pic-col { width: min(100%, calc(56vh * var(--shot-ar))); }
+
+.story-ask {
+  /* .story reserves 6.5em so paragraphs arriving in sequence do not shunt the page around.
+     There is only ever one line here, and at this size that reservation is half a screen. */
+  min-height: 0;
+  max-width: 24ch;
+  font-size: clamp(1.5rem, 4.6vw, 4.4rem);
+  font-weight: 600;
+  line-height: 1.18;
+  letter-spacing: -0.02em;
+}
 
 /* ─── 4. the famous photo ─── */
 
