@@ -31,7 +31,12 @@
 
   /* One definition of the viewfinder's width, so the rotated case can be derived from it
      instead of guessed at again. */
-  --frame-w: min(90vw, calc(64vh * var(--shot-ar)));
+  /* 60vh, not the 64 it was: doubling the shutter took 190px off the height the viewfinder had
+     to sit in, and a flex column short of room shrinks its children rather than overflowing.
+     At 64 the frame came out 2.8% off its own aspect ratio — the video only crops, so nothing
+     looked stretched, but the viewfinder is a promise about the shape of the photograph and it
+     should keep it. */
+  --frame-w: min(90vw, calc(60vh * var(--shot-ar)));
 }
 
 * { box-sizing: border-box; }
@@ -623,12 +628,14 @@ body[data-rot="270"] .framed { transform: translate(-50%, -50%) rotate(270deg) s
 
 /* The shutter, at the bottom of the page and sized for a stranger's thumb from a metre away. */
 .shutter {
-  width: clamp(84px, 13vw, 190px);
+  /* Twice what it was. The ring is doubled with it — left at 5px it reads as a hairline round a
+     large circle rather than as the same button, larger. */
+  width: clamp(168px, 26vw, 380px);
   aspect-ratio: 1;
   display: grid;
   place-items: center;
   padding: 0;
-  border: 5px solid rgba(255, 255, 255, 0.92);
+  border: 10px solid rgba(255, 255, 255, 0.92);
   border-radius: 50%;
   background: rgba(0, 0, 0, 0.25);
   cursor: pointer;
