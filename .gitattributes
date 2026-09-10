@@ -1,0 +1,9 @@
+# The exhibit runs on Linux; this repo is edited on Windows, where git happily checks files
+# out with CRLF. A shell script with CRLF fails on Linux with
+#
+#   bad interpreter: /usr/bin/env bash^M
+#
+# ...which reads like a missing interpreter and is not. Pin the ones that must stay LF.
+*.sh text eol=lf
+*.service text eol=lf
+scripts/exhibit.env.example text eol=lf

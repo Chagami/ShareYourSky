@@ -8,9 +8,6 @@ wall/
 # wall — rename it to img/sky/ (or move files into it) to put them back in circulation.
 img/sky-old-test/
 
-# What the exhibit server printed. Written by scripts/start-exhibit.cmd.
-logs/
-
-# Port and certificate paths for one particular machine. Copied from
-# scripts/exhibit.env.example.cmd and edited on the exhibit PC.
-scripts/exhibit.env.cmd
+# Port, scheme and certificate paths for one particular machine. Copied from
+# scripts/exhibit.env.example and edited on the exhibit PC, so a pull cannot overwrite it.
+scripts/exhibit.env

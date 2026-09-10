@@ -4,27 +4,41 @@ import basicSsl from '@vitejs/plugin-basic-ssl'
 import { wallStore } from './server/wall.js'
 import { galleryAllocator } from './server/gallery.js'
 
-// Where the exhibit answers. Defaults are the developer ones; the exhibit machine sets these so
-// the address the tablet is pointed at can be a name and a bare https:// with no port on it.
+// Where the exhibit answers, and how. The defaults are the developer's; the exhibit machine
+// sets these in scripts/exhibit.env, so the address on the kiosk shortcut can be a bare name
+// with no port after it.
 //
-//   SKY_PORT=443
-//   SKY_CERT=C:\certs\sharedsky.crt
-//   SKY_KEY=C:\certs\sharedsky.key
+// Three modes, in order of precedence:
 //
-// A real certificate replaces the self-signed one, and with it the "not private" screen every
-// client otherwise has to click through. It has to be issued for the *name* the clients type —
-// a certificate for an IP address will not do, which is half the reason for having a name.
+//   SKY_CERT + SKY_KEY   real https. The certificate has to be issued for the *name* clients
+//                        type — one for an IP address will not do, which is half the reason
+//                        for having a name at all.
+//   SKY_HTTP=1           plain http, no TLS. What http://sharedsky needs.
+//   neither              self-signed https, the useful default on a dev machine because the
+//                        camera works over it from another device on the LAN.
+//
+// The catch with SKY_HTTP, and it is the whole catch: getUserMedia exists only in a secure
+// context, and plain http is not one unless the host is literally localhost. The gallery and
+// admin pages have no camera and do not care. The interaction does — README, under "A name".
 const PORT = Number(process.env.SKY_PORT) || 4173
 const CERT = process.env.SKY_CERT
 const KEY = process.env.SKY_KEY
-const realCert = CERT && KEY && existsSync(CERT) && existsSync(KEY)
+const plainHttp = process.env.SKY_HTTP === '1'
+const realCert = Boolean(CERT && KEY && existsSync(CERT) && existsSync(KEY))
 
 if ((CERT || KEY) && !realCert) {
   console.warn(`\n  SKY_CERT/SKY_KEY are set but one of them is missing on disk.`)
-  console.warn(`  Falling back to the self-signed certificate.\n`)
+  console.warn(`  Falling back to ${plainHttp ? 'plain http' : 'the self-signed certificate'}.\n`)
+}
+if (realCert && plainHttp) {
+  console.warn(`\n  SKY_HTTP=1 and a certificate are both set. Using the certificate.\n`)
 }
 
 const https = realCert ? { cert: readFileSync(CERT), key: readFileSync(KEY) } : undefined
+
+// basicSsl manufactures a self-signed certificate. Not wanted when there is a real one, and
+// not wanted when the entire point is to answer on http.
+const selfSigned = !realCert && !plainHttp
 
 // Two pages, no framework: the interaction screen and the gallery wall. Both need to be
 // listed as build inputs or `vite build` would emit index.html only.
@@ -56,7 +70,7 @@ export default defineConfig({
   // wallStore keeps the visitors' pictures; galleryAllocator hands the curated ones out to the
   // four gallery screens so that no two of them show the same thing.
   // basicSsl only when there is no real certificate to use — the two fight over the same job.
-  plugins: [...(realCert ? [] : [basicSsl()]), wallStore(), galleryAllocator()],
+  plugins: [...(selfSigned ? [basicSsl()] : []), wallStore(), galleryAllocator()],
   // Nothing to pre-bundle: this project has no runtime dependencies and every import in js/ is
   // relative, so the dependency optimizer scans the whole tree and renames a directory into
   // place to produce an empty result. On Windows that rename fails outright if anything is

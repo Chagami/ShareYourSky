@@ -36,153 +36,156 @@ HMR and a bundled build, not for a component model.
 
 ## Running it on the exhibit machine
 
-One computer serves everything and holds the visitors' pictures. Every other screen — the tablet
-with the camera, the four gallery monitors — is a browser pointed at it. It does not have to be
-the machine this was written on, and it does not need a checkout of anything else.
+One computer — a Linux box — serves everything and holds the visitors' pictures. Every other
+screen, the tablet with the camera and the gallery monitors, is a browser pointed at it with
+nothing installed. Work happens on a dev machine, is pushed to GitHub, and the exhibit machine
+only ever pulls.
 
 ```bash
 git clone https://github.com/Chagami/IsItReal-experiment.git
 cd IsItReal-experiment
 npm ci
-npm run preview
+sudo scripts/install-service.sh
 ```
 
-`preview` serves the built copy in `dist/`, which is committed — so there is nothing to build on
-the exhibit machine and nothing that can fail there for a reason that did not exist here. It
-prints two addresses; the **Network** one is what the other screens open:
+That is the whole install. `install-service.sh` registers a systemd service called
+**sharedsky** that starts at boot and restarts if it stops, copies `scripts/exhibit.env.example`
+to `scripts/exhibit.env` for you, and leaves a `sudoers` rule so the update script can restart
+the service over ssh without a password prompt it could not answer. It runs as whoever invoked
+`sudo`, not as root.
 
-| screen | opens |
+There is no build step: `dist/` is committed, so a fresh clone serves immediately and nothing
+can fail on the exhibit machine for a reason that did not exist here. (The flip side: editing
+anything under `js/` or `css/` needs `npm run build`, or the exhibit goes on serving what was
+committed.)
+
+Then set the port in `scripts/exhibit.env` — it is deliberately not in git, so every machine
+keeps its own and a pull can never overwrite it:
+
+```
+SKY_PORT=80
+SKY_HTTP=1
+```
+
+Port 80 is what makes the address plain `http://sharedsky` with nothing after it. Binding a port
+below 1024 as a non-root user is what `AmbientCapabilities=CAP_NET_BIND_SERVICE` in the unit
+file is for. `sudo systemctl restart sharedsky` after editing.
+
+| | |
 | --- | --- |
-| the tablet | `https://<that machine>:4173/` |
-| each gallery monitor | `https://<that machine>:4173/gallery.html` |
-| whoever is running it | `https://<that machine>:4173/admin.html` |
-
-Three things to know before the first opening.
-
-**The certificate is self-signed**, so every client meets one "Your connection is not private"
-screen: Advanced → Proceed. Once per browser, and then the camera works. The camera needs a
-secure context and only `localhost` gets one for free, which is the whole reason for HTTPS here.
-To lose the warning, swap `basicSsl()` in `vite.config.js` for `server.https` pointing at an
-mkcert pair and install the mkcert root on each client.
-
-**Give the machine a fixed address** — see below. The tablet's kiosk shortcut has the address
-baked into it, and a DHCP lease that moves overnight is an exhibit that does not open.
+| logs | `journalctl -u sharedsky -f` |
+| state | `systemctl status sharedsky` |
+| stop it starting at boot | `sudo scripts/install-service.sh --remove` |
+| run it in the foreground instead | `scripts/exhibit.sh` |
 
 **The pictures live on that machine and are not in git.** `wall/` is created on first use and
 gitignored — a fresh clone starts with an empty gallery, and pulling never overwrites what
 visitors have made. It is also the archive: every picture ever shared stays there even after it
-scrolls off the wall, so it is the folder to back up and the folder to clear before an opening
+scrolls off the wall, so it is the folder to back up, and the folder to clear before an opening
 (`admin.html` → Delete everything).
 
-Updating later is `git pull` and restart. `npm ci` again only if `package-lock.json` moved.
+### Updating it from the dev machine
+
+Everything is pushed to GitHub from wherever it was written; the exhibit machine only ever
+pulls. One line, over ssh:
+
+```bash
+ssh exhibit@sharedsky '~/IsItReal-experiment/scripts/update.sh'
+```
+
+`update.sh` fetches, fast-forwards, and restarts the service, printing what it did at each step
+so a run over ssh is legible rather than silent. Three things it deliberately will not do:
+
+- **It will not pull over local edits.** Uncommitted changes on an exhibit machine are nearly
+  always accidental, but throwing them away unasked is worse than stopping — they might be the
+  fix somebody made at the wall on a Saturday. It prints `git status` and exits non-zero.
+- **It will not merge.** `--ff-only`, so a checkout that has drifted stops rather than making a
+  merge commit on a machine nobody is looking at.
+- **It will not reinstall dependencies for nothing.** `npm ci` deletes `node_modules` and takes
+  a minute, so it runs only when `package.json` or `package-lock.json` actually moved between
+  the two commits.
+
+If the service does not come back within three seconds of the restart it prints the last 25
+journal lines and exits non-zero, so a broken deploy fails the ssh command rather than looking
+like a success.
 
 ### A name instead of an IP
 
-`exhibits` works on this network because it is a record in the site's DNS, not a machine name:
+`exhibits` works on this network because somebody made a DNS record for it. It is not a machine
+name and nothing on the exhibit PC creates it:
 
 ```
 exhibits  ->  exhibits.cssc.org  ->  192.168.66.56      (served by CSSC-DC1.cssc.org)
 ```
 
-The bare word resolves because clients carry `cssc.org` in their DNS suffix search list. So
+The bare word resolves because clients carry `cssc.org` in their DNS suffix search list, so
 `sharedsky` is the same request to whoever runs that DNS:
 
 > An **A record `sharedsky.cssc.org`** pointing at the exhibit machine, and that machine's
-> address **reserved** so it does not move. Alongside it, a **certificate for `sharedsky` and
-> `sharedsky.cssc.org`** from the internal CA.
+> address **reserved in DHCP** so it cannot move overnight.
 
-Ask for the certificate in the same breath, because of this:
+Nothing in this repo can do that part. Until the record exists, every screen has to use the IP.
 
-**`http://sharedsky` will not work for the tablet.** The camera is only available in a secure
-context, and only `https://` and `localhost` count — over plain http `navigator.mediaDevices`
-does not exist at all and the interaction cannot start. The gallery and admin screens have no
-camera and would be fine on http, but running the exhibit on two schemes to save one certificate
-is not worth the confusion. Use `https://sharedsky` for all of them.
+**The one catch, and it decides whether you also need a certificate.** `getUserMedia` only
+exists in a secure context, and plain `http` is not one unless the host is literally
+`localhost`. So over `http://sharedsky`:
 
-A certificate from the site's own CA is the one worth having: domain-joined machines already
-trust it, so nobody clicks through anything. Failing that, `mkcert -install` then
-`mkcert sharedsky sharedsky.cssc.org` produces a pair, and its root has to be installed on every
-client including the Android tablet — which is the fiddly one.
+| page | camera | works over plain http? |
+| --- | --- | --- |
+| `gallery.html`, `gallery2.html` | no | yes |
+| `admin.html` | no | yes |
+| the visitor interaction | **yes** | **no — `navigator.mediaDevices` is undefined** |
 
-Then point the exhibit at the name, on the default https port so the URL carries no port at all:
+Three ways round it, in the order I would try them:
+
+1. **Tell the tablet's browser to trust that one origin.** Chrome and Edge have a setting for
+   exactly this: `chrome://flags` → *Insecure origins treated as secure* → add
+   `http://sharedsky`, enable, restart. The camera then works over http with no certificate
+   anywhere. It is per-device and as unsafe as it sounds on a general-purpose machine — which a
+   locked-down exhibit tablet is not. This keeps `http://sharedsky` for everything.
+2. **A certificate from the site's internal CA**, issued for `sharedsky` *and*
+   `sharedsky.cssc.org`. Domain-joined clients already trust that CA, so nobody clicks through
+   anything. Then drop `SKY_HTTP` from `exhibit.env`, set `SKY_PORT=443`, and point `SKY_CERT`
+   and `SKY_KEY` at the pair. A certificate for an IP address will not do, which is half the
+   reason for wanting a name.
+3. **mkcert**, if the internal CA is not available: `mkcert -install` then
+   `mkcert sharedsky sharedsky.cssc.org`. Its root then has to be installed on every client,
+   and the Android tablet is the fiddly one.
+
+Also allow the port inbound on the exhibit machine's firewall — `sudo ufw allow 80/tcp`, or
+whatever that box uses.
+
+### The screens
+
+Every screen is a browser pointed at the one machine. Nothing else is installed anywhere.
+
+| screen | opens |
+| --- | --- |
+| the tablet with the camera | `http://sharedsky/` |
+| gallery monitor 1..n | `http://sharedsky/gallery.html` |
+| whoever is running the exhibit | `http://sharedsky/admin.html` |
+
+**The gallery monitors all open the same URL.** They sort themselves out: each one joins a
+register on the server, is given a slot number and a hand of curated pictures nobody else is
+holding, and says it is still there every twelve seconds. A screen that stops saying so is
+forgotten after 45 seconds and its pictures go back in the pool, so a monitor that is unplugged
+or reloaded does not strand a third of the folder. Measured with four screens asking for six
+pictures each: 24 handed out, 24 distinct, zero overlap on any pair.
+
+Open them in kiosk mode from each monitor's own machine, or from one machine with a window per
+display:
 
 ```bash
-set SKY_PORT=443
-set SKY_CERT=C:\certs\sharedsky.crt
-set SKY_KEY=C:\certs\sharedsky.key
-npm run exhibit
+chromium --kiosk --noerrdialogs --disable-infobars http://sharedsky/gallery.html
 ```
 
-`vite.config.js` reads those three. With a real certificate it drops the self-signed one; with a
-path that does not exist it says so and falls back rather than failing to start. Vite reads the
-names out of the certificate and prints them, so a correct setup announces itself:
+The visitors' own pictures are handled separately and are *meant* to repeat: every screen shows
+new arrivals, because a picture that appeared on only one of four monitors would be missed by
+the person who just made it.
 
-```
-➜  Local:  https://sharedsky/
-➜  Local:  https://sharedsky.cssc.org/
-```
-
-Two more things on the machine itself: allow the port inbound through Windows Firewall
-(`netsh advfirewall firewall add rule name="Share Your Sky" dir=in action=allow protocol=TCP
-localport=443`), and set it to start on boot — a **Scheduled Task** at startup, running
-`npm run exhibit` in the repo folder, set to restart on failure. That is the whole of what a
-service manager would do here.
-
-### Starting at boot
-
-The exhibit has to come up on its own after a power cut, an overnight patch reboot, or somebody
-switching the machine off at the wall on Sunday. Two scripts do it:
-
-```
-scripts\start-exhibit.cmd        the server itself
-scripts\install-startup-task.ps1 registers it to run at boot
-```
-
-On the exhibit machine, once, from an **elevated** PowerShell in the repo folder:
-
-```powershell
-copy scripts\exhibit.env.example.cmd scripts\exhibit.env.cmd
-notepad scripts\exhibit.env.cmd
-powershell -ExecutionPolicy Bypass -File scripts\install-startup-task.ps1
-```
-
-`exhibit.env.cmd` is where the port and certificate paths go. It is deliberately not in git, so
-a `git pull` never overwrites one machine's settings with another's. Without it the server still
-runs, on 4173 with a self-signed certificate.
-
-The installer registers a scheduled task called **Share Your Sky** running as SYSTEM at startup,
-then starts it so you can check it without rebooting. SYSTEM rather than a named account for
-three reasons: it starts with nobody logged in, it is allowed to bind port 443, and it has no
-password to expire in the middle of a school holiday.
-
-Two settings in there are worth knowing about, because both are failure modes that produce no
-error message at all:
-
-- **`ExecutionTimeLimit` is zero.** The default is three days, after which Windows kills the task
-  and the exhibit goes dark with nothing in any log to say why.
-- **The launcher restarts the server itself**, in a loop with a five-second pause, rather than
-  relying on the task's restart-on-failure. That only fires when a task *fails*; a server that
-  exits cleanly would otherwise stay down until somebody noticed.
-
-To check on it: Task Scheduler shows the task, and `logs\exhibit.log` has what the server
-printed, with the previous run kept alongside it as `exhibit.prev.log`. A line reading
-`server exited with ... restarting in 5s` is the loop doing its job. `LastTaskResult` of 267009
-in Task Scheduler means "still running", which is the healthy state.
-
-To undo it, `install-startup-task.ps1 -Remove`.
-
-**The screens are a separate problem.** The task serves the pages; it does not put a browser on
-the wall, and it cannot — a browser needs a logged-in desktop session and SYSTEM has none. For
-the gallery machine, set Windows to log in automatically and put a shortcut in
-`shell:startup` along these lines:
-
-```
-"C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe" --kiosk https://sharedsky/gallery.html --edge-kiosk-type=fullscreen --no-first-run
-```
-
-**After a `git pull`**, restart the task (or reboot). `npm ci` again only if `package-lock.json`
-moved. No build step: `dist/` is committed, which is also why editing anything under `js/` or
-`css/` without running `npm run build` leaves the exhibit serving the old version.
+One limit worth knowing before opening night: `img/sky/` holds **30** curated pictures, and the
+stacking wall lays a new one down every 30 seconds per screen. Four screens exhaust that pool
+within minutes and begin repeating. It wants a few hundred.
 
 ### Is Docker worth it?
 
@@ -194,18 +197,23 @@ morning of an opening. The camera never goes near it either: that is the tablet'
 to the server over the network.
 
 The problem Docker is usually reached for here is *keep it running and restart it if it dies*,
-and on Windows a Scheduled Task does that with nothing to install.
+and systemd does that with nothing to install — which is what `scripts/install-service.sh` sets
+up.
 
 It would start to earn its place with several exhibits sharing one machine, or the same image
-deployed to more than one venue. If it comes to that, the pieces are: a Node base image, `npm ci`,
-`CMD npm run exhibit`, the port published, and — the part not to miss — `wall/` bind-mounted to
-the host, because it is the visitors' pictures and it must outlive the container.
+deployed to more than one venue. If it comes to that, the pieces are: a Node base image,
+`npm ci`, `CMD scripts/exhibit.sh`, the port published, and — the part not to miss — `wall/`
+bind-mounted to the host, because it is the visitors' pictures and it must outlive the
+container.
 
 ### Why HTTPS
 
+This is about the **dev machine**. On the exhibit machine the scheme is a deployment choice with
+its own trade-off — see "A name instead of an IP" above.
+
 The camera API is only exposed in a **secure context**. `localhost` is the one plain-http origin
 that qualifies; open the LAN address over `http://` and `navigator.mediaDevices` is not merely
-blocked, it is undefined. So the dev and preview servers both run TLS
+blocked, it is undefined. So the dev server runs TLS by default
 (`@vitejs/plugin-basic-ssl`), which makes *every* address a secure context and lets the
 interaction screen run on a second machine:
 
@@ -239,9 +247,10 @@ npm run preview   # serve dist/ over https on :4173 to check it before deploying
 
 `base` is `'./'`, so `dist/` runs from any folder without rewriting paths.
 
-`dist/` is **committed**, so a clone runs on an exhibit PC with no Node install — but that means
-it can go stale. Rebuild and commit it in the same commit as any change to `js/`, `css/` or the
-HTML, or the deployed copy will quietly lag the source.
+`dist/` is **committed**, so a clone serves on the exhibit PC with no build step — but that
+means it can go stale. Rebuild and commit it in the same commit as any change to `js/`, `css/`
+or the HTML, or the deployed copy will quietly lag the source. (Node is still needed there: it
+is what serves the folder.)
 
 ### Picking the camera
 
