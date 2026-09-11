@@ -408,6 +408,16 @@ The answers are in the dock, which is below the question anyway, and they are he
 the question has finished arriving — offering a choice before it has been put is a way of
 getting the wrong answer.
 
+Behind the question, two strips of the wall itself run past — the top one leftwards, the bottom
+one rightwards. The question is easier to answer with the thing it is about already on screen,
+and it makes the next beat legible: saying yes is visibly *joining* that.
+
+They are the curated pictures, fetched from **`api/gallery/all`**, which is a new endpoint for
+exactly this and deliberately claims nothing. Joining the register the way a real gallery screen
+does would put the tablet on the wall as an extra screen, holding a hand of pictures the four
+monitors could then not show. Nine pictures per strip, laid down twice: the loop runs the length
+of one pass and jumps back, and with two identical passes that jump lands on the same pixels.
+
 Four movements carry the picture through, and they are one continuous gesture rather than four
 effects:
 
@@ -415,8 +425,29 @@ effects:
 | --- | --- |
 | leaving `adjust` | it stretches out of shape, anchored at the bottom right so the top left is the corner that travels, and **holds** there |
 | arriving | the hold releases: it spins in from off the left edge, turning, into the middle |
-| **Yes** | away to the right, turning, off the edge |
+| **Yes** | the strips stop, a space opens in one of them, and the picture turns down into it |
 | **No** | it falls — slowly, swaying, like a feather, and then the piece restarts |
+
+Yes, in full: both strips ease to a halt; a space opens from nothing at a randomly chosen print
+that is currently on screen, in whichever strip; the picture turns a full revolution as it
+shrinks into that space; and then the whole wall accelerates away to the right. With an empty
+`img/sky/` there is no wall to join, and it falls back to the old exit — away to the right,
+turning, off the edge.
+
+Three details that are each a bug avoided:
+
+- **The strips stop before the space opens.** Landing a picture in a moving target means
+  re-measuring mid-flight; stopping first is both simpler and a better beat.
+- **Spacing between prints is `margin`, not the flex `gap`.** With `gap`, inserting the empty
+  element would shove its neighbours sideways by one gap's width before the animation had
+  moved anything.
+- **Reversing an infinite animation stalls it.** Played at a negative rate it walks its clock
+  back past the start and stops there, so the leftward strip is not reversed — both strips get
+  fresh rightward keyframes starting from exactly where they stand.
+
+When the column is short, the strips are the only thing that shrinks: `.confirm-mid` is
+`flex: none` so the photograph keeps its shape, measured at 0% distortion on the kiosk's screen
+and on a 1080×1920 window alike.
 
 The stretch runs on the screen being left, not the one arriving, which is why it reads as the
 picture being carried across rather than one picture leaving and another appearing. Nothing

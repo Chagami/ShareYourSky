@@ -4,10 +4,10 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Share Your Sky</title>
-  <script type="module" crossorigin src="./assets/main-Bp2xvFDP.js"></script>
-  <link rel="modulepreload" crossorigin href="./assets/app-CnR-ECXL.js">
+  <script type="module" crossorigin src="./assets/main-CiPIYqqE.js"></script>
+  <link rel="modulepreload" crossorigin href="./assets/app-DjKpblAq.js">
   <link rel="modulepreload" crossorigin href="./assets/store-rxx7YgbC.js">
-  <link rel="stylesheet" crossorigin href="./assets/app-yJ42QxRU.css">
+  <link rel="stylesheet" crossorigin href="./assets/app-CG_bZE7V.css">
 </head>
 <body data-step="camera">
 
@@ -128,11 +128,18 @@
   <!-- The one question the exhibit asks that has a wrong answer, so it gets a screen of its own
        rather than a button on a screen about something else: the picture they made, and Yes or
        No. No starts the whole thing again; nothing is kept. -->
+  <!-- Two strips of the wall itself, running opposite ways, so the question is asked with the
+       thing it is about already on screen. Decorative until the answer is yes, at which point
+       a space opens in one of them and the visitor's picture turns into it. -->
   <section class="step" data-step="confirm">
-    <div class="pic pic-hero" id="confirmPic">
-      <canvas id="confirmCanvas" class="photo"></canvas>
+    <div class="reel" id="reelTop" aria-hidden="true"><div class="reel-track"></div></div>
+    <div class="confirm-mid">
+      <div class="pic pic-hero" id="confirmPic">
+        <canvas id="confirmCanvas" class="photo"></canvas>
+      </div>
+      <p class="story story-ask" id="confirmAsk"></p>
     </div>
-    <p class="story story-ask" id="confirmAsk"></p>
+    <div class="reel" id="reelBottom" aria-hidden="true"><div class="reel-track"></div></div>
   </section>
 
   <!-- 4 ─ ASTROPHOTOGRAPHY ───────────────────────────────────────────────── -->

@@ -576,17 +576,28 @@ body[data-rot="270"] .framed { transform: translate(-50%, -50%) rotate(270deg) s
    the width — which read as an illustration to the question rather than the subject of it. */
 .step[data-step="confirm"] {
   justify-content: center;
-  padding: 3vh 5vw;
-  gap: 3.4vh;
+  /* No side padding: the two reels run the full width of the screen, and a marquee that stops
+     short of the edges reads as a row of pictures rather than as a wall going past. */
+  padding: 2vh 0;
+  gap: 2.4vh;
+}
+.confirm-mid {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2.4vh;
+  padding: 0 5vw;
+  min-height: 0;
+  /* Never shrunk. A flex column short of room takes it from whatever will give, and what
+     must not give is the visitor's photograph — squeezed, it stops being the shape of the
+     picture they actually took. The strips above and below are what yield instead. */
+  flex: none;
 }
 
-/* All the width there is, less a margin.
-   Two limits, and which one binds depends on the shape of the photograph. A landscape picture
-   runs out of width first and stops at 88vw. A portrait one would run out of height, so the
-   68vh cap is set just high enough that on the kiosk's 9:16 screen it does not bind either —
-   the picture reaches the same 88vw and the question still has its room underneath. */
+/* The picture, with room above and below it for the wall it is about to join. It was 68vh when
+   it had the screen to itself; the two reels want 14vh each and the question needs its line. */
 .pic-hero {
-  width: min(88vw, calc(68vh * var(--shot-ar)));
+  width: min(66vw, calc(38vh * var(--shot-ar)));
   /* .pic has no height of its own — every one of these gives itself a shape, because the
      visitor's photo and the nebula are different shapes and neither can be given the other's.
      Without this the box is zero pixels tall and all that renders is the hairline. */
@@ -598,10 +609,62 @@ body[data-rot="270"] .framed { transform: translate(-50%, -50%) rotate(270deg) s
      There is only ever one line here, and at this size that reservation is half a screen. */
   min-height: 0;
   max-width: 24ch;
-  font-size: clamp(1.5rem, 4.6vw, 4.4rem);
+  font-size: clamp(1.4rem, 4.2vw, 3.9rem);
   font-weight: 600;
   line-height: 1.18;
   letter-spacing: -0.02em;
+}
+
+/* ─── the two strips of wall ─── */
+
+.reel {
+  width: 100%;
+  height: 14vh;
+  /* Allowed to shrink, and the only thing on this screen that is. On the kiosk's own screen
+     there is room for all of it and nothing shrinks; on a shorter window the strips lose a
+     little height rather than the photograph losing its shape. */
+  flex: 0 1 auto;
+  min-height: 7vh;
+  overflow: hidden;
+  /* The pictures run out to both edges rather than stopping at them. */
+  -webkit-mask-image: linear-gradient(to right, transparent, #000 6%, #000 94%, transparent);
+  mask-image: linear-gradient(to right, transparent, #000 6%, #000 94%, transparent);
+}
+.reel[hidden] { display: none; }
+
+.reel-track {
+  display: flex;
+  height: 100%;
+  /* max-content, so the track is as wide as its pictures and the loop can be measured against
+     a real number rather than the width of the screen. */
+  width: max-content;
+  will-change: transform;
+}
+
+/* Spacing is margin rather than the flex `gap`, so the space that opens for the visitor's
+   picture can grow from nothing. With `gap` the neighbours would jump by one gap's width the
+   instant the element was inserted, before the animation had moved anything. */
+.reel-tile {
+  flex: none;
+  height: 100%;
+  margin-inline-end: 10px;
+  border-radius: 4px;
+  overflow: hidden;
+  background: #000;
+  box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.08);
+}
+.reel-tile img,
+.reel-tile canvas {
+  display: block;
+  height: 100%;
+  width: 100%;
+  object-fit: cover;
+}
+
+/* The space, while it is opening and before anything is in it. */
+.reel-gap {
+  background: rgba(255, 255, 255, 0.05);
+  box-shadow: inset 0 0 0 2px rgba(255, 255, 255, 0.22);
 }
 
 /* ─── 4. the famous photo ─── */

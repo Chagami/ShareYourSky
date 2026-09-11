@@ -55,8 +55,15 @@ const TIMELINE = {
   stretch: 620, // pulling out of shape on the way out of the adjust screen
   stretchHold: 420, // ...and held there, so the arrival reads as the release
   spin: 1800, // in from the left, turning, into the middle of the share question
-  spinOut: 950, // yes: away to the right
+  spinOut: 950, // yes: away to the right, when there is no wall to join
   feather: 2600, // no: down, slowly, the long way
+
+  // ...and yes, when there is. The two strips stop, a space opens, the picture turns into it.
+  reelStop: 460, // both strips easing to a halt
+  reelGapOpen: 540, // a space opening in one of them
+  reelJoin: 1150, // the picture turning down into that space
+  reelSettle: 480, // a beat with it sitting there, one of the wall
+  reelZoom: 950, // and both strips away to the right
 
   // Step 3, which asks its question and then hands back the controls.
   lineGap: 520, // between the two sentences of the question
@@ -107,6 +114,9 @@ let camRot = (() => {
 })()
 
 const PACE = matchMedia('(prefers-reduced-motion: reduce)').matches ? 0.3 : 1
+// A marquee has no duration to shorten — the honest answer to "reduce motion" is to hold it
+// still and let it be a row of pictures.
+const STILL = matchMedia('(prefers-reduced-motion: reduce)').matches
 const t = (ms) => Math.round(ms * PACE)
 const EASE = 'cubic-bezier(.16, 1, .3, 1)'
 
@@ -147,6 +157,8 @@ const slidersTitle = $('slidersTitle')
 const confirmAsk = $('confirmAsk')
 const confirmPic = $('confirmPic')
 const confirmCanvas = $('confirmCanvas')
+const reelTop = $('reelTop')
+const reelBottom = $('reelBottom')
 const DOCK = [shutter, nextBtn, submitBtn, noBtn, yesBtn, resetBtn]
 
 /**
@@ -889,6 +901,7 @@ const STEP_ENTER = {
   async confirm() {
     if (!frame) return
     confirmAsk.replaceChildren()
+    confirmPic.style.visibility = ''
     yesBtn.disabled = false
     noBtn.disabled = false
     // The answers wait for the question. They are in the dock at the foot of the screen, which
@@ -897,6 +910,22 @@ const STEP_ENTER = {
     yesBtn.classList.add('waiting')
     noBtn.classList.add('waiting')
     drawComposite(confirmCanvas, viewFrame ?? frame, lutsNow(), tints())
+
+    // The wall goes up first, so the picture arrives onto something already moving rather than
+    // having a wall appear underneath it afterwards.
+    const pool = await loadReelPool()
+    if (step() !== 'confirm') return
+    stopReels()
+    if (pool.length) {
+      const deck = [...pool].sort(() => Math.random() - 0.5)
+      const each = Math.min(REEL.perReel, Math.max(1, Math.floor(deck.length / 2)))
+      fillReel(reelTop, -1, deck.slice(0, each))
+      fillReel(reelBottom, 1, deck.slice(each, each * 2))
+      startReels()
+    } else {
+      reelTop.hidden = true
+      reelBottom.hidden = true
+    }
 
     await spinInFromLeft(confirmPic, TIMELINE.spin)
     if (step() !== 'confirm') return
@@ -1007,12 +1036,14 @@ const STORY = [
 ]
 
 const STORY_AFTER = [
-  { text: 'In an instant, the camera combines these colors into what looks like what you see with your eyes.' },
+  { text: 'In an instant, the camera combines these colors. ' },
+  { block: true, text: 'The result is an image that approximates what you see with your eyes. Do you think this image real?' },
 ]
 
 const ADJUST_STORY = [
-  { text: 'You captured real data, and edited it like an astrophotographer. Is the final image you took real?' },
+  { text: 'You used the camera to capture real data, just like an astrophotographer.' },
   { block: true, text: 'Try changing the colors. Is this image still real?' },
+  { block: true, text: 'Astrophotographers isolate colors in a similar way to focus on specific objects.' },
 ]
 
 const CONFIRM_ASK = [{ text: 'Would you like to share your sky to the gallery?' }]
@@ -1179,6 +1210,8 @@ function clearBeats() {
   document.querySelectorAll('.channel, .chan-layer').forEach((el) => el.classList.remove('in'))
   slidersTitle.classList.remove('in')
   ;[nextBtn, submitBtn, yesBtn, noBtn, resetBtn].forEach((b) => b.classList.remove('waiting'))
+  stopReels()
+  confirmPic.style.visibility = ''
   fliers.replaceChildren()
   astroSplit.hidden = true
   adjustSplit.dataset.phase = 'ask'
@@ -1217,6 +1250,235 @@ function flipTo(el, from, ms) {
     )
   )
   return anim.finished.catch(() => {})
+}
+
+// ── two strips of the wall, behind the question ───────────────────────────────
+//
+// The share question is easier to answer with the thing it is about already on screen, so the
+// curated pictures run past above and below it — the top strip leftwards, the bottom strip
+// rightwards. Say yes and a space opens in one of them for the visitor's own.
+//
+// They come from api/gallery/all, which claims nothing. Joining the register the way a real
+// gallery screen does would put the tablet on the wall as an extra screen and hold a hand of
+// pictures the monitors could then not show.
+
+const REEL = {
+  perReel: 9, // distinct pictures in each strip
+  speed: 38, // px per second at rest
+  gap: 10, // px between prints; matches .reel-tile's margin
+}
+
+/** The curated folder, fetched once. An empty answer is a fine answer: the strips hide. */
+let reelPool = null
+async function loadReelPool() {
+  if (reelPool) return reelPool
+  try {
+    const res = await fetch('api/gallery/all')
+    const body = await res.json()
+    reelPool = Array.isArray(body.pictures) ? body.pictures : []
+  } catch {
+    // No server, or no folder. The question still works; it just asks it on a bare screen.
+    reelPool = []
+  }
+  setInfo('reels', `${reelPool.length} curated`)
+  return reelPool
+}
+
+const reels = []
+const shotAr = () =>
+  parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--shot-ar')) || 1.3333
+
+/** Lay a strip out. `dir` is -1 for one that runs left, +1 for one that runs right. */
+function fillReel(el, dir, pics) {
+  const strip = el.querySelector('.reel-track')
+  strip.replaceChildren()
+  if (!pics.length) {
+    el.hidden = true
+    return
+  }
+  el.hidden = false
+
+  // Laid down twice. The loop runs the length of one pass and then jumps back, and with two
+  // identical passes that jump lands on the same pixels — which is what makes it seamless.
+  for (let pass = 0; pass < 2; pass++) {
+    for (const pic of pics) {
+      const tile = document.createElement('div')
+      tile.className = 'reel-tile'
+      // The shape comes from the manifest, so the strip has its true width before a single
+      // picture has loaded. Measured after, the loop would be measured against an empty row.
+      tile.style.aspectRatio = String(pic.ar || 1.5)
+      const img = document.createElement('img')
+      img.src = pic.src
+      img.alt = ''
+      img.decoding = 'async'
+      tile.append(img)
+      strip.append(tile)
+    }
+  }
+  reels.push({ el, strip, dir, anim: null })
+}
+
+/** Set both strips running. Each plays forwards; the keyframes carry the direction. */
+function startReels() {
+  for (const reel of reels) {
+    const half = reel.strip.scrollWidth / 2
+    if (!half) continue
+    const from = reel.dir < 0 ? 0 : -half
+    const to = reel.dir < 0 ? -half : 0
+    reel.anim = reel.strip.animate(
+      [{ transform: `translateX(${from}px)` }, { transform: `translateX(${to}px)` }],
+      { duration: (half / REEL.speed) * 1000, iterations: Infinity, easing: 'linear' }
+    )
+    if (STILL) reel.anim.pause()
+  }
+}
+
+function stopReels() {
+  for (const reel of reels) reel.anim?.cancel()
+  reels.length = 0
+  for (const el of [reelTop, reelBottom]) {
+    el.hidden = false
+    el.querySelector('.reel-track')?.replaceChildren()
+  }
+}
+
+/**
+ * Ease every strip's speed to whatever `targetFor` asks of it.
+ *
+ * Only ever towards zero, and never past it: an animation with infinite iterations played at a
+ * negative rate walks its clock back past the start and simply stops there. Reversing a strip
+ * is done by giving it new keyframes, in zoomReelsRight.
+ */
+function rampReels(targetFor, ms) {
+  const live = reels.filter((r) => r.anim)
+  if (!live.length || STILL) return Promise.resolve()
+
+  const from = live.map((r) => r.anim.playbackRate)
+  const to = live.map((r) => targetFor(r))
+  const span = Math.max(1, t(ms))
+  const t0 = performance.now()
+
+  return new Promise((done) => {
+    const tick = (now) => {
+      const p = Math.min(1, (now - t0) / span)
+      const eased = p < 0.5 ? 2 * p * p : 1 - (-2 * p + 2) ** 2 / 2
+      live.forEach((r, i) => {
+        r.anim.playbackRate = from[i] + (to[i] - from[i]) * eased
+      })
+      if (p < 1) requestAnimationFrame(tick)
+      else done()
+    }
+    requestAnimationFrame(tick)
+  })
+}
+
+/**
+ * Both strips away to the right, accelerating.
+ *
+ * A fresh animation per strip rather than a change of rate, because one of them was running
+ * the other way and reversing an infinite animation stalls it. Each starts from exactly where
+ * its strip is standing, and the read and the replacement happen in the same task, so the
+ * cancel never paints.
+ */
+function zoomReelsRight(ms) {
+  const travel = innerWidth * 2.4
+  for (const reel of reels) {
+    const at = new DOMMatrix(getComputedStyle(reel.strip).transform).e
+    reel.anim?.cancel()
+    reel.anim = reel.strip.animate(
+      [{ transform: `translateX(${at}px)` }, { transform: `translateX(${at + travel}px)` }],
+      { duration: t(ms), easing: 'cubic-bezier(.45, 0, .7, .4)', fill: 'both' }
+    )
+  }
+}
+
+/** The picture turns down out of the middle of the screen and into a space in one strip. */
+function spinIntoGap(el, to, ms) {
+  const from = el.getBoundingClientRect()
+  if (!from.width || !to.width) return null
+  const scale = to.width / from.width
+  const dx = to.left + to.width / 2 - (from.left + from.width / 2)
+  const dy = to.top + to.height / 2 - (from.top + from.height / 2)
+
+  return track(
+    el.animate(
+      [
+        { transform: 'none', offset: 0 },
+        {
+          transform: `translate(${dx}px, ${dy}px) rotate(360deg) scale(${scale})`,
+          offset: 1,
+        },
+      ],
+      { duration: t(ms), easing: 'cubic-bezier(.32, .78, .22, 1)', fill: 'both' }
+    )
+  )
+}
+
+/**
+ * Yes, with a wall to join.
+ *
+ * The strips stop, a space opens somewhere a visitor can see it, the picture turns into that
+ * space, and then the whole wall runs off to the right. Returns false if there is no wall —
+ * an empty img/sky/ folder, or no server — and the caller falls back to the plain exit.
+ */
+async function joinTheWall(el) {
+  const live = reels.filter((r) => r.anim && !r.el.hidden)
+  if (!live.length || !frame) return false
+
+  await rampReels(() => 0, TIMELINE.reelStop)
+  if (step() !== 'confirm') return true
+
+  const reel = live[Math.floor(Math.random() * live.length)]
+  const tiles = [...reel.strip.children]
+  // Somewhere it can actually be watched opening, rather than off the edge of the screen.
+  const onScreen = tiles.filter((tile) => {
+    const box = tile.getBoundingClientRect()
+    return box.right > innerWidth * 0.12 && box.left < innerWidth * 0.88
+  })
+  const before = onScreen.length
+    ? onScreen[Math.floor(Math.random() * onScreen.length)]
+    : tiles[0]
+
+  const width = reel.el.clientHeight * shotAr()
+  const gap = document.createElement('div')
+  gap.className = 'reel-tile reel-gap'
+  gap.style.width = '0px'
+  gap.style.marginInlineEnd = '0px'
+  reel.strip.insertBefore(gap, before)
+
+  const opening = gap.animate(
+    [
+      { width: '0px', marginInlineEnd: '0px' },
+      { width: `${width}px`, marginInlineEnd: `${REEL.gap}px` },
+    ],
+    { duration: t(TIMELINE.reelGapOpen), easing: EASE, fill: 'both' }
+  )
+  await opening.finished.catch(() => {})
+  // Held open by style, not by a finished animation: a filled animation outranks inline style,
+  // and what lands here next needs the box to be real rather than merely painted.
+  opening.cancel()
+  gap.style.width = `${width}px`
+  gap.style.marginInlineEnd = `${REEL.gap}px`
+  if (step() !== 'confirm') return true
+
+  const flight = spinIntoGap(el, gap.getBoundingClientRect(), TIMELINE.reelJoin)
+  await flight?.finished.catch(() => {})
+  if (step() !== 'confirm') return true
+
+  // The picture appears in the strip and the flying one goes, in that order and in the same
+  // task, so there is never a frame showing both or neither.
+  const print = document.createElement('canvas')
+  drawComposite(print, thumbFrame ?? viewFrame ?? frame, lutsNow(), tints())
+  gap.append(print)
+  gap.classList.remove('reel-gap')
+  flight?.cancel()
+  el.style.visibility = 'hidden'
+
+  await wait(t(TIMELINE.reelSettle))
+  if (step() !== 'confirm') return true
+  zoomReelsRight(TIMELINE.reelZoom)
+  await wait(Math.round(t(TIMELINE.reelZoom) * 0.75))
+  return true
 }
 
 /**
@@ -1468,7 +1730,9 @@ async function onYes() {
     (err) => setInfo('shared', `failed: ${err.message}`)
   )
 
-  await spinAwayRight(confirmPic, TIMELINE.spinOut)
+  // Into a space on the wall if there is a wall; off to the side if the folder is empty.
+  const joined = await joinTheWall(confirmPic)
+  if (!joined) await spinAwayRight(confirmPic, TIMELINE.spinOut)
   goToStep('astro')
 }
 

@@ -11,6 +11,7 @@
 //   POST api/gallery/release{ id, files }       hand some back, still on the wall
 //   POST api/gallery/leave  { id }              done, release everything
 //   GET  api/gallery/state                      who is on the wall and what they hold
+//   GET  api/gallery/all                        every curated picture, claiming none of them
 //   GET  api/gallery/img/<file>                 one of the curated pictures
 //
 // A screen that goes away without saying so — unplugged, crashed, closed — stops beating, and
@@ -212,6 +213,14 @@ export function galleryAllocator({ dir = 'img/sky' } = {}) {
         screens: live().map((s) => ({ id: s.id, slot: s.slot, holding: [...s.holding], seen: s.seen })),
       })
     }
+
+    // Everything in the folder, with a claim on none of it.
+    //
+    // The share question runs two strips of the wall behind itself, so a visitor can see what
+    // they would be joining. That is decoration, and decoration must not take pictures out of
+    // circulation — `join` would put the tablet on the register as a fifth screen and hold a
+    // hand of pictures the actual monitors could then not show.
+    if (rest === 'all') return json(res, 200, { pictures: manifest() })
 
     const body = req.method === 'POST' ? await readBody(req) : {}
 
