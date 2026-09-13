@@ -93,7 +93,14 @@ function openStream(constraints, ms = OPEN_TIMEOUT) {
   ])
 }
 
-export async function startCamera(video, { want = null, width = 1280, height = 720 } = {}) {
+// What to ask the camera for.
+//
+// This used to be 1280x720, which is why every camera produced the same picture: `ideal` is a
+// preference the browser satisfies as closely as it can, and every camera worth having can do
+// 720p exactly — so every camera did, and a better sensor bought nothing. Asking for 4K instead
+// gets each camera's best: one that tops out at 720p still returns 720p, because `ideal` never
+// fails, it only settles.
+export async function startCamera(video, { want = null, width = 3840, height = 2160 } = {}) {
   if (!navigator.mediaDevices?.getUserMedia) {
     // Two very different faults land here and the fix for each is nothing like the other,
     // so say which one it is. An insecure origin is by far the more common: the camera API

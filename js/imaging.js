@@ -24,7 +24,7 @@ const clamp255 = (v) => (v < 0 ? 0 : v > 255 ? 255 : v)
  * Take the exposure: grab the frame mirrored, then split it into planes plus a luma plane.
  * Everything downstream needs is computed once, here.
  */
-export function captureFrame(video, maxW = 900, rotate = 0) {
+export function captureFrame(video, maxEdge = 2600, rotate = 0) {
   const vw = video.videoWidth
   const vh = video.videoHeight
   if (!vw || !vh) return null
@@ -38,7 +38,11 @@ export function captureFrame(video, maxW = 900, rotate = 0) {
   const srcW = upright ? vh : vw
   const srcH = upright ? vw : vh
 
-  const scale = Math.min(1, maxW / srcW)
+  // Bounded on the longest edge, not on the width. Width alone means the bracket decides how
+  // much of the sensor survives: a camera turned on its side delivers a portrait frame, whose
+  // width is its *short* edge, so the same 4K camera kept twice the pixels mounted sideways as
+  // it did mounted straight.
+  const scale = Math.min(1, maxEdge / Math.max(srcW, srcH))
   const width = Math.round(srcW * scale)
   const height = Math.round(srcH * scale)
 
@@ -46,6 +50,9 @@ export function captureFrame(video, maxW = 900, rotate = 0) {
   canvas.width = width
   canvas.height = height
   const ctx = canvas.getContext('2d', { willReadFrequently: true })
+  // The browser's own resampler, which is a proper filter rather than nearest neighbour.
+  ctx.imageSmoothingEnabled = true
+  ctx.imageSmoothingQuality = 'high'
 
   // Work from the middle: rotate, then mirror, then draw the frame centred on the origin. Done
   // this way the order is the same whatever the rotation, and the mirror stays a mirror rather
@@ -66,12 +73,14 @@ export function captureFrame(video, maxW = 900, rotate = 0) {
  * sideways picture of a room that a person is standing in front of; a photograph of a nebula
  * is already the right way up, and flipping it would be a small lie about the sky.
  */
-export function frameFromImage(img, maxW = 900) {
+export function frameFromImage(img, maxEdge = 1400) {
   const iw = img.naturalWidth
   const ih = img.naturalHeight
   if (!iw || !ih) return null
 
-  const scale = Math.min(1, maxW / iw)
+  // Longest edge, as in captureFrame, so a portrait picture is not quietly kept at twice the
+  // detail of a landscape one.
+  const scale = Math.min(1, maxEdge / Math.max(iw, ih))
   const width = Math.round(iw * scale)
   const height = Math.round(ih * scale)
 
@@ -79,6 +88,8 @@ export function frameFromImage(img, maxW = 900) {
   canvas.width = width
   canvas.height = height
   const ctx = canvas.getContext('2d', { willReadFrequently: true })
+  ctx.imageSmoothingEnabled = true
+  ctx.imageSmoothingQuality = 'high'
   ctx.drawImage(img, 0, 0, width, height)
 
   return framePixels(ctx, width, height)
@@ -155,23 +166,55 @@ export function restingLevels(bins) {
  * passes per pointermove. Nearest-neighbour off the planes is cheap, runs once, and nothing
  * downstream can tell the difference at the size these are shown.
  */
-export function downscaleFrame(frame, maxW) {
-  const scale = Math.min(1, maxW / frame.width)
+/**
+ * A smaller copy of a frame, bounded on its longest edge.
+ *
+ * Every output pixel is the average of the source pixels it covers, rather than whichever one
+ * happened to land under a rounded coordinate. Nearest neighbour is what this did before, and
+ * throwing away three pixels in four is how a sharp picture becomes a crunchy one: fine detail
+ * does not soften, it aliases, and on a face that reads as noise around the eyes and hair.
+ */
+export function downscaleFrame(frame, maxEdge) {
+  const scale = Math.min(1, maxEdge / Math.max(frame.width, frame.height))
+  // Already small enough. Sharing the frame is safe — nothing mutates one once it is built.
+  if (scale === 1) return frame
+
   const width = Math.max(1, Math.round(frame.width * scale))
   const height = Math.max(1, Math.round(frame.height * scale))
   const n = width * height
   const planes = [new Uint8ClampedArray(n), new Uint8ClampedArray(n), new Uint8ClampedArray(n)]
   const luma = new Uint8ClampedArray(n)
+  const [s0, s1, s2] = frame.planes
+  const sl = frame.luma
 
   for (let y = 0; y < height; y++) {
-    const sy = Math.min(frame.height - 1, Math.round(y / scale))
+    const y0 = Math.floor((y * frame.height) / height)
+    const y1 = Math.max(y0 + 1, Math.floor(((y + 1) * frame.height) / height))
     for (let x = 0; x < width; x++) {
-      const si = sy * frame.width + Math.min(frame.width - 1, Math.round(x / scale))
+      const x0 = Math.floor((x * frame.width) / width)
+      const x1 = Math.max(x0 + 1, Math.floor(((x + 1) * frame.width) / width))
+
+      let a = 0
+      let b = 0
+      let c = 0
+      let l = 0
+      let count = 0
+      for (let sy = y0; sy < y1; sy++) {
+        const row = sy * frame.width
+        for (let sx = x0; sx < x1; sx++) {
+          const si = row + sx
+          a += s0[si]
+          b += s1[si]
+          c += s2[si]
+          l += sl[si]
+          count++
+        }
+      }
       const di = y * width + x
-      planes[0][di] = frame.planes[0][si]
-      planes[1][di] = frame.planes[1][si]
-      planes[2][di] = frame.planes[2][si]
-      luma[di] = frame.luma[si]
+      planes[0][di] = a / count
+      planes[1][di] = b / count
+      planes[2][di] = c / count
+      luma[di] = l / count
     }
   }
   return { width, height, planes, luma }
@@ -326,7 +369,15 @@ export function drawGrey(canvas, frame) {
 }
 
 /** The finished image, for the gallery wall. */
-export function compositeURL(frame, luts, tints = RGB_TINTS, quality = 0.88) {
+/**
+ * The picture as a file, for the wall.
+ *
+ * 0.95 rather than the 0.88 this used to be. JPEG at 0.88 is where ringing starts to show on
+ * the hard edges this piece is full of — a crushed channel makes plenty of them. Going all the
+ * way to 1.0 nearly triples the file for no visible gain, and the wall loads forty of these at
+ * once; 0.95 is the point where the artefacts stop and the size has not run away.
+ */
+export function compositeURL(frame, luts, tints = RGB_TINTS, quality = 0.95) {
   const canvas = document.createElement('canvas')
   drawComposite(canvas, frame, luts, tints)
   return canvas.toDataURL('image/jpeg', quality)

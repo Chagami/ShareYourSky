@@ -82,16 +82,26 @@ const TIMELINE = {
   cameraRetryAt: 15000, // a camera that will not open is retried until it does
 }
 
-const CAPTURE_W = 1400 // a 2160-wide panel shows this large; 900 was visibly soft
+// Longest edge, not width — see captureFrame. The camera is asked for 4K, and this is what is
+// kept of it: about 3.8 megapixels, four times what the old 1280x720 request produced. The cap
+// exists because the whole cost of a bigger picture lands in one place — the JPEG written when
+// a visitor shares — and beyond this it becomes a pause they can see.
+const CAPTURE_EDGE = 2600
 
 // What every redraw during a drag actually works on. Full capture resolution is 2.6 million
 // pixels a frame and the photo is never shown wider than about a thousand of them — three
 // times the work for a difference nobody can see, on the device least able to afford it.
-const VIEW_W = 1000
+// What every redraw works on while the sliders move, so this is the one number here with a
+// per-frame cost. 1600 on the longest edge is 1200 across for an upright photo, which covers
+// the ~1100px the picture is actually shown at on the kiosk — under that it was being upscaled
+// on screen, which is its own kind of soft.
+const VIEW_EDGE = 1600
 // The three channel layers beside it are a fifth of the width and never redraw, so they can be
 // a fifth of the pixels.
-const THUMB_W = 340
-const PILLARS_W = 900 // the famous photo, likewise sized for the column it sits in
+const THUMB_EDGE = 340
+// The famous photo is 1280x1335, so this keeps all of it. It was 900, which threw away a third
+// of a picture the piece then invites the visitor to look at closely.
+const PILLARS_EDGE = 1400
 
 // A sideways-mounted camera. Which way it is turned is a property of the bracket it is screwed
 // to and not of the exhibit, so it is set on the machine rather than in the code — on the kiosk
@@ -988,7 +998,16 @@ async function takePhoto() {
   void flash.offsetWidth
   flash.classList.add('go')
 
-  frame = captureFrame(feed, CAPTURE_W, camRot)
+  frame = captureFrame(feed, CAPTURE_EDGE, camRot)
+  // What the camera gave and what was kept of it. The one number that says whether a better
+  // camera is actually being used, or whether it is being asked for 720p and obliging.
+  if (frame) {
+    setInfo(
+      'capture',
+      `camera ${feed.videoWidth}x${feed.videoHeight} -> kept ${frame.width}x${frame.height}` +
+        ` (${((frame.width * frame.height) / 1e6).toFixed(1)} MP)`
+    )
+  }
   if (!frame) {
     shutter.disabled = false
     return
@@ -1003,8 +1022,8 @@ async function takePhoto() {
   levels = CHANNELS.map((_, i) => ({ ...frame.rest[i] }))
   // The histograms and resting points come from the full capture; everything that redraws on
   // every pointermove works on this copy instead.
-  viewFrame = downscaleFrame(frame, VIEW_W)
-  thumbFrame = downscaleFrame(frame, THUMB_W)
+  viewFrame = downscaleFrame(frame, VIEW_EDGE)
+  thumbFrame = downscaleFrame(frame, THUMB_EDGE)
   // The *camera's* dimensions, not the frame's: captureFrame has already applied the rotation
   // to the frame, and setAspect applies it again — feeding it the rotated size inverts the
   // aspect ratio for every screen after this one.
@@ -1778,7 +1797,7 @@ function loadPillars() {
       '--pillars-ar',
       (pillarsSrc.naturalWidth / pillarsSrc.naturalHeight).toFixed(4)
     )
-    pillarsFrame = frameFromImage(pillarsSrc, PILLARS_W)
+    pillarsFrame = frameFromImage(pillarsSrc, PILLARS_EDGE)
     setInfo('pillars', `${pillarsFrame.width}x${pillarsFrame.height}`)
     return pillarsFrame
   })

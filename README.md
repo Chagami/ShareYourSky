@@ -700,6 +700,55 @@ The planes are written once and only ever read, so the underlying measurement su
 how far the levels are pushed — `reveal` can always go back to the camera's original because it
 is still there.
 
+### How much picture survives, and where it is lost
+
+Four numbers decide the quality of everything on screen, and all four were once set low enough
+that a better camera bought nothing at all.
+
+| | | |
+| --- | --- | --- |
+| what the camera is asked for | `1280x720` → **`3840x2160`** | `ideal`, so a 720p camera still returns 720p — it never fails, it only settles |
+| `CAPTURE_EDGE` | 1400 wide → **2600 longest edge** | what is kept of the stream; the source for everything below |
+| `VIEW_EDGE` | 1000 wide → **1600 longest edge** | what every slider redraw works on, so the one number with a per-frame cost |
+| `PILLARS_EDGE` | 900 → **1400** | the nebula is 1280x1335, so all of it now |
+
+**The camera request was the whole of the "every camera looks the same" problem.** `ideal` is a
+preference the browser satisfies as closely as it can, and every camera worth buying does 720p
+exactly — so every camera did.
+
+**Sizing is on the longest edge, not the width.** With a width cap the bracket decided how much
+of the sensor survived: a camera mounted sideways delivers a portrait frame, whose width is its
+*short* edge, so the same 4K camera kept twice as many pixels turned on its side as it did
+upright. Landscape and portrait now both come to 3.80 MP, measured.
+
+**`downscaleFrame` averages.** It used to take whichever source pixel landed under a rounded
+coordinate — nearest neighbour, throwing away three pixels in four on a 2× reduction. That does
+not soften detail, it aliases it, which on a face reads as noise around the eyes and hair. A
+one-pixel checkerboard halved now comes out a flat 128 across the whole frame; before it came
+out as a field of 20s and 235s.
+
+**The JPEG is 0.95**, up from 0.88. 0.88 is where ringing starts to show on hard edges, and a
+crushed channel makes plenty of them. 1.0 nearly triples the file for no visible gain and the
+wall loads dozens at once.
+
+None of it is free, but the cost lands where there is room for it. For a rotated 4K capture
+(1463x2600, 3.8 MP), measured:
+
+```
+editing copy      45 ms  ┐ at the shutter, inside the 420 ms freeze the flash already holds for
+thumbnail         21 ms  │
+resting levels     0 ms  ┘
+shared jpeg       87 ms    once, when a visitor presses Yes — 1.05 MB
+```
+
+The sliders are unaffected by any of it: every interactive redraw works on `viewFrame`, never on
+the full capture.
+
+The performance overlay (<kbd>P</kbd>, or the long press) now carries a **`capture`** line
+reading `camera 3840x2160 -> kept 1463x2600 (3.8 MP)`. That is the quickest way to tell whether
+a camera is really being used or is quietly handing back 720p — which is exactly the symptom
+this was.
+
 ## Where to change things
 
 - `js/main.js` — **every word the visitor reads**, in `STORY`, `STORY_AFTER`, `SHARE_STORY`,
