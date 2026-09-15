@@ -569,7 +569,10 @@ had been sitting tucked under the explanation, which read as a footnote to it ra
 thing the whole exhibit is asking.
 
 Under it is the answer: **a figure the visitor drags between No and Yes**, standing on a bar that
-runs red through blue to green. It takes the colour of the bar under its feet — measured at five
+runs red through blue to green. It is drawn the way a bathroom sign is — a round head, a fat
+rounded stroke for a body, and four limbs of one thickness with round ends, all of it one colour.
+Short and big-headed on purpose. An earlier one had thin limbs at odd angles and a dark outline
+round the head, which made it read as a head sitting next to a body rather than on one. It takes the colour of the bar under its feet — measured at five
 positions, the pixels the browser actually painted match the computed colour exactly, from
 `rgb(247,63,56)` at one end to `rgb(34,196,97)` at the other. No is on the left because the
 colours were given as red for no and green for yes, and left-to-right agreement is the way every

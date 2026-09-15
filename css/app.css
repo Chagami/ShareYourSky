@@ -682,8 +682,10 @@ body[data-rot="270"] .framed { transform: translate(-50%, -50%) rotate(270deg) s
 .scale-figure {
   position: absolute;
   left: calc(var(--p, 0.5) * 100%);
-  bottom: calc(100% - clamp(3px, 0.35vh, 6px));
-  width: clamp(64px, 8vh, 132px);
+  /* Standing on the bar, not in it: the feet end at the very bottom of the drawing, so the box
+     sitting exactly on the bar's top edge is what puts them on it. */
+  bottom: 100%;
+  width: clamp(76px, 9.4vh, 156px);
   transform: translateX(-50%);
   color: var(--at, #3aa0ff);
   /* Only while it is being put somewhere by something other than a finger. A transition here
@@ -692,24 +694,24 @@ body[data-rot="270"] .framed { transform: translate(-50%, -50%) rotate(270deg) s
 }
 .scale.dragging .scale-figure { transition: color 90ms linear; }
 
+/* One colour throughout, and nothing outlining it. A dark edge round the head was what made it
+   read as a head sitting next to a body rather than on one. */
 .scale-figure svg {
   display: block;
   width: 100%;
   height: auto;
   fill: currentColor;
-  /* A dark edge, so a figure the colour of the bar it is standing on still has an outline
-     against it. Flat and thin rather than a soft glow: a wide blur on a near-black ground is
-     what the 6-bit panel dithers, and that is the speckle this exhibit spent a day chasing. */
-  stroke: rgba(0, 0, 0, 0.55);
-  stroke-width: 3;
-  paint-order: stroke;
 }
+/* The body is a stroke too, just a fatter one: round caps give the shoulders and the hips their
+   shape for free, and the arms and legs are one thickness between them. */
+.scale-figure .torso,
 .scale-figure .limbs {
   fill: none;
   stroke: currentColor;
-  stroke-width: 9;
   stroke-linecap: round;
 }
+.scale-figure .torso { stroke-width: 16; }
+.scale-figure .limbs { stroke-width: 9.5; }
 
 .scale-ends {
   display: flex;
