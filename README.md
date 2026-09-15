@@ -626,6 +626,34 @@ Two things that are easy to get wrong here, both of which did:
   applied the rotation to the frame; passing it back in makes the swap happen twice and inverts
   the aspect ratio for every screen after the first.
 
+### Cropping the feed
+
+Four sliders in the debug menu — **Crop top / right / bottom / left**, 0–40% each — trim the live
+feed, and **Clear the crop** puts them all back. A camera bolted to a bracket sees things the
+exhibit would rather not photograph: the edge of its own housing, a fire door, the top of
+somebody's head at the next exhibit along.
+
+It is remembered in `localStorage`, so the machine comes up tomorrow aimed the way it was left.
+The perf overlay carries a `crop` line showing the four numbers.
+
+**Trimming one edge closes in on the other axis to match.** The window has to keep the frame's
+shape, so cropping 25% off the top also narrows the view by 25%, centred. That is what any
+camera does when its output has a fixed shape, and it is the reason the photograph agrees with
+the viewfinder rather than nearly agreeing with it. Trim, then trim the opposite edge to slide
+the window back the other way.
+
+Two things make it safe to change while the exhibit is running:
+
+- **The crop lives on a wrapper**, not on the video. The quarter-turn rules size the video from
+  `--frame-w` and position it at `left: 50%`, and folding a crop into each of those transforms
+  is how that gets broken. The wrapper is exactly the frame's box, so everything those rules
+  measure is unchanged, and `.live-frame`'s existing `overflow: hidden` does the cutting.
+- **The capture applies the same window**, outside the turn and the mirror, so it is in the same
+  coordinates the visitor was looking at. Checked against an uncropped capture of the same
+  source at both rotations and four different crops: the cropped frame comes back **identical**
+  to the matching sub-rectangle of the uncropped one, mean difference 0.00, worst pixel 0. With
+  no crop set it is bit-for-bit what it was before there was one.
+
 On a quarter turn the video element is given the frame's dimensions **swapped** before being
 turned, so that once rotated it lands exactly on the frame. Scaling a correctly-sized box up
 afterwards is the obvious move and the wrong one: it leaves the picture letterboxed inside its

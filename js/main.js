@@ -22,6 +22,7 @@ import {
   setProbe,
   setInfo,
   addDebugAction,
+  addDebugSlider,
   toggleDebug,
   toggle as togglePerf,
   showing as perfShowing,
@@ -167,6 +168,7 @@ const slidersTitle = $('slidersTitle')
 const confirmAsk = $('confirmAsk')
 const confirmPic = $('confirmPic')
 const confirmCanvas = $('confirmCanvas')
+const liveCrop = $('liveCrop')
 const reelTop = $('reelTop')
 const reelBottom = $('reelBottom')
 const DOCK = [shutter, nextBtn, submitBtn, noBtn, yesBtn, resetBtn]
@@ -512,6 +514,83 @@ function setGlow(next) {
   applyGlow()
 }
 
+// ── how much of the live feed to throw away ─────────────────────────────────
+//
+// A camera bolted to a bracket sees things the exhibit would rather not photograph: the edge of
+// its own housing, a fire door, the top of somebody's head at the next exhibit along. Four
+// numbers, one per edge, as a percentage of what the viewfinder shows.
+//
+// The kept window keeps the frame's shape, so trimming one edge trims the opposite axis to
+// match. That is what any camera does when its output has a fixed shape — and it is what makes
+// the photograph agree with the viewfinder exactly, rather than nearly.
+const CROP_KEY = 'sharedsky.crop'
+const CROP_MAX = 40 // per edge, %. Past this there is not enough left to stand in.
+const EDGES = ['top', 'right', 'bottom', 'left']
+
+let cropAt = (() => {
+  const none = { top: 0, right: 0, bottom: 0, left: 0 }
+  try {
+    const saved = JSON.parse(localStorage.getItem(CROP_KEY) ?? 'null')
+    if (!saved || typeof saved !== 'object') return none
+    for (const edge of EDGES) {
+      const n = Number(saved[edge])
+      none[edge] = Number.isFinite(n) ? Math.min(CROP_MAX, Math.max(0, Math.round(n))) : 0
+    }
+    return none
+  } catch {
+    // Storage disabled, or somebody put something else under that key.
+    return none
+  }
+})()
+
+/** The kept window, in the terms both the viewfinder and the capture need. */
+function cropWindow() {
+  const l = cropAt.left / 100
+  const r = cropAt.right / 100
+  const t0 = cropAt.top / 100
+  const b = cropAt.bottom / 100
+  return {
+    l,
+    r,
+    t: t0,
+    b,
+    zoom: Math.max(1 / Math.max(0.2, 1 - l - r), 1 / Math.max(0.2, 1 - t0 - b)),
+    cx: (l + 1 - r) / 2,
+    cy: (t0 + 1 - b) / 2,
+  }
+}
+
+function applyCrop() {
+  const { zoom, cx, cy } = cropWindow()
+  // Rightmost first: the window's middle is brought to the middle of the frame, and then the
+  // whole thing is enlarged about that same middle. .live-frame's overflow does the cutting.
+  liveCrop.style.transform =
+    `scale(${zoom.toFixed(4)}) ` +
+    `translate(${((0.5 - cx) * 100).toFixed(3)}%, ${((0.5 - cy) * 100).toFixed(3)}%)`
+  const cropped = EDGES.some((edge) => cropAt[edge])
+  setInfo('crop', cropped ? EDGES.map((e) => `${e[0]}${cropAt[e]}`).join(' ') + ' %' : 'none')
+}
+
+/** Trim one edge, and remember it — the bracket will be in the same place tomorrow. */
+function setCrop(edge, value) {
+  cropAt[edge] = Math.min(CROP_MAX, Math.max(0, Math.round(value)))
+  saveCrop()
+}
+
+function clearCrop() {
+  for (const edge of EDGES) cropAt[edge] = 0
+  saveCrop()
+}
+
+function saveCrop() {
+  try {
+    localStorage.setItem(CROP_KEY, JSON.stringify(cropAt))
+  } catch {
+    // Not being able to remember it is no reason to refuse to do it.
+  }
+  applyCrop()
+}
+
 /** Push the current rotation into the page: the viewfinder's CSS, the frame's shape, the HUD. */
 function applyRotation() {
   document.body.dataset.rot = String(camRot)
@@ -545,6 +624,26 @@ function registerDebugActions() {
     hint: 'quarter turn — viewfinder and capture together, remembered on this machine',
     state: () => `${camRot}°`,
     run: () => setRotation(camRot + 90),
+  })
+  for (const edge of EDGES) {
+    addDebugSlider({
+      label: `Crop ${edge}`,
+      hint: edge === 'top'
+        ? 'trims the live feed and the photograph together; the window keeps the frame\'s shape, so trimming one edge closes in on the other axis to match'
+        : undefined,
+      min: 0,
+      max: CROP_MAX,
+      step: 1,
+      get: () => cropAt[edge],
+      set: (value) => setCrop(edge, value),
+      format: (value) => `${value}%`,
+    })
+  }
+  addDebugAction({
+    label: 'Clear the crop',
+    hint: 'all four edges back to nothing',
+    state: () => (EDGES.some((edge) => cropAt[edge]) ? 'cropped' : 'clear'),
+    run: () => clearCrop(),
   })
   addDebugAction({
     label: 'Ground',
@@ -721,6 +820,7 @@ async function boot() {
   wireDebugKnock()
   loadPillars() // step 4's picture, decoded and split into planes while nobody is watching
   applyRotation()
+  applyCrop()
   applyGround()
   applyGlow()
 
@@ -1011,7 +1111,7 @@ async function takePhoto() {
   void flash.offsetWidth
   flash.classList.add('go')
 
-  frame = captureFrame(feed, CAPTURE_EDGE, camRot)
+  frame = captureFrame(feed, CAPTURE_EDGE, camRot, cropWindow())
   // What the camera gave and what was kept of it. The one number that says whether a better
   // camera is actually being used, or whether it is being asked for 720p and obliging.
   if (frame) {

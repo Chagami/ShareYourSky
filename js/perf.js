@@ -221,6 +221,18 @@ export function addDebugAction({ label, hint, run, state }) {
   if (menuOn) drawMenu()
 }
 
+/**
+ * Add a slider to the debug menu.
+ *
+ * For the settings that are a quantity rather than a choice — how far to turn something, how
+ * much to trim. `get` is read when the menu is drawn, `set` is called on every movement, so
+ * whatever it changes should be cheap enough to change while a finger is on it.
+ */
+export function addDebugSlider({ label, hint, min = 0, max = 100, step = 1, get, set, format }) {
+  actions.push({ slider: true, label, hint, min, max, step, get, set, format })
+  if (menuOn) drawMenu()
+}
+
 function buildMenu() {
   menu = document.createElement('div')
   menu.id = 'debugMenu'
@@ -261,6 +273,57 @@ function drawMenu() {
   }
 
   for (const a of actions) {
+    if (a.slider) {
+      const row = document.createElement('div')
+      row.style.cssText = 'padding:7px 2px 3px'
+
+      const head = document.createElement('div')
+      head.style.cssText = 'display:flex;justify-content:space-between;gap:10px;margin-bottom:5px'
+      const name = document.createElement('span')
+      name.textContent = a.label
+      const value = document.createElement('span')
+      value.style.cssText = 'opacity:.65;white-space:nowrap'
+      head.append(name, value)
+
+      const input = document.createElement('input')
+      input.type = 'range'
+      input.min = String(a.min)
+      input.max = String(a.max)
+      input.step = String(a.step)
+      input.style.cssText = 'width:100%;accent-color:#ff8a2b;margin:0'
+
+      const show = () => {
+        let now = a.min
+        try {
+          now = a.get()
+        } catch {
+          // A reporting function that throws must not take the menu down with it.
+        }
+        input.value = String(now)
+        value.textContent = a.format ? a.format(now) : String(now)
+      }
+      input.addEventListener('input', () => {
+        try {
+          a.set(Number(input.value))
+        } catch (err) {
+          console.error(`debug slider "${a.label}" failed`, err)
+        }
+        value.textContent = a.format ? a.format(Number(input.value)) : input.value
+      })
+
+      show()
+      row.append(head, input)
+      rows.append(row)
+
+      if (a.hint) {
+        const hint = document.createElement('div')
+        hint.textContent = a.hint
+        hint.style.cssText = 'opacity:.4;margin:2px 2px 4px'
+        rows.append(hint)
+      }
+      continue
+    }
+
     const button = document.createElement('button')
     button.type = 'button'
     // Roomy enough to hit with a finger: this may well be opened on the kiosk itself with a

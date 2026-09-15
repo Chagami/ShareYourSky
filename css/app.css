@@ -171,6 +171,15 @@ body {
  * The rule that follows from it: no wide, soft, low-alpha shadows on the near-black ground. A
  * 1px hairline is what defines these edges anyway, and it is one hard step rather than a ramp.
  */
+/* Same box as the frame, so the video's own positioning — including the quarter-turn rules
+   below, which size themselves from --frame-w — resolves exactly as it did before. What moves
+   is this, and .live-frame's overflow does the cutting. */
+.crop {
+  position: absolute;
+  inset: 0;
+  transform-origin: 50% 50%;
+}
+
 .framed {
   position: absolute;
   inset: 0;

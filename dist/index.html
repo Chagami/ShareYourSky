@@ -4,10 +4,10 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Share Your Sky</title>
-  <script type="module" crossorigin src="./assets/main-C8KYZcvI.js"></script>
-  <link rel="modulepreload" crossorigin href="./assets/app-vv-rXeXR.js">
-  <link rel="modulepreload" crossorigin href="./assets/store-BHa0TPiY.js">
-  <link rel="stylesheet" crossorigin href="./assets/app-t45GlJXt.css">
+  <script type="module" crossorigin src="./assets/main-Cew5sOw_.js"></script>
+  <link rel="modulepreload" crossorigin href="./assets/app-CUAmE-U1.js">
+  <link rel="modulepreload" crossorigin href="./assets/store-DXy1HSxo.js">
+  <link rel="stylesheet" crossorigin href="./assets/app-DZJHZFtl.css">
 </head>
 <body data-step="camera">
 
@@ -59,7 +59,12 @@
   <section class="step" data-step="camera">
     <h1 class="title">Share Your Sky</h1>
     <div class="live-frame">
-      <video id="feed" class="framed" playsinline muted autoplay></video>
+      <!-- The crop lives on a wrapper rather than on the video, so it composes with the
+           rotation transforms instead of having to be folded into each of them. The wrapper is
+           exactly the frame's box, so everything the rotation rules measure is unchanged. -->
+      <div class="crop" id="liveCrop">
+        <video id="feed" class="framed" playsinline muted autoplay></video>
+      </div>
       <div class="reticle" aria-hidden="true"><i></i><i></i><i></i><i></i></div>
       <div class="countdown" id="countdown" aria-live="polite"></div>
     </div>

@@ -24,7 +24,7 @@ const clamp255 = (v) => (v < 0 ? 0 : v > 255 ? 255 : v)
  * Take the exposure: grab the frame mirrored, then split it into planes plus a luma plane.
  * Everything downstream needs is computed once, here.
  */
-export function captureFrame(video, maxEdge = 2600, rotate = 0) {
+export function captureFrame(video, maxEdge = 2600, rotate = 0, crop = null) {
   const vw = video.videoWidth
   const vh = video.videoHeight
   if (!vw || !vh) return null
@@ -46,24 +46,41 @@ export function captureFrame(video, maxEdge = 2600, rotate = 0) {
   const width = Math.round(srcW * scale)
   const height = Math.round(srcH * scale)
 
+  // The crop is given as fractions trimmed off each edge of what the viewfinder shows, so it
+  // is in screen coordinates — after the turn and after the mirror. The kept window has to keep
+  // the frame's shape, which is why trimming one axis trims the other to match; the viewfinder
+  // does the same, and that is what makes the photograph agree with what was on screen.
+  const cl = crop?.l ?? 0
+  const crr = crop?.r ?? 0
+  const ctp = crop?.t ?? 0
+  const cb = crop?.b ?? 0
+  const zoom = Math.max(1 / Math.max(0.2, 1 - cl - crr), 1 / Math.max(0.2, 1 - ctp - cb))
+  const outW = Math.max(1, Math.round(width / zoom))
+  const outH = Math.max(1, Math.round(height / zoom))
+  // Where the middle of the kept window falls in the full turned picture.
+  const cx = width * ((cl + 1 - crr) / 2)
+  const cy = height * ((ctp + 1 - cb) / 2)
+
   const canvas = document.createElement('canvas')
-  canvas.width = width
-  canvas.height = height
+  canvas.width = outW
+  canvas.height = outH
   const ctx = canvas.getContext('2d', { willReadFrequently: true })
   // The browser's own resampler, which is a proper filter rather than nearest neighbour.
   ctx.imageSmoothingEnabled = true
   ctx.imageSmoothingQuality = 'high'
 
-  // Work from the middle: rotate, then mirror, then draw the frame centred on the origin. Done
-  // this way the order is the same whatever the rotation, and the mirror stays a mirror rather
-  // than becoming a vertical flip on the quarter turns.
-  ctx.translate(width / 2, height / 2)
+  // Work from the middle: put the window's centre at the middle of the canvas, then rotate,
+  // mirror, and draw the frame centred on the origin. Done this way the order is the same
+  // whatever the rotation, and the mirror stays a mirror rather than becoming a vertical flip
+  // on the quarter turns. With no crop this comes to translate(width / 2, height / 2), which is
+  // what it was before there was one.
+  ctx.translate(outW / 2 + width / 2 - cx, outH / 2 + height / 2 - cy)
   if (rot) ctx.rotate((rot * Math.PI) / 180)
   ctx.scale(-1, 1) // mirror, so the live feed reads like a mirror
   ctx.drawImage(video, (-vw * scale) / 2, (-vh * scale) / 2, vw * scale, vh * scale)
   ctx.setTransform(1, 0, 0, 1, 0, 0)
 
-  return framePixels(ctx, width, height)
+  return framePixels(ctx, outW, outH)
 }
 
 /**

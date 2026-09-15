@@ -56,7 +56,12 @@
   <section class="step" data-step="camera">
     <h1 class="title">Share Your Sky</h1>
     <div class="live-frame">
-      <video id="feed" class="framed" playsinline muted autoplay></video>
+      <!-- The crop lives on a wrapper rather than on the video, so it composes with the
+           rotation transforms instead of having to be folded into each of them. The wrapper is
+           exactly the frame's box, so everything the rotation rules measure is unchanged. -->
+      <div class="crop" id="liveCrop">
+        <video id="feed" class="framed" playsinline muted autoplay></video>
+      </div>
       <div class="reticle" aria-hidden="true"><i></i><i></i><i></i><i></i></div>
       <div class="countdown" id="countdown" aria-live="polite"></div>
     </div>
