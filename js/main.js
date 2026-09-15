@@ -68,7 +68,12 @@ const TIMELINE = {
 
   // Step 3, which asks its question and then hands back the controls.
   lineGap: 520, // between the two sentences of the question
-  askHold: 1000, // the question, finished and read, before the colours are offered
+  // The question, finished and actually read, before the colours are offered. Ten seconds is a
+  // long time to look at a screen that is not moving, and it is meant to be: by this point there
+  // are three sentences up there asking whether the picture is real, and handing over the
+  // sliders early answers the question for them — there is nothing to wonder about once there
+  // is something to fiddle with.
+  askHold: 10000,
   phaseSwap: 720, // the picture moving aside to make room for the charts
 
   // Step 4, which opens on an empty screen.
@@ -1080,7 +1085,8 @@ const STEP_ENTER = {
     await fadeIn(adjustStoryEl, ADJUST_STORY)
     if (step() !== 'adjust') return
 
-    // A second for the question to land before the means of answering it appears.
+    // A long pause for the question to land before the means of answering it appears — see
+    // askHold. Ten seconds of a still screen is deliberate, not a stall.
     await wait(t(TIMELINE.askHold))
     if (step() !== 'adjust') return
     await openColours()
