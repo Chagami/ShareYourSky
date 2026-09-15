@@ -1272,27 +1272,28 @@ const ADJUST_STORY = [
 // photograph, edge to edge, and the rest of it runs off the screen. A visitor sees a piece of
 // glass in front of the picture rather than a diagram of one.
 //
-// `pass` is a backdrop-filter, and what it has to do is what a narrow-band filter does: keep
-// the brightness, throw the colour away, pass one line. Everything after grayscale here is one
-// linear map, so grey goes in and one fixed colour times that grey comes out — and the
-// brightness in front of it is chosen to put the brightest pixel exactly at the top of its
-// channel, so nothing clips anywhere on the ramp and the picture's own shading survives. Get
-// that wrong in either direction and the glass either crushes to black or blows out: a nearly
-// white pixel has no colour left to push, so an over-saturated chain turns it yellow whatever
-// line it was meant to be. The numbers are solved, not picked.
+// The names are the ones a visitor can use. H\u03B1, OIII and SII are what the filters are called
+// on the shelf, but a name nobody can read is a name that gets skipped — and these three are
+// exactly the three the Pillars of Creation were taken through, which is the picture waiting two
+// screens later. H\u03B2 has gone: it is hydrogen as well, and a wheel with two stops both called
+// Hydrogen says nothing the first one did not.
 //
-// The wavelengths are the real ones and so are the colours: 656 nm is the red of a hydrogen
-// sky, 501 nm the green a planetary nebula comes out, 672 nm the deeper red of ionised
-// sulphur, 486 nm hydrogen's blue line.
+// `pass` is a backdrop-filter, and what it has to do is what a narrow-band filter does: keep the
+// brightness, throw the colour away, pass one line. Everything after grayscale here is one linear
+// map, so grey goes in and one fixed colour times that grey comes out — and the brightness in
+// front of it is chosen to put the brightest pixel exactly at the top of its channel, so nothing
+// clips anywhere on the ramp and the picture's own shading survives. Get that wrong in either
+// direction and the glass either crushes to black or blows out: a nearly white pixel has no
+// colour left to push, so an over-saturated chain turns it yellow whatever line it was meant to
+// be. The numbers are solved, not picked.
 const FILTERS = [
-  { name: 'RGB', sub: 'visible', pass: 'saturate(1.06)' },
-  { name: 'H\u03B1', sub: '656 nm', pass: 'grayscale(1) brightness(0.192) sepia(1) hue-rotate(313deg) saturate(13.5)' },
-  { name: 'OIII', sub: '501 nm', pass: 'grayscale(1) brightness(0.614) sepia(1) hue-rotate(95.5deg) saturate(4.25)' },
-  { name: 'SII', sub: '672 nm', pass: 'grayscale(1) brightness(0.188) sepia(1) hue-rotate(296deg) saturate(13.25)' },
-  { name: 'H\u03B2', sub: '486 nm', pass: 'grayscale(1) brightness(0.399) sepia(1) hue-rotate(162.5deg) saturate(5.75)' },
+  { name: 'RGB', sub: 'your camera', pass: 'saturate(1.06)' },
+  { name: 'Hydrogen', sub: 'filter \u00B7 656 nm', pass: 'grayscale(1) brightness(0.192) sepia(1) hue-rotate(313deg) saturate(13.5)' },
+  { name: 'Oxygen', sub: 'filter \u00B7 501 nm', pass: 'grayscale(1) brightness(0.614) sepia(1) hue-rotate(95.5deg) saturate(4.25)' },
+  { name: 'Sulfur', sub: 'filter \u00B7 672 nm', pass: 'grayscale(1) brightness(0.188) sepia(1) hue-rotate(296deg) saturate(13.25)' },
 ]
 const WHEEL_STEP = 360 / FILTERS.length
-const WHEEL_SWING = 1100 // the swing from one filter to the next; matches the CSS transition
+const WHEEL_SWING = 900 // the swing from one filter to the next; matches the CSS transition
 const WHEEL_WAIT = 4200 // how long the arrows get on their own before the wheel demonstrates
 const WHEEL_DWELL = 3400 // and how long each filter then sits in the gate
 
@@ -1362,11 +1363,18 @@ function buildWheel() {
   markGate(wheelAt)
 }
 
-/** Which one is in the gate. Filter i is there whenever the wheel has turned i steps. */
-function markGate(at) {
+/**
+ * Which one is in the gate. Filter i is there whenever the wheel has turned i steps.
+ *
+ * `keep` leaves whatever else is already lit alone, which is what makes a swing seamless: the
+ * filter arriving is coloured before it starts moving and the one leaving keeps its colour until
+ * it has gone, so there is never a frame with clear glass across the picture.
+ */
+function markGate(at, keep = false) {
   const i = ((Math.round(at) % FILTERS.length) + FILTERS.length) % FILTERS.length
   for (const el of filterWheel.querySelectorAll('.filter')) {
-    el.classList.toggle('in-gate', Number(el.dataset.i) === i)
+    const mine = Number(el.dataset.i) === i
+    if (mine || !keep) el.classList.toggle('in-gate', mine)
   }
 }
 
@@ -1392,13 +1400,15 @@ function startWheel() {
   }, t(WHEEL_WAIT))
 }
 
-/** Swing to whichever filter wheelAt now names, and light it when it gets there. */
+/** Swing to whichever filter wheelAt now names, lit the whole way there. */
 function settleWheel() {
-  // The glass stops filtering before it moves: a backdrop-filter sampling a backdrop that is
-  // sliding across it is both wrong to look at and expensive to compute.
-  filterWheel.querySelectorAll('.filter').forEach((el) => el.classList.remove('in-gate'))
   filterWheel.style.setProperty('--turn', `${wheelAt * WHEEL_STEP}deg`)
+  // Lit before it moves, not when it lands. Waiting for the swing to finish and colouring the
+  // glass then is a second of clear glass in the middle of the picture, which reads as the
+  // exhibit thinking about it.
+  markGate(wheelAt, true)
   clearTimeout(wheelGate)
+  // And the one that left gives its colour up only once it is gone.
   wheelGate = setTimeout(() => markGate(wheelAt), t(WHEEL_SWING) + 60)
 }
 
@@ -1448,10 +1458,15 @@ function wheelUp(e) {
   void filterWheel.offsetWidth
 
   const by = (d.y0 - e.clientY) / wheelReach
-  // A flick carries on past the finger, the way a wheel with any mass does. A tap is neither a
-  // flick nor a drag, but it is still someone asking for the next filter.
+  // A flick carries on past the finger, the way a wheel with any mass does.
   const flick = Math.abs(d.v) > 1.2 ? Math.sign(d.v) : 0
-  wheelAt = d.moved < 12 ? wheelAt + 1 : Math.round(d.at0 + by) + flick
+  let by_ = Math.round(by) + flick
+  // Rounding alone would mean a short push moves nothing: half a filter is a drag of well over
+  // two hundred pixels, and a visitor who pushes it fifty and watches it settle back where it
+  // was has been told the thing does not work. Any deliberate push is worth one filter.
+  if (!by_) by_ = Math.sign(by) || 1
+  // And a tap is neither a flick nor a drag, but it is still someone asking for the next one.
+  wheelAt = d.moved < 12 ? wheelAt + 1 : d.at0 + by_
   settleWheel()
 }
 

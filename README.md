@@ -482,8 +482,15 @@ While the first two sentences are being read, a filter lies across the right-han
 photograph, and the visitor turns the wheel it belongs to. It is making the argument the
 sentences make: a camera on Earth splits light into red, green and blue and stops there — which
 is the first stop on the wheel — and an astrophotographer puts a different piece of glass in the
-way, one that passes a single line of the spectrum and nothing else. **RGB**, then **Hα**,
-**OIII**, **SII**, **Hβ**.
+way, one that passes a single line of the spectrum and nothing else. **RGB**, then
+**Hydrogen**, **Oxygen**, **Sulfur**.
+
+**The names are the ones a visitor can use.** On the shelf these are Hα, OIII and SII, but a
+name nobody can read is a name that gets skipped, and the elements are the interesting half
+anyway — the wavelength is kept underneath, where it is precise rather than decorative. Those
+three are also exactly the three the Pillars of Creation were taken through, which is the picture
+waiting two screens later. **Hβ has gone**: it is hydrogen as well, and a wheel with two stops
+both called Hydrogen says nothing the first one did not.
 
 **The size falls out of the shape.** A circle that bulges a quarter of the picture's width at the
 middle of its travel and still reaches the top and bottom corners of that band has a radius of
@@ -501,10 +508,20 @@ and the glass would tint that instead of the photograph.
 a finger takes them up. A drag anywhere on the screen turns the wheel with it — up, because at
 nine o'clock that is the way the rim of a wheel turning clockwise actually travels — and the tint
 changes under the finger as each filter passes the gate, which is the thing being said and this
-is where it is said best. Let go and it settles on the nearest one; a flick carries it one
-further; a tap asks for the next. The gearing is a quarter of the picture's height per filter,
-not the literal arc, because the rim of a wheel this size travels thousands of pixels between
-stops and no finger can follow that.
+is where it is said best. The gearing is a quarter of the picture's height per filter, not the
+literal arc, because the rim of a wheel this size travels thousands of pixels between stops and
+no finger can follow that.
+
+Letting go settles it on the nearest filter, a flick carries it one further, and a tap asks for
+the next. **Any deliberate push is worth one filter** even if it was a short one: rounding alone
+would mean half a filter is a drag of well over two hundred pixels, and a visitor who pushes it
+fifty and watches it settle back where it started has been told the thing does not work.
+
+**The colour arrives with the glass, not after it.** The filter swinging in is lit before it
+starts moving and the one leaving keeps its colour until it has gone, so there is never a frame
+of clear glass across the picture — an earlier version waited for the swing to finish and
+coloured the glass then, which put a second of nothing in the middle of the photograph and read
+as the exhibit thinking about it.
 
 Nobody swipes a photograph unprompted, so if the arrows are not taken up within four seconds the
 wheel turns itself and keeps going, and the point is still made to a visitor who only watches.
@@ -515,9 +532,9 @@ passes one line. Everything after `grayscale(1)` in the chain composes to a sing
 grey goes in and one fixed colour times that grey comes out; the `brightness()` in front of it is
 **solved**, not picked, to put the brightest pixel exactly at the top of its channel so nothing
 clips anywhere on the ramp and the picture's own shading survives. Measured in the browser, with
-Hα in the gate: grey 204 comes out **(204, 6, 0)** and grey 51 comes out **(51, 1, 0)** — the red
-channel tracking the picture one for one, the other two at nothing. OIII **(0, 204, 95)**, SII
-**(204, 0, 46)**, Hβ **(0, 118, 204)**. RGB passes the picture through unchanged, which is the
+hydrogen in the gate: grey 204 comes out **(204, 6, 0)** and grey 51 comes out **(51, 1, 0)** —
+the red channel tracking the picture one for one, the other two at nothing. Oxygen
+**(0, 204, 95)**, sulfur **(204, 0, 46)**. RGB passes the picture through unchanged, which is the
 honest first stop: it is the camera the visitor has just used.
 
 Get that chain wrong in either direction and the glass either crushes to black or blows out.
