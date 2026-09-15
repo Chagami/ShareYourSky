@@ -478,35 +478,64 @@ point.
 
 ### The filter wheel
 
-While the first two sentences are being read, a wheel of filters turns over the right of the
-photograph, stopping at each one. It is making the argument the sentences make: a camera on
-Earth splits light into red, green and blue and stops there — which is the first filter on the
-wheel — and an astrophotographer puts a different piece of glass in the way, one that passes a
-single line of the spectrum and nothing else. **RGB**, then **Hα**, **OIII**, **SII**, **Hβ**.
+While the first two sentences are being read, a filter lies across the right-hand quarter of the
+photograph, and the visitor turns the wheel it belongs to. It is making the argument the
+sentences make: a camera on Earth splits light into red, green and blue and stops there — which
+is the first stop on the wheel — and an astrophotographer puts a different piece of glass in the
+way, one that passes a single line of the spectrum and nothing else. **RGB**, then **Hα**,
+**OIII**, **SII**, **Hβ**.
 
-**It had to go over the picture.** Measured on the kiosk there are 281px either side of the
-photograph and 291px below the sentences, which is not room for a mechanism — and a filter has
-to be over the image anyway, or there is nothing to watch it do. So the hub sits off to the
-right and the gate, at nine o'clock, lands inside the picture's right-hand side with the
-neighbouring filters half off the screen. That is what a wheel in a housing looks like, and it
-keeps the middle of the picture, which is where a face is, clear of glass.
+**The size falls out of the shape.** A circle that bulges a quarter of the picture's width at the
+middle of its travel and still reaches the top and bottom corners of that band has a radius of
+`(band² + (height/2)²) / 2·band` — a little over **3200px** across on the kiosk, so most of it
+runs off the screen and what is left is the arc. Measured: the band is **400px**, **25%** of the
+picture, reaching **every row** of it, 8px at the corners and 400px at the middle.
 
-Each filter is **a circle cropped top and bottom**, which is what leaves the two flat edges the
-name and the wavelength are printed on: a near-black body, a 2px white line round the rim, and a
-smaller disc of glass in the middle. Measured: a 469px circle in a 469×366 box, so 103px of it
-cropped away.
+The wheel lives **inside the picture**, which gives it its cropping for nothing: the photograph's
+own top and bottom edges cut the flat edges the name and the wavelength are printed between. The
+mount is a **ring** — a black band with a thin white line round its outer edge and nothing at all
+painted in the middle, because a filled disc there would become the backdrop the glass samples,
+and the glass would tint that instead of the photograph.
 
-**The glass is a `backdrop-filter`**, so whatever is behind it comes through tinted and the
-picture changes inside the filter and nowhere else. The narrowband tints are the usual
-sepia-then-hue-rotate pair: sepia lands everything near 35° and the rotation carries it from
-there to the line's own colour. Measured against the same frame with the filters hidden — where
-there is light to filter, **100%** of the pixels inside the glass change, mean difference **702**
-of a possible 765, and **0%** of the pixels outside it move.
+**Turning it.** Two chevrons in the band say it turns, and nudge along their own direction until
+a finger takes them up. A drag anywhere on the screen turns the wheel with it — up, because at
+nine o'clock that is the way the rim of a wheel turning clockwise actually travels — and the tint
+changes under the finger as each filter passes the gate, which is the thing being said and this
+is where it is said best. Let go and it settles on the nearest one; a flick carries it one
+further; a tap asks for the next. The gearing is a quarter of the picture's height per filter,
+not the literal arc, because the rim of a wheel this size travels thousands of pixels between
+stops and no finger can follow that.
 
-Three things worth knowing if it is ever touched:
+Nobody swipes a photograph unprompted, so if the arrows are not taken up within four seconds the
+wheel turns itself and keeps going, and the point is still made to a visitor who only watches.
+The first touch ends that for good and the arrows fade.
 
-- **Only the filter in the gate filters anything.** `backdrop-filter` is expensive, and it is
-  applied after the wheel has stopped, so nothing is ever sampling a backdrop sliding across it.
+**What the glass does.** A narrow-band filter keeps the brightness, throws the colour away and
+passes one line. Everything after `grayscale(1)` in the chain composes to a single linear map, so
+grey goes in and one fixed colour times that grey comes out; the `brightness()` in front of it is
+**solved**, not picked, to put the brightest pixel exactly at the top of its channel so nothing
+clips anywhere on the ramp and the picture's own shading survives. Measured in the browser, with
+Hα in the gate: grey 204 comes out **(204, 6, 0)** and grey 51 comes out **(51, 1, 0)** — the red
+channel tracking the picture one for one, the other two at nothing. OIII **(0, 204, 95)**, SII
+**(204, 0, 46)**, Hβ **(0, 118, 204)**. RGB passes the picture through unchanged, which is the
+honest first stop: it is the camera the visitor has just used.
+
+Get that chain wrong in either direction and the glass either crushes to black or blows out.
+Saturating a nearly-white pixel cannot colour it — there is no colour left to push — so an
+over-saturated chain turns the bright parts of a picture yellow whatever line they were meant to
+be. `scratchpad/solve.mjs` in the session that wrote this searched the hue-rotate and saturate
+pair for each line; the numbers in `FILTERS` are its answer.
+
+Four things worth knowing if it is ever touched:
+
+- **Never write `-webkit-backdrop-filter` by hand.** esbuild knows it is the same property as
+  `backdrop-filter` and keeps only the last of the two, so the prefixed spelling written after
+  the standard one throws the standard one away — and Chrome 153 has dropped the prefixed alias
+  altogether, which leaves the built rule parsing as nothing and the glass quietly not
+  filtering. The build adds the prefix itself, in the order that survives.
+- **Only the filter in the gate filters anything**, and the tint is dropped before a swing and
+  restored when it lands, so nothing is sampling a backdrop sliding across it. Under a finger it
+  stays live, which is the one place it earns the cost.
 - **The turn animates a registered `@property` angle.** A custom property is a string until it
   is registered, and a string cannot be interpolated — without the registration the wheel jumps
   from stop to stop instead of turning. The easing overshoots and settles, because a wheel with
