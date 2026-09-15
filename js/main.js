@@ -1169,7 +1169,7 @@ const STORY = [
 
 const STORY_AFTER = [
   { text: 'In an instant, the camera combines these colors. ' },
-  { block: true, text: 'The result is an image that approximates what you see with your eyes. Do you think this image real?' },
+  { block: true, text: 'The result is an image that approximates what you see with your eyes. Is this image real?' },
 ]
 
 const ADJUST_STORY = [

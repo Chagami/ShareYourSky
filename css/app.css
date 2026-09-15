@@ -550,8 +550,6 @@ body[data-rot="270"] .framed { transform: translate(-50%, -50%) rotate(270deg) s
   mix-blend-mode: plus-lighter;
 }
 /* The second paragraph sits quieter than the first — it is the summary, not the explanation. */
-.story-second { color: rgba(255, 255, 255, 0.78); }
-
 /* A line that is on its own on the screen and is asking a question, rather than one sitting
    beside the controls it describes. Wider, centred, and bigger than the columns' text. */
 .story-wide,
