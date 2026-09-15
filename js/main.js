@@ -1087,7 +1087,7 @@ const STEP_ENTER = {
     // enough to read two sentences is a pause long enough to look like the exhibit has stopped,
     // and handing over the controls before they have read it answers the question for them.
     coloursBtn.classList.remove('waiting')
-    pop(coloursBtn)
+    coloursPop = pop(coloursBtn)
   },
 
   // The picture they made, and the one question in the piece with a wrong answer.
@@ -1426,6 +1426,8 @@ function clearBeats() {
     b.classList.remove('waiting')
   )
   coloursBtn.disabled = false
+  coloursPop?.cancel()
+  coloursPop = null
   realAsk.replaceChildren()
   realAsk.classList.remove('in')
   stopReels()
@@ -1916,12 +1918,21 @@ function pickHue(src, deg) {
   queueDraw(src)
 }
 
+// The Next button's own entrance, kept so it can be called off. A finished `fill: 'both'`
+// animation outranks a class — `pop` leaves opacity at 1, and adding .waiting on top of that
+// hides nothing at all. This file has been caught by that four times now.
+let coloursPop = null
+
 /** Next, on the adjust screen: bring up the colours. */
 async function onColours() {
   if (step() !== 'adjust' || coloursBtn.disabled) return
   // Disabled as well as hidden: .waiting takes the pointer events away, but a keyboard can
   // still reach a button that is merely transparent, and openColours is not re-entrant.
   coloursBtn.disabled = true
+  // Cancelled before the class goes on, or the class is outranked and Next stays on screen
+  // underneath Share my sky.
+  coloursPop?.cancel()
+  coloursPop = null
   coloursBtn.classList.add('waiting')
   await openColours()
 }

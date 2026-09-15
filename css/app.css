@@ -800,6 +800,17 @@ body[data-rot="270"] .framed { transform: translate(-50%, -50%) rotate(270deg) s
 .dock-action { display: flex; align-items: center; justify-content: center; min-height: 1px; }
 .dock-action > [hidden] { display: none !important; }
 
+/* Two buttons that are really one button at two moments: `Next` brings the colours up, and
+   `Share my sky` takes its place once a colour has been changed. One grid cell holds both, so
+   the second arrives exactly where the first was rather than beside it — side by side, whichever
+   was showing sat off centre by half the width of the other.
+   justify-self keeps each at its own size instead of stretching `Next` out to the width of
+   `Share my sky`, and the cell is as wide as the wider of the two either way, so the dock never
+   changes height or recentres as they swap. */
+.dock-swap { display: grid; }
+.dock-swap > * { grid-area: 1 / 1; justify-self: center; align-self: center; }
+.dock-swap > [hidden] { display: none !important; }
+
 /* The shutter, at the bottom of the page and sized for a stranger's thumb from a metre away. */
 .shutter {
   /* Twice what it was. The ring is doubled with it — left at 5px it reads as a hairline round a
@@ -874,7 +885,11 @@ body[data-rot="270"] .framed { transform: translate(-50%, -50%) rotate(270deg) s
 
 .steps-bar {
   position: relative;
-  width: min(92vw, 1600px);
+  /* 100%, not 92vw. The bar sits inside a topbar that already has 5vw of padding on each
+     side, so 92vw came to 102vw of page and made the whole document 22px wider than the
+     window — which centres nothing on the screen, it centres it on the overflow. Everything
+     the page centres was off by 11px because of this one line. */
+  width: min(100%, 1600px);
   /* One definition of the mark's size. The rule between marks stops short of it and the blob is
      sized from it, so all three stay in step with a single number. */
   --mark: clamp(46px, 6.2vw, 92px);
