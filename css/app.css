@@ -12,7 +12,20 @@
   --bg: #040408;
   --ink: #f4f5f7;
   --muted: #949aa6;
-  --panel: rgba(255, 255, 255, 0.045);
+  /* 0.048, not the round 0.045 it looks like it wants to be. This is white laid over --bg, and
+     where it lands decides whether a panel can display it: at 0.045 it comes out (15,15,19),
+     which is 1.19 levels from anything a 6-bit screen can show — close enough to halfway that
+     it alternates between two levels on every pixel of every panel on the adjust screen. At
+     0.048 it lands on (16,16,20), within a quarter of a level, and sits still. It also lands
+     on (12,12,12) over a pure black ground, which is exact there too. */
+  --panel: rgba(255, 255, 255, 0.048);
+  /* The recessed surface the histogram is drawn on. Given outright rather than as an alpha,
+     because an alpha lands where the arithmetic puts it: this was rgba(0, 0, 0, .35) over the
+     panel, which came to (10,10,13) — 1.9 levels from anything a 6-bit screen can show, and it
+     covered a quarter of the charts column. (12,12,16) is three levels it can show exactly, and
+     the 5% white the chart paints over it for the clipped regions then lands on (24,24,28),
+     which it can show too. Both were shimmering; neither does now. */
+  --well: #0c0c10;
   --line: rgba(255, 255, 255, 0.10);
 
   --ch-r: #ff5252;
@@ -626,9 +639,10 @@ body[data-rot="270"] .framed { transform: translate(-50%, -50%) rotate(270deg) s
   flex: 0 1 auto;
   min-height: 7vh;
   overflow: hidden;
-  /* The pictures run out to both edges rather than stopping at them. */
-  -webkit-mask-image: linear-gradient(to right, transparent, #000 6%, #000 94%, transparent);
-  mask-image: linear-gradient(to right, transparent, #000 6%, #000 94%, transparent);
+  /* There was a mask here fading the strip out at both edges. It looked better and it cost too
+     much: a fade to transparent over 6% of the screen is a ramp through every near-black level
+     there is, twice, down each side — which is exactly what the exhibit panel cannot hold
+     still. A marquee cut off at the edge of the screen is what a marquee normally does. */
 }
 .reel[hidden] { display: none; }
 
@@ -663,7 +677,9 @@ body[data-rot="270"] .framed { transform: translate(-50%, -50%) rotate(270deg) s
 
 /* The space, while it is opening and before anything is in it. */
 .reel-gap {
-  background: rgba(255, 255, 255, 0.05);
+  /* Same value as --panel, and for the same reason: 0.05 lands between two levels the panel
+     can show, 0.048 lands on one. */
+  background: rgba(255, 255, 255, 0.048);
   box-shadow: inset 0 0 0 2px rgba(255, 255, 255, 0.22);
 }
 
@@ -1010,7 +1026,7 @@ body[data-rot="270"] .framed { transform: translate(-50%, -50%) rotate(270deg) s
   height: auto;
   aspect-ratio: 520 / 150;
   border-radius: 6px;
-  background: rgba(0, 0, 0, 0.35);
+  background: var(--well);
 }
 
 /* The handles sit on the chart's own baseline, so the control and the data it acts on read as

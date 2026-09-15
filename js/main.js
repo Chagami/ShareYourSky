@@ -474,13 +474,26 @@ function setGround(next) {
 
 // The faint sky glow behind everything. Off is a flat black ground — the test for whether the
 // banding in the background is what someone is seeing shimmer. ?glow=off, or the debug menu.
+// Off by default, which it did not used to be.
+//
+// It is two very shallow gradients through the near-black range, so most of it lands between
+// levels the exhibit panel can display: measured across the four screens, 40–57% of every dark
+// pixel needs dithering with it on, against about 1% with it off. On an ordinary monitor it is
+// free and rather nice. On that panel it is the single largest source of the red and blue
+// speckle, and it came back twice — because it was on by default, and a browser profile that
+// gets reset (a kiosk reinstall, cleared storage, a different browser) forgets it was turned off.
+// A default is the only setting that survives that.
+//
+// `?glow=on`, or the debug menu, brings it back for a screen that can hold it still.
 const GLOW_KEY = 'sharedsky.glow'
 let glowOn = (() => {
-  if (new URLSearchParams(location.search).get('glow') === 'off') return false
+  const asked = new URLSearchParams(location.search).get('glow')
+  if (asked === 'on') return true
+  if (asked === 'off') return false
   try {
-    return localStorage.getItem(GLOW_KEY) !== 'off'
+    return localStorage.getItem(GLOW_KEY) === 'on'
   } catch {
-    return true
+    return false
   }
 })()
 

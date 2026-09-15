@@ -879,17 +879,54 @@ value no display has to dither.
 The two `rgba(255, 255, 255, .04)` fades on `.dock` and `.topbar` went at the same time, for the
 same reason: a ten-level ramp each, over a hairline border that was already doing the separating.
 
-Two related things left deliberately alone:
+### It came back, twice
 
-- **The sky glow** behind everything is still on by default, and on this panel it should not be.
-  It is a smooth gradient through the near-black range, so most of it lands between displayable
-  levels: with it on, **57.7%** of dark pixels need dithering, against 1.5% with it off. That is
-  the whole background shimmering. **Background glow** in the debug menu turns it off and
-  remembers it. The default is unchanged only because the glow is a deliberate part of the look
-  and is perfectly well behaved on an ordinary monitor — on the exhibit panel, turn it off.
-- **The gallery's print shadows** stay. There the shadow falls on other prints as often as on
-  the wall, which is real work rather than a black blur on a black ground. Worth re-checking on
-  the wall panels, since the same defect would look the same.
+The rule above is easy to state and easy to break, because every soft, low-alpha surface breaks
+it by accident. Two later rounds of this, each found by screenshotting all four screens and
+counting the dark pixels that sit more than three quarters of a level from anything a 6-bit
+panel can display:
+
+| | was | now |
+| --- | --- | --- |
+| `--panel`, the raised surface | `rgba(255,255,255,.045)` → (15,15,19), **1.19 off** | `.048` → (16,16,20), 0.19 off |
+| `--well`, behind the histogram | `rgba(0,0,0,.35)` over it → (10,10,13), **1.90 off** | `#0c0c10` → (12,12,16), 0.14 off |
+| the histogram's clipped region | 5% white over that → (23,23,26), **1.71 off** | falls out at (24,24,28), 0.29 off |
+| the reels' edge fade | a mask to transparent over 6% of the width | gone |
+
+Those two surfaces alone covered **40% of the charts column**. The adjust screen went from
+20.9% of its dark pixels needing dithering to **0.5%**.
+
+**The lesson is in `--well`.** It is given as a hex value rather than as an alpha over what is
+behind it, because where an alpha composite lands is an accident of arithmetic — and near black,
+an accident of one and a half levels is a screen that will not sit still. Surfaces in this range
+get stated outright. An alpha is fine once it has been checked; `--panel` keeps one, at the
+distinctly unround `.048`, and the comment there says why.
+
+### The sky glow is off by default
+
+It was on, and that is why this came back a second time: a browser profile that gets reset — a
+kiosk reinstall, cleared storage, a different browser — forgets that somebody turned it off.
+A default is the only setting that survives that.
+
+Measured across all four screens at 2160x3840, share of dark pixels needing dithering:
+
+| | glow on | glow off |
+| --- | --- | --- |
+| camera | 57.1% | 1.4% |
+| edit | 39.5% | 1.4% |
+| adjust | 43.8% | 0.5% |
+| confirm | 43.6% | 6.2% |
+
+`?glow=on`, or **Background glow** in the debug menu, brings it back and remembers it — worth
+doing on any screen that can hold it still, because it is a nice thing on a monitor that can.
+
+**What is left is not fixable and not a bug.** The 6.2% on the share question is dark regions of
+the curated photographs themselves, spread across twenty thousand distinct colours. Any
+photograph with shadows in it does that on a 6-bit panel, on any website. The bare background
+beside the picture measures *nothing* needing dithering.
+**The gallery's print shadows** stay. There a shadow falls on other prints as often as on the
+wall, which is real work rather than a black blur on a black ground. Worth re-checking on the
+wall panels, since the same defect would look the same.
 
 The `?fx` modes are applied by a small inline script **before the module loads**, because on
 hardware where the heavy effects are the problem, one painted frame of them is one too many.
