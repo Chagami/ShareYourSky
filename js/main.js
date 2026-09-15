@@ -165,6 +165,7 @@ const noBtn = $('noBtn')
 const yesBtn = $('yesBtn')
 const resetBtn = $('resetBtn')
 const slidersTitle = $('slidersTitle')
+const filterWheel = $('filterWheel')
 const realAsk = $('realAsk')
 const confirmAsk = $('confirmAsk')
 const confirmPic = $('confirmPic')
@@ -431,6 +432,9 @@ function moveBlob(index, { animate = true } = {}) {
 new ResizeObserver(() => {
   blobAt = null
   moveBlob(stepIndex, { animate: false })
+  // The wheel is placed from the photograph's measured box, so a window that changes shape
+  // has to have it placed again.
+  if (wheelTimer) placeWheel()
 }).observe(stepsBar)
 
 function setAspect(w, h) {
@@ -1079,6 +1083,8 @@ const STEP_ENTER = {
     drawAdjust()
 
     await flyInto(adjustPic, TIMELINE.photoFlight)
+    // The wheel starts turning while the sentences are being read, not after them.
+    startWheel()
     await wait(t(TIMELINE.storyLeadIn))
     await fadeIn(adjustStoryEl, ADJUST_STORY)
     if (step() !== 'adjust') return
@@ -1250,8 +1256,111 @@ const STORY_AFTER = [
 
 const ADJUST_STORY = [
   { text: 'You used the camera to capture real data, just like an astrophotographer.' },
-  { block: true, text: 'Astrophotographers isolate colors in a similar way to focus on specific objects.' },
+  { block: true, text: 'Astrophotographers isolate colors using filters to focus on specific objects.' },
 ]
+
+// ── the filter wheel ───────────────────────────────────────────────────────
+//
+// The point it is making: a camera on Earth splits light into red, green and blue and stops
+// there, which is the first filter on this wheel. An astrophotographer puts a different piece
+// of glass in the way — one that passes a single line of the spectrum and nothing else — and
+// takes a separate picture through each. The wheel turns one filter at a time, and whatever is
+// behind the glass comes through it changed, so the picture changes inside the filter and
+// nowhere else.
+//
+// `pass` is a backdrop-filter. The sepia-then-hue-rotate pair is the usual way to push an image
+// onto a single hue: sepia lands everything near 35 degrees, and the rotation carries it from
+// there to the line's own colour.
+const FILTERS = [
+  { name: 'RGB', sub: 'visible', pass: 'saturate(1.05)' },
+  { name: 'H\u03B1', sub: '656 nm', pass: 'grayscale(1) sepia(1) hue-rotate(-35deg) saturate(7) brightness(1.05)' },
+  { name: 'OIII', sub: '501 nm', pass: 'grayscale(1) sepia(1) hue-rotate(145deg) saturate(6) brightness(1.05)' },
+  { name: 'SII', sub: '672 nm', pass: 'grayscale(1) sepia(1) hue-rotate(-48deg) saturate(8) brightness(0.95)' },
+  { name: 'H\u03B2', sub: '486 nm', pass: 'grayscale(1) sepia(1) hue-rotate(178deg) saturate(6) brightness(1.05)' },
+]
+const WHEEL_STEP = 360 / FILTERS.length
+const WHEEL_DWELL = 2600 // how long a filter sits in the gate before the next one comes round
+
+let wheelAt = 0
+let wheelTimer = 0
+
+/**
+ * Put the wheel where the photograph actually ended up.
+ *
+ * The hub sits off to the right of the picture so the gate — the nine o'clock position — lands
+ * inside the picture's right-hand side, with the neighbouring filters half off the screen. That
+ * is what a wheel in a housing looks like, and it keeps the middle of the picture, which is
+ * where a visitor's face is, clear of glass.
+ */
+function placeWheel() {
+  const pic = adjustPic.getBoundingClientRect()
+  const host = filterWheel.parentElement?.getBoundingClientRect()
+  if (!host || !pic.width) return
+
+  const d = Math.round(pic.height * 0.22)
+  const r = Math.round(pic.height * 0.34)
+  const gateX = pic.left - host.left + pic.width * 0.8
+  const gateY = pic.top - host.top + pic.height / 2
+
+  filterWheel.style.setProperty('--d', `${d}px`)
+  // The circle, cropped top and bottom: the flats are where the names are printed.
+  filterWheel.style.setProperty('--dh', `${Math.round(d * 0.78)}px`)
+  filterWheel.style.setProperty('--r', `${r}px`)
+  filterWheel.style.setProperty('--hub-x', `${Math.round(gateX + r)}px`)
+  filterWheel.style.setProperty('--hub-y', `${Math.round(gateY)}px`)
+}
+
+function buildWheel() {
+  filterWheel.querySelectorAll('.filter').forEach((el) => el.remove())
+  FILTERS.forEach((f, i) => {
+    const el = document.createElement('div')
+    el.className = 'filter'
+    el.style.setProperty('--a', `${-i * WHEEL_STEP}deg`)
+    el.style.setProperty('--pass', f.pass)
+    el.dataset.i = String(i)
+
+    const name = document.createElement('b')
+    name.textContent = f.name
+    const sub = document.createElement('small')
+    sub.textContent = f.sub
+    const glass = document.createElement('span')
+    glass.className = 'filter-glass'
+
+    el.append(name, glass, sub)
+    filterWheel.append(el)
+  })
+  wheelAt = 0
+  filterWheel.style.setProperty('--turn', '0deg')
+  markGate()
+}
+
+/** Which one is in the gate. Filter i is there whenever the wheel has turned i steps. */
+function markGate() {
+  const at = ((wheelAt % FILTERS.length) + FILTERS.length) % FILTERS.length
+  for (const el of filterWheel.querySelectorAll('.filter')) {
+    el.classList.toggle('in-gate', Number(el.dataset.i) === at)
+  }
+}
+
+function startWheel() {
+  stopWheel()
+  placeWheel()
+  buildWheel()
+  wheelTimer = setInterval(() => {
+    if (step() !== 'adjust' || adjustSplit.dataset.phase !== 'ask') return stopWheel()
+    // The glass stops filtering before it moves: a backdrop-filter sampling a backdrop that is
+    // sliding across it is both wrong to look at and expensive to compute.
+    filterWheel.querySelectorAll('.filter').forEach((el) => el.classList.remove('in-gate'))
+    wheelAt++
+    filterWheel.style.setProperty('--turn', `${wheelAt * WHEEL_STEP}deg`)
+    later(t(860), markGate)
+  }, t(WHEEL_DWELL))
+}
+
+function stopWheel() {
+  clearInterval(wheelTimer)
+  wheelTimer = 0
+}
 
 // The question the piece is actually asking. Held back until a colour has been changed, so it
 // is asked of something the visitor has just done rather than of something they were shown.
@@ -1431,6 +1540,7 @@ function clearBeats() {
   realAsk.replaceChildren()
   realAsk.classList.remove('in')
   stopReels()
+  stopWheel()
   confirmPic.style.visibility = ''
   fliers.replaceChildren()
   astroSplit.hidden = true
@@ -1934,6 +2044,9 @@ async function onColours() {
   coloursPop?.cancel()
   coloursPop = null
   coloursBtn.classList.add('waiting')
+  // The wheel belongs to the first half of this screen; the spectra are the second half's
+  // version of the same idea, and two of them at once is neither.
+  stopWheel()
   await openColours()
 }
 

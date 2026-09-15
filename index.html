@@ -119,6 +119,11 @@
         <div class="pic pic-col" id="adjustPic">
           <canvas id="adjustCanvas" class="photo"></canvas>
         </div>
+        <!-- The filter wheel turns over the right of the picture while the first sentence is
+             being read. Decorative and inert: everything in it is built by js/main.js. -->
+        <div class="filter-wheel" id="filterWheel" aria-hidden="true">
+          <i class="wheel-gate"></i>
+        </div>
         <p class="story" id="adjustStory"></p>
         <!-- Arrives only once a colour has actually been changed, so the question is asked of
              something the visitor has just done rather than of something they were shown. -->

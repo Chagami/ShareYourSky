@@ -476,6 +476,45 @@ being let go of, so there is no acceleration, and the sway and the tilt run at d
 so they never line up into something mechanical. It costs two and a half seconds, which is the
 point.
 
+### The filter wheel
+
+While the first two sentences are being read, a wheel of filters turns over the right of the
+photograph, stopping at each one. It is making the argument the sentences make: a camera on
+Earth splits light into red, green and blue and stops there — which is the first filter on the
+wheel — and an astrophotographer puts a different piece of glass in the way, one that passes a
+single line of the spectrum and nothing else. **RGB**, then **Hα**, **OIII**, **SII**, **Hβ**.
+
+**It had to go over the picture.** Measured on the kiosk there are 281px either side of the
+photograph and 291px below the sentences, which is not room for a mechanism — and a filter has
+to be over the image anyway, or there is nothing to watch it do. So the hub sits off to the
+right and the gate, at nine o'clock, lands inside the picture's right-hand side with the
+neighbouring filters half off the screen. That is what a wheel in a housing looks like, and it
+keeps the middle of the picture, which is where a face is, clear of glass.
+
+Each filter is **a circle cropped top and bottom**, which is what leaves the two flat edges the
+name and the wavelength are printed on: a near-black body, a 2px white line round the rim, and a
+smaller disc of glass in the middle. Measured: a 469px circle in a 469×366 box, so 103px of it
+cropped away.
+
+**The glass is a `backdrop-filter`**, so whatever is behind it comes through tinted and the
+picture changes inside the filter and nowhere else. The narrowband tints are the usual
+sepia-then-hue-rotate pair: sepia lands everything near 35° and the rotation carries it from
+there to the line's own colour. Measured against the same frame with the filters hidden — where
+there is light to filter, **100%** of the pixels inside the glass change, mean difference **702**
+of a possible 765, and **0%** of the pixels outside it move.
+
+Three things worth knowing if it is ever touched:
+
+- **Only the filter in the gate filters anything.** `backdrop-filter` is expensive, and it is
+  applied after the wheel has stopped, so nothing is ever sampling a backdrop sliding across it.
+- **The turn animates a registered `@property` angle.** A custom property is a string until it
+  is registered, and a string cannot be interpolated — without the registration the wheel jumps
+  from stop to stop instead of turning. The easing overshoots and settles, because a wheel with
+  detents does not glide to a halt.
+- **The labels stay upright** rather than rotating with the wheel. A real one carries them round
+  and half of them end up upside down; on a wall read from two metres away, legible beats
+  faithful.
+
 ### Asking the question
 
 The adjust screen stops after two sentences — what the visitor did, and what an astrophotographer
