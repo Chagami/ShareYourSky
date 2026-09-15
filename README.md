@@ -561,6 +561,42 @@ Four things worth knowing if it is ever touched:
   and half of them end up upside down; on a wall read from two metres away, legible beats
   faithful.
 
+### The answer, and where it goes
+
+The question is a block of its own now, set off from the paragraph above it by a rule and a good
+deal of air, and set at twice that paragraph's size — measured, 80px against 37px on the kiosk. It
+had been sitting tucked under the explanation, which read as a footnote to it rather than as the
+thing the whole exhibit is asking.
+
+Under it is the answer: **a figure the visitor drags between No and Yes**, standing on a bar that
+runs red through blue to green. It takes the colour of the bar under its feet — measured at five
+positions, the pixels the browser actually painted match the computed colour exactly, from
+`rgb(247,63,56)` at one end to `rgb(34,196,97)` at the other. No is on the left because the
+colours were given as red for no and green for yes, and left-to-right agreement is the way every
+other scale a visitor has ever filled in runs.
+
+The whole block is the handle, not just the figure: a person standing on a bar is a small target
+and the bar is the obvious thing to reach for. Arrow keys work too, which is the only way anyone
+gets at it without a touchscreen.
+
+It starts in the middle, undecided, and **is only reported if it was moved**. An untouched scale
+is not somebody answering "undecided", it is somebody who walked away, and averaging the two
+together would bury the difference in exactly the number this is being kept for.
+
+**Where it goes.** One row per visitor, written when they leave the screen — pressing on, or the
+exhibit giving up and starting again with nobody there. `server/answers.js` appends it to
+`data/answers.csv` on whichever machine serves the pages:
+
+```
+time,value
+2026-09-15T22:09:19.286Z,0.310
+```
+
+`value` is 0 at No and 1 at Yes. The folder is in `.gitignore`: it is data, and it belongs to the
+machine that collected it. **Admin page → Answers (CSV)** downloads it; so does `GET api/answer`,
+and `DELETE api/answer` starts a fresh one. A visitor who is mid-answer when the kiosk reloads is
+still counted — the report goes out as a beacon, which survives the page where a fetch would not.
+
 ### Asking the question
 
 The adjust screen stops after two sentences — what the visitor did, and what an astrophotographer

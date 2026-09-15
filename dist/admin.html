@@ -4,10 +4,10 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Share Your Sky — Photos</title>
-  <script type="module" crossorigin src="./assets/admin-DJVjH1s8.js"></script>
-  <link rel="modulepreload" crossorigin href="./assets/app-BCOeuJXI.js">
-  <link rel="stylesheet" crossorigin href="./assets/app-9lgfphR9.css">
-  <link rel="stylesheet" crossorigin href="./assets/admin-DnxMXr-6.css">
+  <script type="module" crossorigin src="./assets/admin-D3hJDRjv.js"></script>
+  <link rel="modulepreload" crossorigin href="./assets/app-CXXzHfnK.js">
+  <link rel="stylesheet" crossorigin href="./assets/app-DqMWfq9D.css">
+  <link rel="stylesheet" crossorigin href="./assets/admin-1eEwtVz6.css">
 </head>
 <!-- Not the exhibit. This is the page for whoever is running it: every picture ever shared,
      what is on the wall, and a way to take one down. Deliberately linked from nowhere. -->
@@ -19,6 +19,9 @@
     <p class="admin-count" id="count">Loading…</p>
   </div>
   <div class="admin-tools">
+    <!-- What visitors answered to "Is this image real?", one row per visitor. Written by
+         server/answers.js; a plain link, because the browser saves it as a file. -->
+    <a class="abtn" href="api/answer" download>Answers (CSV)</a>
     <button class="abtn" id="refresh">Refresh</button>
     <button class="abtn" id="selectAll">Select all</button>
     <button class="abtn danger" id="removeSel" disabled>Delete selected</button>

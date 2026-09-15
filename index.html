@@ -132,8 +132,30 @@
         </div>
         <p class="story" id="adjustStory"></p>
         <!-- Arrives only once a colour has actually been changed, so the question is asked of
-             something the visitor has just done rather than of something they were shown. -->
-        <p class="real-ask" id="realAsk"></p>
+             something the visitor has just done rather than of something they were shown. A
+             block of its own, set apart from the paragraph above it: it is not the next
+             sentence of that explanation, it is the thing the whole exhibit is asking.
+
+             The figure is dragged between No and Yes and where it is left is the answer. It
+             starts in the middle, undecided, and js/main.js reports it to api/answer when the
+             visitor leaves this screen — but only if they moved it. -->
+        <div class="verdict" id="verdict">
+          <p class="real-ask" id="realAsk"></p>
+          <div class="scale" id="verdictScale" tabindex="0" role="slider"
+               aria-label="Is this image real?" aria-valuemin="0" aria-valuemax="1"
+               aria-valuenow="0.5" aria-valuetext="undecided">
+            <div class="scale-track" id="verdictTrack">
+              <span class="scale-figure" id="verdictFigure">
+                <svg viewBox="0 0 60 92" aria-hidden="true">
+                  <circle cx="30" cy="17" r="15" />
+                  <path d="M30 36c-11 0-17 8-17 20 0 9 3 15 6 18h22c3-3 6-9 6-18 0-12-6-20-17-20z" />
+                  <path class="limbs" d="M14 46 L4 62 M46 46 L56 62 M24 74 L21 90 M36 74 L39 90" />
+                </svg>
+              </span>
+            </div>
+            <div class="scale-ends"><span>No</span><span>Yes</span></div>
+          </div>
+        </div>
       </div>
       <div class="channels" id="adjustChannels">
         <h2 class="channels-title" id="slidersTitle">Try changing the colors</h2>

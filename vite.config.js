@@ -3,6 +3,7 @@ import { defineConfig } from 'vite'
 import basicSsl from '@vitejs/plugin-basic-ssl'
 import { wallStore } from './server/wall.js'
 import { galleryAllocator } from './server/gallery.js'
+import { answerLog } from './server/answers.js'
 
 // Where the exhibit answers, and how. The defaults are the developer's; the exhibit machine
 // sets these in scripts/exhibit.env, so the address on the kiosk shortcut can be a bare name
@@ -67,10 +68,11 @@ export default defineConfig({
   // the LAN, the wall on a screen elsewhere — so the pictures have to live on the machine
   // serving the pages rather than in either browser. Kept as a middleware rather than a second
   // process so the exhibit is still one command to start.
+  // answerLog writes down what each visitor answered to "Is this image real?".
   // wallStore keeps the visitors' pictures; galleryAllocator hands the curated ones out to the
   // four gallery screens so that no two of them show the same thing.
   // basicSsl only when there is no real certificate to use — the two fight over the same job.
-  plugins: [...(selfSigned ? [basicSsl()] : []), wallStore(), galleryAllocator()],
+  plugins: [...(selfSigned ? [basicSsl()] : []), wallStore(), galleryAllocator(), answerLog()],
   // Nothing to pre-bundle: this project has no runtime dependencies and every import in js/ is
   // relative, so the dependency optimizer scans the whole tree and renames a directory into
   // place to produce an empty result. On Windows that rename fails outright if anything is

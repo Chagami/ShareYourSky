@@ -32,6 +32,13 @@
   --ch-g: #3ddc6b;
   --ch-b: #4d94ff;
   --ir: #b3421f;
+
+  /* The answer scale: no, undecided, yes. Deliberately not the channel colours — those three
+     mean red, green and blue light everywhere else on this screen, and a visitor who has just
+     been dragging them about should not have to work out that they now mean something else. */
+  --no: #ff3b30;
+  --maybe: #3aa0ff;
+  --yes: #22c55e;
   /* The step indicator's blob. Warm enough to be unmistakably "you are here" against a screen
      that is otherwise black, blue and the three channel colours. */
   --hot: #ff8a2b;
@@ -619,17 +626,105 @@ body[data-rot="270"] .framed { transform: translate(-50%, -50%) rotate(270deg) s
 }
 .channels-title.in { opacity: 1; }
 
-/* The question that arrives once a colour has been changed. Larger than the paragraph above
-   it, because it is the one the whole piece is asking. */
-.real-ask {
-  margin: 1.2vh 0 0;
-  font-size: clamp(1.3rem, 3.2vw, 3.4rem);
-  font-weight: 600;
-  line-height: 1.2;
-  letter-spacing: -0.02em;
+/* ─── the question, and the answer ─── */
+
+/* Set apart from the paragraph above it by a rule and a good deal of air. It is not the next
+   sentence of that explanation — it is the thing the whole exhibit is asking, and a question
+   that arrives tucked under a paragraph reads as a footnote to it. */
+.verdict {
+  margin-top: 2.6vh;
+  padding-top: 2.6vh;
+  border-top: 1px solid var(--line);
   opacity: 0;
+  transition: opacity 420ms ease;
+  /* Not merely transparent. An invisible block of this height still takes its room, and the
+     screen before this one is laid out around the photograph having all of it. */
+  display: none;
 }
-.real-ask.in { opacity: 1; }
+.verdict.in {
+  display: block;
+  opacity: 1;
+}
+
+.real-ask {
+  margin: 0;
+  font-size: clamp(1.7rem, 4.6vw, 5rem);
+  font-weight: 700;
+  line-height: 1.15;
+  letter-spacing: -0.025em;
+}
+
+/* The scale. No on the left and Yes on the right, because the colours were given as red for no
+   and green for yes, and left-to-right agreement is the way every other scale a visitor has
+   ever filled in runs. */
+.scale {
+  margin-top: 2.8vh;
+  /* The whole block is the handle: a figure standing on a bar is a small target, and the bar it
+     stands on is the obvious thing to reach for. */
+  touch-action: none;
+  cursor: grab;
+  -webkit-user-select: none;
+  user-select: none;
+}
+.scale:active { cursor: grabbing; }
+
+.scale-track {
+  position: relative;
+  height: clamp(14px, 1.4vh, 26px);
+  border-radius: 999px;
+  background: linear-gradient(90deg, var(--no) 0%, var(--maybe) 50%, var(--yes) 100%);
+  /* Room above for the figure standing on it. */
+  margin-top: clamp(62px, 9.6vh, 190px);
+}
+
+/* Where the figure is, 0 at No and 1 at Yes, and what colour it has taken from under its feet.
+   Both are set by js/main.js; the initial values are the middle of the scale. */
+.scale-figure {
+  position: absolute;
+  left: calc(var(--p, 0.5) * 100%);
+  bottom: calc(100% - clamp(3px, 0.35vh, 6px));
+  width: clamp(64px, 8vh, 132px);
+  transform: translateX(-50%);
+  color: var(--at, #3aa0ff);
+  /* Only while it is being put somewhere by something other than a finger. A transition here
+     during a drag is the figure lagging behind the hand holding it. */
+  transition: left 180ms ease, color 180ms linear;
+}
+.scale.dragging .scale-figure { transition: color 90ms linear; }
+
+.scale-figure svg {
+  display: block;
+  width: 100%;
+  height: auto;
+  fill: currentColor;
+  /* A dark edge, so a figure the colour of the bar it is standing on still has an outline
+     against it. Flat and thin rather than a soft glow: a wide blur on a near-black ground is
+     what the 6-bit panel dithers, and that is the speckle this exhibit spent a day chasing. */
+  stroke: rgba(0, 0, 0, 0.55);
+  stroke-width: 3;
+  paint-order: stroke;
+}
+.scale-figure .limbs {
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 9;
+  stroke-linecap: round;
+}
+
+.scale-ends {
+  display: flex;
+  justify-content: space-between;
+  margin-top: 1.4vh;
+  font-size: clamp(0.95rem, 2.1vw, 2rem);
+  font-weight: 700;
+  letter-spacing: 0.02em;
+}
+.scale-ends span:first-child { color: var(--no); }
+.scale-ends span:last-child { color: var(--yes); }
+
+@media (prefers-reduced-motion: reduce) {
+  .scale-figure { transition: none; }
+}
 
 /* "real", in three colours at once.
  *

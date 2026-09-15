@@ -167,6 +167,9 @@ const resetBtn = $('resetBtn')
 const slidersTitle = $('slidersTitle')
 const filterWheel = $('filterWheel')
 const realAsk = $('realAsk')
+const verdict = $('verdict')
+const verdictScale = $('verdictScale')
+const verdictTrack = $('verdictTrack')
 const confirmAsk = $('confirmAsk')
 const confirmPic = $('confirmPic')
 const confirmCanvas = $('confirmCanvas')
@@ -307,6 +310,10 @@ function goToStep(id, { animate = true, blob = true } = {}) {
   // Where the step being left was showing its picture, for the step arriving to fly its own
   // picture out of. Measured now, because a step that is no longer current has no rectangle.
   flightFrom = HERO[step()]?.()?.getBoundingClientRect() ?? null
+
+  // Leaving the adjust screen is the moment the answer is final, however it is left — pressing
+  // on, or the exhibit giving up and starting again with nobody there.
+  if (step() === 'adjust' && id !== 'adjust') sendVerdict()
 
   stepIndex = i
   document.body.dataset.step = id
@@ -1664,7 +1671,7 @@ function clearBeats() {
   coloursPop?.cancel()
   coloursPop = null
   realAsk.replaceChildren()
-  realAsk.classList.remove('in')
+  clearVerdict()
   stopReels()
   stopWheel()
   confirmPic.style.visibility = ''
@@ -2176,6 +2183,131 @@ async function onColours() {
   await openColours()
 }
 
+// ── the answer ─────────────────────────────────────────────────────────────
+//
+// A figure dragged between No and Yes. Where it is left is the answer, as a number from 0 (no)
+// to 1 (yes), and it goes to api/answer — one row per visitor — when they leave this screen.
+//
+// It starts in the middle and is only reported if it was moved. An untouched scale is not a
+// visitor answering "undecided", it is a visitor who walked away, and averaging the two
+// together would bury the difference in exactly the number this is being kept for.
+
+// No, undecided, yes. The same three the stylesheet paints the bar with, because the figure
+// takes the colour of the bar under its feet and the two must agree.
+const VERDICT_COLOURS = [
+  [0.0, [255, 59, 48]],
+  [0.5, [58, 160, 255]],
+  [1.0, [34, 197, 94]],
+]
+
+let verdictAt = 0.5
+let verdictTouched = false
+let verdictSent = false
+let verdictDrag = null
+
+/** The colour of the bar at p, which is the colour the figure standing there takes. */
+function verdictColour(p) {
+  let [x0, c0] = VERDICT_COLOURS[0]
+  for (const [x1, c1] of VERDICT_COLOURS.slice(1)) {
+    if (p <= x1 || x1 === 1) {
+      const k = x1 === x0 ? 0 : (Math.min(p, x1) - x0) / (x1 - x0)
+      const mix = c0.map((v, i) => Math.round(v + (c1[i] - v) * k))
+      return `rgb(${mix.join(', ')})`
+    }
+    x0 = x1
+    c0 = c1
+  }
+  return `rgb(${VERDICT_COLOURS.at(-1)[1].join(', ')})`
+}
+
+function drawVerdict() {
+  verdictScale.style.setProperty('--p', verdictAt.toFixed(4))
+  verdictScale.style.setProperty('--at', verdictColour(verdictAt))
+  verdictScale.setAttribute('aria-valuenow', verdictAt.toFixed(2))
+}
+
+function setVerdict(p, { touched = true } = {}) {
+  verdictAt = Math.min(1, Math.max(0, p))
+  if (touched) verdictTouched = true
+  drawVerdict()
+}
+
+/** Where along the bar a point on the screen is. */
+function verdictFrom(clientX) {
+  const r = verdictTrack.getBoundingClientRect()
+  return r.width ? (clientX - r.left) / r.width : 0.5
+}
+
+function verdictDown(e) {
+  if (!verdict.classList.contains('in')) return
+  verdictDrag = e.pointerId
+  verdictScale.classList.add('dragging')
+  setVerdict(verdictFrom(e.clientX))
+  try {
+    verdictScale.setPointerCapture(e.pointerId)
+  } catch {}
+  e.preventDefault()
+}
+
+function verdictMove(e) {
+  if (verdictDrag !== e.pointerId) return
+  setVerdict(verdictFrom(e.clientX))
+}
+
+function verdictUp(e) {
+  if (verdictDrag !== e.pointerId) return
+  verdictDrag = null
+  verdictScale.classList.remove('dragging')
+}
+
+verdictScale.addEventListener('pointerdown', verdictDown)
+verdictScale.addEventListener('pointermove', verdictMove)
+verdictScale.addEventListener('pointerup', verdictUp)
+verdictScale.addEventListener('pointercancel', verdictUp)
+// Cheap, and it is the only way anyone gets at this without a touchscreen.
+verdictScale.addEventListener('keydown', (e) => {
+  const by = { ArrowLeft: -0.05, ArrowRight: 0.05, Home: -1, End: 1 }[e.key]
+  if (by === undefined) return
+  setVerdict(Math.abs(by) === 1 ? (by + 1) / 2 : verdictAt + by)
+  e.preventDefault()
+})
+
+/** Put the scale back to undecided for the next visitor. */
+function clearVerdict() {
+  verdictAt = 0.5
+  verdictTouched = false
+  verdictSent = false
+  verdictDrag = null
+  verdictScale.classList.remove('dragging')
+  verdict.classList.remove('in')
+  drawVerdict()
+}
+
+/**
+ * Report it, once, when the visitor leaves the screen.
+ *
+ * Deliberately not awaited and deliberately never in the way: a visitor pressing on must not
+ * wait for a network, and an exhibit machine that cannot write the file is a thing for whoever
+ * runs it to find in the debug overlay, not a thing to stop a visitor with.
+ */
+function sendVerdict() {
+  if (verdictSent || !verdictTouched) return
+  verdictSent = true
+  const body = JSON.stringify({ value: Number(verdictAt.toFixed(3)) })
+  setInfo('answer', verdictAt.toFixed(3))
+  try {
+    // A visitor who closes the tab mid-answer still gets counted: a beacon survives the page,
+    // and a fetch does not.
+    if (navigator.sendBeacon?.(new URL('api/answer', location.href), new Blob([body], { type: 'application/json' }))) return
+  } catch {}
+  fetch('api/answer', { method: 'POST', headers: { 'content-type': 'application/json' }, body, keepalive: true })
+    .catch((err) => setInfo('answer', `not written: ${err?.message ?? err}`))
+}
+
+// The kiosk is never closed, but it is reloaded, and a visitor mid-answer when that happens is
+// still a visitor who answered.
+addEventListener('pagehide', sendVerdict)
+
 /**
  * The question, once a colour has actually been changed.
  *
@@ -2200,10 +2332,13 @@ function showRealQuestion() {
     word.append(layer)
   }
   realAsk.append(REAL_ASK_BEFORE, word, REAL_ASK_AFTER)
-  realAsk.classList.add('in')
+  // The question and the way to answer it arrive together: a question with no answer under it
+  // is rhetorical, and this one is not.
+  verdict.classList.add('in')
+  drawVerdict()
 
   const fade = track(
-    realAsk.animate([{ opacity: 0 }, { opacity: 1 }], {
+    verdict.animate([{ opacity: 0 }, { opacity: 1 }], {
       duration: t(TIMELINE.blockFade),
       easing: 'linear',
       fill: 'both',

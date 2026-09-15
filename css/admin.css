@@ -44,6 +44,10 @@ body.admin {
 .admin-tools { display: flex; flex-wrap: wrap; gap: 0.6rem; }
 
 .abtn {
+  /* An anchor as well as a button wears this — the answers CSV is a link, because a link is
+     what saves a file. Both need to sit on the same line as each other. */
+  display: inline-block;
+  text-decoration: none;
   padding: 0.6em 1.1em;
   border: 1px solid var(--line);
   border-radius: 8px;
