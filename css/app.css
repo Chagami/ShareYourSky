@@ -602,15 +602,80 @@ body[data-rot="270"] .framed { transform: translate(-50%, -50%) rotate(270deg) s
    asked yet and the picture is simply their photograph. */
 .split[data-phase="ask"] .pic-title { display: none; }
 
-/* The label over the charts. It arrives with the first of them rather than with the column, so
-   it is never a caption on an empty space. */
-.sliders-title {
+/* The instruction over the spectra. It arrives with the first of them rather than with the
+   column, so it is never a caption on an empty space. A heading rather than the small muted
+   label it was: on this screen it is the only thing telling a visitor what to do. */
+.channels-title {
   align-self: center;
-  margin-bottom: 0.6vh;
+  margin: 0 0 1.4vh;
+  font-size: clamp(1.2rem, 3vw, 3rem);
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  line-height: 1.1;
+  text-wrap: balance;
   opacity: 0;
   transition: opacity 420ms linear;
 }
-.sliders-title.in { opacity: 1; }
+.channels-title.in { opacity: 1; }
+
+/* The question that arrives once a colour has been changed. Larger than the paragraph above
+   it, because it is the one the whole piece is asking. */
+.real-ask {
+  margin: 1.2vh 0 0;
+  font-size: clamp(1.3rem, 3.2vw, 3.4rem);
+  font-weight: 600;
+  line-height: 1.2;
+  letter-spacing: -0.02em;
+  opacity: 0;
+}
+.real-ask.in { opacity: 1; }
+
+/* "real", in three colours at once.
+ *
+ * The parent carries the word so the line keeps its width; the three copies sit on top of it
+ * and are added together rather than painted over each other — the same arithmetic the red,
+ * green and blue layers did to make the picture in the first place. Apart, you can see the
+ * three colours it is made of; together they come back to white.
+ *
+ * Nothing here may set opacity, transform or filter on .real-word itself: any of the three
+ * makes a stacking context, and a stacking context is exactly what stops plus-lighter reaching
+ * the page behind it. That is why the drift is animated on the copies, never on the parent. */
+.real-word {
+  position: relative;
+  display: inline-block;
+  color: transparent;
+}
+.real-word i {
+  position: absolute;
+  inset: 0;
+  font-style: inherit;
+  font-weight: inherit;
+  color: var(--acc);
+  mix-blend-mode: plus-lighter;
+  will-change: transform;
+}
+.real-word i:nth-child(1) { animation: real-r 4.8s ease-in-out infinite; }
+.real-word i:nth-child(2) { animation: real-g 4.8s ease-in-out infinite; }
+.real-word i:nth-child(3) { animation: real-b 4.8s ease-in-out infinite; }
+
+/* Together, apart, together. The three drift by a fraction of the word and come back, so the
+   word is white most of the time and separates just long enough to be read as three. */
+@keyframes real-r {
+  0%, 100% { transform: none; }
+  45% { transform: translate(-0.055em, -0.045em); }
+}
+@keyframes real-g {
+  0%, 100% { transform: none; }
+  45% { transform: translate(0.05em, 0.05em); }
+}
+@keyframes real-b {
+  0%, 100% { transform: none; }
+  45% { transform: translate(0.055em, -0.05em); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .real-word i { animation: none; }
+  .spectrum.asking .spectrum-pick::after { animation: none; opacity: 0.55; }
+}
 
 /* ─── the share question ─── */
 
@@ -1020,8 +1085,29 @@ body[data-rot="270"] .framed { transform: translate(-50%, -50%) rotate(270deg) s
   border-radius: 50%;
   background: var(--acc);
   cursor: grab;
-  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.6), 0 0 18px var(--acc);
+  /* No `0 0 18px var(--acc)` any more. A soft coloured halo on a near-black ground is a ramp
+     through the levels this panel cannot hold still — it is where "red and blue pixels
+     everywhere" comes from. The ring below asks for attention with an edge instead of a glow. */
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.6);
   transition: transform 160ms var(--ease);
+}
+
+/* Knocking, until it has been used. A hard 3px ring that grows out of the swatch and goes:
+   every frame of it is a flat colour with an edge, so there is no soft gradient anywhere for
+   the panel to shimmer on. */
+.spectrum-pick::after {
+  content: "";
+  position: absolute;
+  inset: -3px;
+  border-radius: 50%;
+  border: 3px solid var(--acc);
+  opacity: 0;
+  pointer-events: none;
+}
+.spectrum.asking .spectrum-pick::after { animation: pick-knock 1.6s linear infinite; }
+@keyframes pick-knock {
+  0% { transform: scale(1); opacity: 0.9; }
+  70%, 100% { transform: scale(2.1); opacity: 0; }
 }
 /* The finger-sized target, which is larger than the thing it is drawn as. */
 .spectrum-pick::before {

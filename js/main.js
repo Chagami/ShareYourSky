@@ -68,12 +68,6 @@ const TIMELINE = {
 
   // Step 3, which asks its question and then hands back the controls.
   lineGap: 520, // between the two sentences of the question
-  // The question, finished and actually read, before the colours are offered. Ten seconds is a
-  // long time to look at a screen that is not moving, and it is meant to be: by this point there
-  // are three sentences up there asking whether the picture is real, and handing over the
-  // sliders early answers the question for them — there is nothing to wonder about once there
-  // is something to fiddle with.
-  askHold: 10000,
   phaseSwap: 720, // the picture moving aside to make room for the charts
 
   // Step 4, which opens on an empty screen.
@@ -165,11 +159,13 @@ const stepBar = $('stepBar')
 const stepsBar = $('stepsBar')
 const stepBlob = $('stepBlob')
 const nextBtn = $('nextBtn')
+const coloursBtn = $('coloursBtn')
 const submitBtn = $('submitBtn')
 const noBtn = $('noBtn')
 const yesBtn = $('yesBtn')
 const resetBtn = $('resetBtn')
 const slidersTitle = $('slidersTitle')
+const realAsk = $('realAsk')
 const confirmAsk = $('confirmAsk')
 const confirmPic = $('confirmPic')
 const confirmCanvas = $('confirmCanvas')
@@ -177,7 +173,7 @@ const liveCrop = $('liveCrop')
 const standIn = $('standIn')
 const reelTop = $('reelTop')
 const reelBottom = $('reelBottom')
-const DOCK = [shutter, nextBtn, submitBtn, noBtn, yesBtn, resetBtn]
+const DOCK = [shutter, nextBtn, coloursBtn, submitBtn, noBtn, yesBtn, resetBtn]
 
 /**
  * The four steps, in order. Each owns one screen and one action in the dock.
@@ -197,7 +193,7 @@ const DOCK = [shutter, nextBtn, submitBtn, noBtn, yesBtn, resetBtn]
 const STEPS = [
   { id: 'camera', action: ['shutter'], mark: 0 },
   { id: 'edit', action: ['nextBtn'], mark: 0 },
-  { id: 'adjust', action: ['submitBtn'], mark: 1 },
+  { id: 'adjust', action: ['coloursBtn', 'submitBtn'], mark: 1 },
   { id: 'confirm', action: ['noBtn', 'yesBtn'], mark: 2 },
   { id: 'astro', action: ['resetBtn'], mark: 3 },
 ]
@@ -1078,6 +1074,8 @@ const STEP_ENTER = {
     clearBeats()
     submitBtn.classList.add('waiting')
     submitBtn.disabled = false
+    coloursBtn.classList.add('waiting')
+    coloursBtn.disabled = false
     drawAdjust()
 
     await flyInto(adjustPic, TIMELINE.photoFlight)
@@ -1085,11 +1083,11 @@ const STEP_ENTER = {
     await fadeIn(adjustStoryEl, ADJUST_STORY)
     if (step() !== 'adjust') return
 
-    // A long pause for the question to land before the means of answering it appears — see
-    // askHold. Ten seconds of a still screen is deliberate, not a stall.
-    await wait(t(TIMELINE.askHold))
-    if (step() !== 'adjust') return
-    await openColours()
+    // The colours are offered when the visitor asks for them, not on a timer. A pause long
+    // enough to read two sentences is a pause long enough to look like the exhibit has stopped,
+    // and handing over the controls before they have read it answers the question for them.
+    coloursBtn.classList.remove('waiting')
+    pop(coloursBtn)
   },
 
   // The picture they made, and the one question in the piece with a wrong answer.
@@ -1252,9 +1250,14 @@ const STORY_AFTER = [
 
 const ADJUST_STORY = [
   { text: 'You used the camera to capture real data, just like an astrophotographer.' },
-  { block: true, text: 'Try changing the colors. Is this image still real?' },
   { block: true, text: 'Astrophotographers isolate colors in a similar way to focus on specific objects.' },
 ]
+
+// The question the piece is actually asking. Held back until a colour has been changed, so it
+// is asked of something the visitor has just done rather than of something they were shown.
+const REAL_ASK_BEFORE = 'Is this image '
+const REAL_ASK_WORD = 'real'
+const REAL_ASK_AFTER = '?'
 
 const CONFIRM_ASK = [{ text: 'Would you like to share your sky to the gallery?' }]
 
@@ -1414,12 +1417,17 @@ async function revealStory() {
 
 /** Put every step that says something back to the empty screen it starts from. */
 function clearBeats() {
-  ;[storyEl, storyAfterEl, adjustStoryEl, confirmAsk, astroLeadEl, astroStoryEl].forEach((el) =>
-    el.replaceChildren()
+  ;[storyEl, storyAfterEl, adjustStoryEl, realAsk, confirmAsk, astroLeadEl, astroStoryEl].forEach(
+    (el) => el.replaceChildren()
   )
   document.querySelectorAll('.channel, .chan-layer').forEach((el) => el.classList.remove('in'))
   slidersTitle.classList.remove('in')
-  ;[nextBtn, submitBtn, yesBtn, noBtn, resetBtn].forEach((b) => b.classList.remove('waiting'))
+  ;[nextBtn, coloursBtn, submitBtn, yesBtn, noBtn, resetBtn].forEach((b) =>
+    b.classList.remove('waiting')
+  )
+  coloursBtn.disabled = false
+  realAsk.replaceChildren()
+  realAsk.classList.remove('in')
   stopReels()
   confirmPic.style.visibility = ''
   fliers.replaceChildren()
@@ -1899,12 +1907,61 @@ function pickHue(src, deg) {
   // touched the strip — landing back where you started has not answered the question.
   if (!recoloured && deg !== CHANNELS[src].hue) {
     recoloured = true
+    showRealQuestion()
     submitBtn.classList.remove('waiting')
     pop(submitBtn)
     bigEditors.forEach((e) => e.setAsking(false))
   }
 
   queueDraw(src)
+}
+
+/** Next, on the adjust screen: bring up the colours. */
+async function onColours() {
+  if (step() !== 'adjust' || coloursBtn.disabled) return
+  // Disabled as well as hidden: .waiting takes the pointer events away, but a keyboard can
+  // still reach a button that is merely transparent, and openColours is not re-entrant.
+  coloursBtn.disabled = true
+  coloursBtn.classList.add('waiting')
+  await openColours()
+}
+
+/**
+ * The question, once a colour has actually been changed.
+ *
+ * "real" is written four times: once in the parent to hold the line's width, and once per
+ * channel on top of it. The three are added together rather than painted over each other, so
+ * apart you can see the colours the word is made of and together they come back to white —
+ * which is the same arithmetic, and the same point, as the three layers that made the picture.
+ */
+function showRealQuestion() {
+  if (realAsk.childNodes.length) return
+
+  const word = document.createElement('span')
+  word.className = 'real-word'
+  word.append(REAL_ASK_WORD)
+  for (const channel of CHANNELS) {
+    const layer = document.createElement('i')
+    layer.textContent = REAL_ASK_WORD
+    // The parent already carries the word, and these three are the same word painted again in
+    // three colours. Without this the line is read out as "realrealrealreal".
+    layer.setAttribute('aria-hidden', 'true')
+    layer.style.setProperty('--acc', channel.accent)
+    word.append(layer)
+  }
+  realAsk.append(REAL_ASK_BEFORE, word, REAL_ASK_AFTER)
+  realAsk.classList.add('in')
+
+  const fade = track(
+    realAsk.animate([{ opacity: 0 }, { opacity: 1 }], {
+      duration: t(TIMELINE.blockFade),
+      easing: 'linear',
+      fill: 'both',
+    })
+  )
+  // Let go of it once it has landed. A running opacity animation makes a stacking context, and
+  // a stacking context is precisely what stops plus-lighter reaching the page behind the word.
+  fade.finished.then(() => fade.cancel()).catch(() => {})
 }
 
 /** "Share my sky" no longer shares anything — it asks. */
@@ -2072,6 +2129,7 @@ addEventListener('pagehide', () => {
 
 shutter.addEventListener('click', runCountdown)
 nextBtn.addEventListener('click', nextStep)
+coloursBtn.addEventListener('click', onColours)
 submitBtn.addEventListener('click', onSubmit)
 yesBtn.addEventListener('click', onYes)
 // No keeps nothing: the picture is never published, and the next visitor starts clean.

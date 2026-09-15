@@ -335,7 +335,7 @@ part and the one thing to press is always at the foot, within reach.
 | --- | --- | --- |
 | `camera` | Title, viewfinder, countdown | the shutter |
 | `edit` | Their photo built up a colour at a time, the three channels it is made of beside it, and the two paragraphs that explain both | `Next`, once the picture is made |
-| `adjust` | The picture alone and large with the question; then the same charts back, each with a spectrum across its top | `Share my sky`, once a colour has been moved |
+| `adjust` | The picture alone and large with two sentences; then, on `Next`, the same charts back with a spectrum across each | `Next`, then `Share my sky` once a colour has been moved |
 | `confirm` | The picture across the screen, the question large underneath it | `No` / `Yes` |
 | `astro` | The Pillars of Creation in step 2's exact arrangement, with the same three charts | `Start again` |
 
@@ -475,6 +475,44 @@ The fall is deliberately not a drop. Gravity is the wrong feeling for something 
 being let go of, so there is no acceleration, and the sway and the tilt run at different rhythms
 so they never line up into something mechanical. It costs two and a half seconds, which is the
 point.
+
+### Asking the question
+
+The adjust screen stops after two sentences — what the visitor did, and what an astrophotographer
+does — and then waits, with a **`Next`** button. It used to wait on a timer instead, and a timer
+is the wrong instrument: too short and it answers the question for them, because there is nothing
+left to wonder about once there is something to fiddle with; too long and a still screen reads as
+an exhibit that has stopped. Ten seconds was tried and was both.
+
+`Next` brings up the spectra under a heading, **Try changing the colors**, which is the only
+thing on that screen telling anybody what to do and is sized accordingly.
+
+**The swatches knock rather than glow.** They had `0 0 18px var(--acc)` on them — a soft coloured
+halo, on a near-black ground, which is precisely the ramp the exhibit panel cannot hold still and
+precisely where "red and blue pixels everywhere" comes from. The invitation is now a hard 3px
+ring that grows out of the swatch and goes: every frame of it is a flat colour with an edge, so
+there is no soft gradient anywhere in it.
+
+Change a colour and the question arrives underneath, larger than the text above it:
+
+> Is this image **real**?
+
+**"real" is written four times.** Once in the parent, transparent, to hold the line's width; then
+once per channel on top of it, in red, green and blue, combined with `mix-blend-mode:
+plus-lighter` — *added* rather than painted over each other. The three drift a fraction of the
+word apart and back, so it separates into the colours it is made of and returns to white. It is
+the same arithmetic, and the same point, as the three layers that built the picture two screens
+earlier.
+
+Two things that would break it, both avoided by construction:
+
+- **Nothing may set opacity, transform or filter on `.real-word`.** Any of the three makes a
+  stacking context, and a stacking context is exactly what stops `plus-lighter` reaching the page
+  behind the word — the three would stack instead of adding, and the word would come out blue.
+  The drift is animated on the copies, never on the parent, and the reveal's own opacity
+  animation is cancelled the moment it lands. Measured with the three held together: the
+  brightest pixel in the word is `rgb(255, 255, 255)`, channel spread **0**.
+- The three copies carry `aria-hidden`, or the line is read out as "realrealrealreal".
 
 7. `Share my sky` is not offered until a colour has been moved *off its own hue*. Touching the
    strip and landing back where you started has not answered the question. It no longer shares
