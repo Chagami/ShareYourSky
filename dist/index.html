@@ -4,10 +4,10 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Share Your Sky</title>
-  <script type="module" crossorigin src="./assets/main-DfJw_yOO.js"></script>
-  <link rel="modulepreload" crossorigin href="./assets/app-CSmiDwsr.js">
+  <script type="module" crossorigin src="./assets/main-BOpMfz0L.js"></script>
+  <link rel="modulepreload" crossorigin href="./assets/app-CO6lfQHq.js">
   <link rel="modulepreload" crossorigin href="./assets/store-DXy1HSxo.js">
-  <link rel="stylesheet" crossorigin href="./assets/app---UBB-FL.css">
+  <link rel="stylesheet" crossorigin href="./assets/app-DzUBX6qi.css">
 </head>
 <body data-step="camera">
 
@@ -121,11 +121,17 @@
         <h2 class="pic-title" id="adjustTitle">Your final image</h2>
         <div class="pic pic-col" id="adjustPic">
           <canvas id="adjustCanvas" class="photo"></canvas>
-        </div>
-        <!-- The filter wheel turns over the right of the picture while the first sentence is
-             being read. Decorative and inert: everything in it is built by js/main.js. -->
-        <div class="filter-wheel" id="filterWheel" aria-hidden="true">
-          <i class="wheel-gate"></i>
+          <!-- The filter wheel, inside the picture so the picture's own edges crop it: the
+               filters are wider than the screen and what shows of one is the arc that reaches
+               into the right-hand quarter. The arrows are the invitation; the swipe that
+               answers them is listened for on the whole screen, in js/main.js, which also
+               builds the filters. -->
+          <div class="filter-wheel" id="filterWheel" aria-hidden="true">
+            <i class="wheel-hint">
+              <i class="wheel-arrow up"></i>
+              <i class="wheel-arrow down"></i>
+            </i>
+          </div>
         </div>
         <p class="story" id="adjustStory"></p>
         <!-- Arrives only once a colour has actually been changed, so the question is asked of

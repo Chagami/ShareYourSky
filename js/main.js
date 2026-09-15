@@ -434,7 +434,7 @@ new ResizeObserver(() => {
   moveBlob(stepIndex, { animate: false })
   // The wheel is placed from the photograph's measured box, so a window that changes shape
   // has to have it placed again.
-  if (wheelTimer) placeWheel()
+  if (wheelLive) placeWheel()
 }).observe(stepsBar)
 
 function setAspect(w, h) {
@@ -1255,11 +1255,11 @@ const STORY_AFTER = [
 ]
 
 const ADJUST_STORY = [
-  { text: 'You used the camera to capture real data, just like an astrophotographer.' },
-  { block: true, text: 'Astrophotographers isolate colors using filters to focus on specific objects.' },
+  { text: 'You used the camera to capture real data.' },
+  { block: true, text: 'Astrophotographers isolate data using filters to focus on specific objects.' },
 ]
 
-// ── the filter wheel ───────────────────────────────────────────────────────
+// ── the filter wheel ────────────────────────────────────────────────
 //
 // The point it is making: a camera on Earth splits light into red, green and blue and stops
 // there, which is the first filter on this wheel. An astrophotographer puts a different piece
@@ -1268,46 +1268,75 @@ const ADJUST_STORY = [
 // behind the glass comes through it changed, so the picture changes inside the filter and
 // nowhere else.
 //
-// `pass` is a backdrop-filter. The sepia-then-hue-rotate pair is the usual way to push an image
-// onto a single hue: sepia lands everything near 35 degrees, and the rotation carries it from
-// there to the line's own colour.
+// It is drawn very large on purpose: one filter covers the right-hand quarter of the
+// photograph, edge to edge, and the rest of it runs off the screen. A visitor sees a piece of
+// glass in front of the picture rather than a diagram of one.
+//
+// `pass` is a backdrop-filter, and what it has to do is what a narrow-band filter does: keep
+// the brightness, throw the colour away, pass one line. Everything after grayscale here is one
+// linear map, so grey goes in and one fixed colour times that grey comes out — and the
+// brightness in front of it is chosen to put the brightest pixel exactly at the top of its
+// channel, so nothing clips anywhere on the ramp and the picture's own shading survives. Get
+// that wrong in either direction and the glass either crushes to black or blows out: a nearly
+// white pixel has no colour left to push, so an over-saturated chain turns it yellow whatever
+// line it was meant to be. The numbers are solved, not picked.
+//
+// The wavelengths are the real ones and so are the colours: 656 nm is the red of a hydrogen
+// sky, 501 nm the green a planetary nebula comes out, 672 nm the deeper red of ionised
+// sulphur, 486 nm hydrogen's blue line.
 const FILTERS = [
-  { name: 'RGB', sub: 'visible', pass: 'saturate(1.05)' },
-  { name: 'H\u03B1', sub: '656 nm', pass: 'grayscale(1) sepia(1) hue-rotate(-35deg) saturate(7) brightness(1.05)' },
-  { name: 'OIII', sub: '501 nm', pass: 'grayscale(1) sepia(1) hue-rotate(145deg) saturate(6) brightness(1.05)' },
-  { name: 'SII', sub: '672 nm', pass: 'grayscale(1) sepia(1) hue-rotate(-48deg) saturate(8) brightness(0.95)' },
-  { name: 'H\u03B2', sub: '486 nm', pass: 'grayscale(1) sepia(1) hue-rotate(178deg) saturate(6) brightness(1.05)' },
+  { name: 'RGB', sub: 'visible', pass: 'saturate(1.06)' },
+  { name: 'H\u03B1', sub: '656 nm', pass: 'grayscale(1) brightness(0.192) sepia(1) hue-rotate(313deg) saturate(13.5)' },
+  { name: 'OIII', sub: '501 nm', pass: 'grayscale(1) brightness(0.614) sepia(1) hue-rotate(95.5deg) saturate(4.25)' },
+  { name: 'SII', sub: '672 nm', pass: 'grayscale(1) brightness(0.188) sepia(1) hue-rotate(296deg) saturate(13.25)' },
+  { name: 'H\u03B2', sub: '486 nm', pass: 'grayscale(1) brightness(0.399) sepia(1) hue-rotate(162.5deg) saturate(5.75)' },
 ]
 const WHEEL_STEP = 360 / FILTERS.length
-const WHEEL_DWELL = 2600 // how long a filter sits in the gate before the next one comes round
+const WHEEL_SWING = 1100 // the swing from one filter to the next; matches the CSS transition
+const WHEEL_WAIT = 4200 // how long the arrows get on their own before the wheel demonstrates
+const WHEEL_DWELL = 3400 // and how long each filter then sits in the gate
 
 let wheelAt = 0
+let wheelLive = false
 let wheelTimer = 0
+let wheelGate = 0
+let wheelReach = 400 // how far a finger travels to bring the next filter round
+let wheelDrag = null
 
 /**
  * Put the wheel where the photograph actually ended up.
  *
- * The hub sits off to the right of the picture so the gate — the nine o'clock position — lands
- * inside the picture's right-hand side, with the neighbouring filters half off the screen. That
- * is what a wheel in a housing looks like, and it keeps the middle of the picture, which is
- * where a visitor's face is, clear of glass.
+ * One filter reaches a quarter of the way into the picture at the middle of its arc and touches
+ * the top and bottom corners of that band — which fixes its size: for a circle, a bulge of
+ * `band` across a chord of the picture's full height means a radius of
+ * (band² + (height/2)²) / 2band. That comes out much wider than the screen, and the rest of
+ * the disc simply runs off it, which is what a filter in front of a camera looks like.
+ *
+ * The hub sits far off to the right so the gate — the nine o'clock position — lands on that
+ * band, and the filters travel almost straight up and down past it.
  */
 function placeWheel() {
   const pic = adjustPic.getBoundingClientRect()
-  const host = filterWheel.parentElement?.getBoundingClientRect()
-  if (!host || !pic.width) return
+  if (!pic.width) return
 
-  const d = Math.round(pic.height * 0.22)
-  const r = Math.round(pic.height * 0.34)
-  const gateX = pic.left - host.left + pic.width * 0.8
-  const gateY = pic.top - host.top + pic.height / 2
+  const band = Math.round(pic.width * 0.25)
+  const half = pic.height / 2
+  const rad = Math.round((band * band + half * half) / (2 * band))
+  // Just clear of touching: a wheel of n discs of radius rad needs rad / sin(pi/n) between the
+  // hub and each centre for them not to overlap.
+  const orbit = Math.round((rad / Math.sin(Math.PI / FILTERS.length)) * 1.04)
 
-  filterWheel.style.setProperty('--d', `${d}px`)
-  // The circle, cropped top and bottom: the flats are where the names are printed.
-  filterWheel.style.setProperty('--dh', `${Math.round(d * 0.78)}px`)
-  filterWheel.style.setProperty('--r', `${r}px`)
-  filterWheel.style.setProperty('--hub-x', `${Math.round(gateX + r)}px`)
-  filterWheel.style.setProperty('--hub-y', `${Math.round(gateY)}px`)
+  filterWheel.style.setProperty('--d', `${rad * 2}px`)
+  filterWheel.style.setProperty('--band', `${band}px`)
+  filterWheel.style.setProperty('--rim', `${Math.max(10, Math.round(band * 0.085))}px`)
+  filterWheel.style.setProperty('--r', `${orbit}px`)
+  filterWheel.style.setProperty('--hub-x', `${Math.round(pic.width - band + rad + orbit)}px`)
+  filterWheel.style.setProperty('--hub-y', `${Math.round(half)}px`)
+
+  // Geared, not literal. The rim of a wheel this size travels thousands of pixels between
+  // filters and no finger on a screen can follow it; a quarter of the picture's height per
+  // filter is a swipe.
+  wheelReach = Math.max(240, Math.round(pic.height / 4))
 }
 
 function buildWheel() {
@@ -1326,40 +1355,122 @@ function buildWheel() {
     const glass = document.createElement('span')
     glass.className = 'filter-glass'
 
-    el.append(name, glass, sub)
+    el.append(glass, name, sub)
     filterWheel.append(el)
   })
-  wheelAt = 0
-  filterWheel.style.setProperty('--turn', '0deg')
-  markGate()
+  filterWheel.style.setProperty('--turn', `${wheelAt * WHEEL_STEP}deg`)
+  markGate(wheelAt)
 }
 
 /** Which one is in the gate. Filter i is there whenever the wheel has turned i steps. */
-function markGate() {
-  const at = ((wheelAt % FILTERS.length) + FILTERS.length) % FILTERS.length
+function markGate(at) {
+  const i = ((Math.round(at) % FILTERS.length) + FILTERS.length) % FILTERS.length
   for (const el of filterWheel.querySelectorAll('.filter')) {
-    el.classList.toggle('in-gate', Number(el.dataset.i) === at)
+    el.classList.toggle('in-gate', Number(el.dataset.i) === i)
   }
+}
+
+/** Whether a swipe should be doing anything at all. */
+function wheelRunning() {
+  return wheelLive && step() === 'adjust' && adjustSplit.dataset.phase === 'ask'
 }
 
 function startWheel() {
   stopWheel()
+  wheelLive = true
+  wheelAt = 0
   placeWheel()
   buildWheel()
-  wheelTimer = setInterval(() => {
-    if (step() !== 'adjust' || adjustSplit.dataset.phase !== 'ask') return stopWheel()
-    // The glass stops filtering before it moves: a backdrop-filter sampling a backdrop that is
-    // sliding across it is both wrong to look at and expensive to compute.
-    filterWheel.querySelectorAll('.filter').forEach((el) => el.classList.remove('in-gate'))
+  filterWheel.classList.remove('touched')
+  // Nobody swipes a photograph unprompted. The arrows get a while on their own; if they are not
+  // taken up the wheel turns itself, so the point is still made to a visitor who only watches.
+  wheelTimer = setTimeout(function attract() {
+    if (!wheelRunning()) return stopWheel()
     wheelAt++
-    filterWheel.style.setProperty('--turn', `${wheelAt * WHEEL_STEP}deg`)
-    later(t(860), markGate)
-  }, t(WHEEL_DWELL))
+    settleWheel()
+    wheelTimer = setTimeout(attract, t(WHEEL_DWELL))
+  }, t(WHEEL_WAIT))
 }
 
-function stopWheel() {
-  clearInterval(wheelTimer)
+/** Swing to whichever filter wheelAt now names, and light it when it gets there. */
+function settleWheel() {
+  // The glass stops filtering before it moves: a backdrop-filter sampling a backdrop that is
+  // sliding across it is both wrong to look at and expensive to compute.
+  filterWheel.querySelectorAll('.filter').forEach((el) => el.classList.remove('in-gate'))
+  filterWheel.style.setProperty('--turn', `${wheelAt * WHEEL_STEP}deg`)
+  clearTimeout(wheelGate)
+  wheelGate = setTimeout(() => markGate(wheelAt), t(WHEEL_SWING) + 60)
+}
+
+/** The first touch ends the demonstration. From there the wheel is the visitor's. */
+function takeWheel() {
+  clearTimeout(wheelTimer)
   wheelTimer = 0
+  filterWheel.classList.add('touched')
+}
+
+function wheelDown(e) {
+  if (!wheelRunning() || wheelDrag) return
+  wheelDrag = { id: e.pointerId, y0: e.clientY, y: e.clientY, at0: wheelAt, ts: performance.now(), v: 0, moved: 0 }
+  takeWheel()
+  clearTimeout(wheelGate)
+  filterWheel.classList.add('dragging')
+  try {
+    adjustSplit.setPointerCapture(e.pointerId)
+  } catch {}
+}
+
+function wheelMove(e) {
+  if (!wheelDrag || e.pointerId !== wheelDrag.id) return
+  // Up is forwards, because at nine o'clock that is the way the rim of a wheel turning
+  // clockwise actually travels.
+  const by = (wheelDrag.y0 - e.clientY) / wheelReach
+  wheelDrag.moved = Math.max(wheelDrag.moved, Math.abs(wheelDrag.y0 - e.clientY))
+  filterWheel.style.setProperty('--turn', `${(wheelDrag.at0 + by) * WHEEL_STEP}deg`)
+  // Under a finger the tint follows along, changing as each filter passes the gate: that the
+  // picture changes with the glass is the thing being said, and this is where it is said best.
+  markGate(wheelDrag.at0 + by)
+
+  const now = performance.now()
+  if (now > wheelDrag.ts) {
+    wheelDrag.v = (wheelDrag.y - e.clientY) / (now - wheelDrag.ts)
+    wheelDrag.ts = now
+    wheelDrag.y = e.clientY
+  }
+}
+
+function wheelUp(e) {
+  const d = wheelDrag
+  if (!d || e.pointerId !== d.id) return
+  wheelDrag = null
+  filterWheel.classList.remove('dragging')
+  // Take the transition back before the value changes, or the snap happens in one frame.
+  void filterWheel.offsetWidth
+
+  const by = (d.y0 - e.clientY) / wheelReach
+  // A flick carries on past the finger, the way a wheel with any mass does. A tap is neither a
+  // flick nor a drag, but it is still someone asking for the next filter.
+  const flick = Math.abs(d.v) > 1.2 ? Math.sign(d.v) : 0
+  wheelAt = d.moved < 12 ? wheelAt + 1 : Math.round(d.at0 + by) + flick
+  settleWheel()
+}
+
+// The swipe is listened for across the whole screen rather than on the wheel itself: the thing
+// that moves is at the edge of the picture, and a visitor who has just been told to try
+// something reaches for the middle of it.
+adjustSplit.addEventListener('pointerdown', wheelDown)
+adjustSplit.addEventListener('pointermove', wheelMove)
+adjustSplit.addEventListener('pointerup', wheelUp)
+adjustSplit.addEventListener('pointercancel', wheelUp)
+
+function stopWheel() {
+  clearTimeout(wheelTimer)
+  clearTimeout(wheelGate)
+  wheelTimer = 0
+  wheelGate = 0
+  wheelDrag = null
+  wheelLive = false
+  filterWheel.classList.remove('dragging')
 }
 
 // The question the piece is actually asking. Held back until a colour has been changed, so it
