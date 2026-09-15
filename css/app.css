@@ -180,6 +180,18 @@ body {
   transform-origin: 50% 50%;
 }
 
+/* The picture shown in the viewfinder when there is no camera. No mirror and no turn: those
+   correct for a camera on a bracket, and this was never on one. */
+.stand-in {
+  position: absolute;
+  inset: 0;
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+.stand-in[hidden] { display: none; }
+
 .framed {
   position: absolute;
   inset: 0;
@@ -247,6 +259,17 @@ body[data-rot="270"] .framed { transform: translate(-50%, -50%) rotate(270deg) s
 /* The service note under a camera failure. Deliberately quiet — it is for whoever is fixing
    the exhibit, not for a visitor, but it has to be on the screen because the person fixing it
    is usually holding nothing but a phone to photograph it with. */
+/* The visitor's half of a camera fault: the fault itself is in red above, and this says what
+   the exhibit is going to do about it. Not muted like the technical line under it, because it
+   is the part a visitor is meant to read. */
+.err-standin {
+  display: block;
+  margin-top: 0.5em;
+  font-size: 0.86em;
+  line-height: 1.4;
+  color: var(--ink);
+}
+
 .err-detail {
   display: block;
   margin-top: 0.7em;

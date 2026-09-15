@@ -169,6 +169,7 @@ const confirmAsk = $('confirmAsk')
 const confirmPic = $('confirmPic')
 const confirmCanvas = $('confirmCanvas')
 const liveCrop = $('liveCrop')
+const standIn = $('standIn')
 const reelTop = $('reelTop')
 const reelBottom = $('reelBottom')
 const DOCK = [shutter, nextBtn, submitBtn, noBtn, yesBtn, resetBtn]
@@ -883,9 +884,64 @@ let camAttempt = 0
  * and reloads, even if the camera freed itself a minute later. Deliberately not on the
  * generation counter that `reset()` bumps: recovery has to outlive a visitor's turn.
  */
+// ── no camera, but still an exhibit ────────────────────────────────────────
+//
+// A camera that will not open used to end the piece: the message went up and the shutter stayed
+// dead, so nobody could see what the exhibit was for. It now borrows a picture from the gallery
+// and runs on that, with the fault still on screen — the visitor gets the whole piece, and
+// whoever looks after it still gets told.
+let standingIn = false
+
+/**
+ * Put a picture from the wall in the viewfinder.
+ *
+ * `fresh` picks another one; without it a run of failed retries would swap the picture every
+ * fifteen seconds under somebody who is standing there reading.
+ */
+async function useStandIn({ fresh = false } = {}) {
+  if (standingIn && !fresh) {
+    // showCameraFault disables the shutter every time it runs, and it runs on every retry.
+    shutter.disabled = false
+    return true
+  }
+
+  const pool = await loadReelPool()
+  if (!pool.length) return false // nothing curated to borrow; the message stands on its own
+
+  const pick = pool[Math.floor(Math.random() * pool.length)]
+  const loaded = await new Promise((done) => {
+    standIn.onload = () => done(true)
+    standIn.onerror = () => done(false)
+    standIn.src = pick.src
+  })
+  if (!loaded || !standIn.naturalWidth) return false
+
+  standingIn = true
+  standIn.hidden = false
+  // Set straight rather than through setAspect, which exists to undo the bracket's rotation.
+  // This picture has the shape it has.
+  document.documentElement.style.setProperty(
+    '--shot-ar',
+    (standIn.naturalWidth / standIn.naturalHeight).toFixed(4)
+  )
+  shutter.disabled = false
+  setInfo('stand-in', `${pick.file} (no camera)`)
+  return true
+}
+
+/** The camera turned up after all. */
+function dropStandIn() {
+  if (!standingIn) return
+  standingIn = false
+  standIn.hidden = true
+  standIn.removeAttribute('src')
+  setInfo('stand-in', null)
+}
+
 async function openCamera() {
   try {
     await startCamera(feed, { want: new URLSearchParams(location.search).get('cam') })
+    dropStandIn()
     setAspect(feed.videoWidth, feed.videoHeight)
     $('camError').hidden = true
     shutter.disabled = false
@@ -895,6 +951,9 @@ async function openCamera() {
   } catch (err) {
     camAttempt++
     showCameraFault(err)
+    // Deliberately not awaited before the retry is queued: borrowing a picture involves the
+    // network, and the retry should not wait on it.
+    useStandIn()
     setTimeout(openCamera, TIMELINE.cameraRetryAt)
   }
 }
@@ -925,6 +984,13 @@ function showCameraFault(err) {
   box.replaceChildren(
     err instanceof CameraSetupError ? err.message : (SAID[err.name] ?? `No camera: ${err.message}`)
   )
+
+  // Said plainly, because the screen is about to show a photograph that is not of the visitor
+  // and the difference matters in a piece whose subject is what a picture is.
+  const borrowed = document.createElement('small')
+  borrowed.className = 'err-standin'
+  borrowed.textContent = 'Showing a picture from the gallery instead, so you can still try it.'
+  box.append(borrowed)
 
   // And the technical detail right underneath it, on the screen, not only in the overlay.
   // Whoever is standing in front of a kiosk that will not start has no debugger and often no
@@ -1094,7 +1160,9 @@ function nextStep() {
 // ── 1. camera ───────────────────────────────────────────────────────────────
 
 async function runCountdown() {
-  if (!feed.videoWidth || step() !== 'camera') return
+  // A borrowed picture counts as something to photograph; without the second half of this the
+  // shutter on a camera-less machine looked alive and did nothing at all.
+  if ((!feed.videoWidth && !standingIn) || step() !== 'camera') return
   shutter.disabled = true
 
   for (let n = TIMELINE.countdownFrom; n > 0; n--) {
@@ -1111,7 +1179,11 @@ async function takePhoto() {
   void flash.offsetWidth
   flash.classList.add('go')
 
-  frame = captureFrame(feed, CAPTURE_EDGE, camRot, cropWindow())
+  // With no camera it is the borrowed picture that gets taken. No rotation and no crop: both
+  // of those describe a bracket this picture was never on.
+  frame = standingIn
+    ? frameFromImage(standIn, CAPTURE_EDGE)
+    : captureFrame(feed, CAPTURE_EDGE, camRot, cropWindow())
   // What the camera gave and what was kept of it. The one number that says whether a better
   // camera is actually being used, or whether it is being asked for 720p and obliging.
   if (frame) {
@@ -1964,6 +2036,9 @@ function reset() {
   // survives: it is the same picture for every visitor and costs a second to rebuild.
   front = photoA
   feed.play().catch(() => {}) // takePhoto() paused it for the hand-off
+  // A different borrowed picture for the next visitor, so a camera that stays broken all day
+  // does not turn into the same photograph forty times.
+  if (standingIn) useStandIn({ fresh: true })
   countdownEl.textContent = ''
   submitBtn.disabled = false
   ;[
@@ -1974,7 +2049,7 @@ function reset() {
   // A hard cut, blob included: "Start again" is not a transition, it is the piece ending.
   goToStep('camera', { animate: false, blob: false })
   setAspect(feed.videoWidth, feed.videoHeight)
-  shutter.disabled = !feed.videoWidth
+  shutter.disabled = !feed.videoWidth && !standingIn
 }
 
 // ── wiring ──────────────────────────────────────────────────────────────────

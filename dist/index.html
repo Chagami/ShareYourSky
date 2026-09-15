@@ -4,10 +4,10 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Share Your Sky</title>
-  <script type="module" crossorigin src="./assets/main-BYeeBdJr.js"></script>
-  <link rel="modulepreload" crossorigin href="./assets/app-GIK7C9ER.js">
+  <script type="module" crossorigin src="./assets/main-6Qs_3s6F.js"></script>
+  <link rel="modulepreload" crossorigin href="./assets/app-DvgSm1uo.js">
   <link rel="modulepreload" crossorigin href="./assets/store-DXy1HSxo.js">
-  <link rel="stylesheet" crossorigin href="./assets/app-DSkzCfml.css">
+  <link rel="stylesheet" crossorigin href="./assets/app-BVXhbfhI.css">
 </head>
 <body data-step="camera">
 
@@ -65,6 +65,10 @@
       <div class="crop" id="liveCrop">
         <video id="feed" class="framed" playsinline muted autoplay></video>
       </div>
+      <!-- Stands in for the camera when there is not one. Outside the crop wrapper on purpose:
+           the crop and the rotation correct for how a camera is bolted to a bracket, and a
+           picture off the wall was never on that bracket. -->
+      <img class="stand-in" id="standIn" alt="" hidden>
       <div class="reticle" aria-hidden="true"><i></i><i></i><i></i><i></i></div>
       <div class="countdown" id="countdown" aria-live="polite"></div>
     </div>

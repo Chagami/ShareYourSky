@@ -62,6 +62,10 @@
       <div class="crop" id="liveCrop">
         <video id="feed" class="framed" playsinline muted autoplay></video>
       </div>
+      <!-- Stands in for the camera when there is not one. Outside the crop wrapper on purpose:
+           the crop and the rotation correct for how a camera is bolted to a bracket, and a
+           picture off the wall was never on that bracket. -->
+      <img class="stand-in" id="standIn" alt="" hidden>
       <div class="reticle" aria-hidden="true"><i></i><i></i><i></i><i></i></div>
       <div class="countdown" id="countdown" aria-live="polite"></div>
     </div>

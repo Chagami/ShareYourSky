@@ -287,6 +287,23 @@ wedged until something releases it. Without the retry, a fault at 9am is a dead 
 somebody notices, even if the camera freed itself a minute later. It deliberately sits outside
 the generation counter `reset()` bumps: recovery has to outlive a visitor's turn.
 
+**It borrows a picture and carries on.** A camera that will not open used to end the piece: the
+message went up, the shutter stayed dead, and nobody could see what the exhibit was *for*. It
+now takes a random picture from `img/sky/` — the same set the gallery wall shows — puts it in
+the viewfinder, and runs the whole interaction on that. The fault stays on screen throughout,
+with a line under it saying so in as many words, because the piece is about what a photograph
+is and a visitor should not be left thinking that one is theirs. A different picture is borrowed
+for each visitor, so a camera broken all day does not become the same photograph forty times.
+
+The borrowed picture sits *outside* the crop wrapper and takes none of the rotation: both of
+those correct for how a camera is bolted to a bracket, and this picture was never on one. The
+frame takes the borrowed picture's own shape instead of the camera's.
+
+Two small things had to give way for it, both of which had quietly assumed a camera: the
+countdown returned immediately unless `feed.videoWidth` was non-zero, and every retry called
+`showCameraFault`, which disables the shutter — so on a camera-less machine the shutter looked
+alive and did nothing, then died again fifteen seconds later.
+
 Under the visitor-facing message is a **small service note** giving the fault name, the origin,
 the secure-context state, the browser engine and the retry count. Whoever is standing in front
 of a kiosk that will not start has no debugger and usually no second machine, so a photograph of
