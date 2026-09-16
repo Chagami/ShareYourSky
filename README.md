@@ -888,8 +888,9 @@ rather than a chart with a slider bolted underneath.
   objects on a track — and a first drag of the white point could travel a long way before it
   touched a single pixel, which reads as a broken control. `restingLevels()` takes the 0.5th and
   99.5th percentile of that channel's histogram, clamped to stay at least `MIN_INSET` (16 levels) off each
-  end, and `settleLevels()` tweens the handles out to it once the editor has landed. The
-  movement is the affordance: this is a touchscreen, so there is no hover state to hint with.
+  end. (They used to tween out to it from the ends of the track as an introduction; that
+  belonged to the Pillars screen, which is the only place it was ever called from, and went with
+  it. The rock below is what invites a finger now.)
 - **Log-scaled bins.** A photo's histogram is dominated by a few huge bins; a linear plot
   flattens everything else into an unreadable line along the axis.
 - **The clipped shoulders are dimmed** and the levels ramp is drawn over the top, so the visitor
@@ -910,17 +911,27 @@ rather than a chart with a slider bolted underneath.
   inflates the hit area to 52×48, past the 44px minimum. The card carries **26px of bottom
   padding in px, not vh**, because that overhang is a fixed size and has to be reserved — a
   target that spills out of the card lands on whatever sits underneath it.
-- **They pulse until they are touched.** A channel-coloured ring expands out of each handle once
-  it has settled, and stops for good on the first movement (`setPulsing()` / the `touched` flag
-  in `createLevels`). This is a touchscreen: there is no hover state to hint with, and nothing
-  else on screen says these two chips are the thing to grab. A cue that keeps running after it
-  has been understood stops being a cue and becomes noise.
-- **The pulse is a ping, not a swell.** The ring expands at a steady rate over the first 45% of
-  the cycle and then holds invisible for the rest. Easing across the whole 2.3s instead put
-  nearly all the travel in the first half-second and left the ring crawling for the remainder —
-  which reads as dropped frames even at a solid 75fps. It is a *feathered* ring (a radial
-  gradient), not a 2px border: a crisp border being scaled either re-rasterises every frame or
-  blurs as the layer stretches, while a soft edge has nothing to spoil.
+- **Each handle carries a ↔, and rocks until it is touched.** This is a touchscreen: there is
+  no hover to hint with, and nothing else on screen says these two chips are the thing to grab.
+  The arrow says it can be moved and which way; the rock — 9px in and back over 2.6s, with a
+  long dead hold, the black one leading the white by 0.28s — says it moves at all. Turned on
+  with the charts (`setPulsing()`), and each editor stops for good on its own first movement
+  (the `touched` flag in `createLevels`), because a cue that keeps running after it has been
+  understood stops being a cue and becomes noise. The arrow stays: it is a property of the
+  object rather than a cue about it.
+- **It is a movement, not a light.** The version before this put a 16px `box-shadow` glow behind
+  each handle and expanded a feathered ring out of it. That is the exact soft ramp on near-black
+  that the exhibit's 6-bit panel dithers, and the exact source of the red and blue speckle this
+  piece spent a day chasing — see *Banding on the exhibit panel*. Measured across the 54px of
+  card out from a handle: **0 pixels differ from their neighbour**. A glow ramps most of the way;
+  this is flat.
+- **The arrow is two chevrons and a shaft, not two bars.** A pair of upright bars is the grip
+  idiom for a draggable thing, and in a round chip it is also the play/pause button on every
+  other screen in the building — it was tried, and it reads as pause. It is drawn as a
+  background image rather than a pseudo-element because both of those are taken (`::before` is
+  the oversized touch target, and masking that to make a mark out of it would shrink the target
+  back to the size of the mark), and there are two copies of the SVG because `stroke` in an SVG
+  loaded as an image cannot see `currentColor` and one of the chips is white.
 - **Next is earned.** It stays hidden and non-interactive until a handle has actually moved, so
   the visitor cannot skip past the one interaction the piece is about. `revealNext()` is called
   from the first-touch callback — **and from an 18s fallback timer** (`nextFallbackAt`), because

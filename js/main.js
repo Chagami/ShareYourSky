@@ -2073,9 +2073,13 @@ async function openColours() {
     adjustChannels.querySelector(`[data-ch="${i}"]`).classList.add('in')
     await wait(t(TIMELINE.chartIn))
   }
-  // The handles are not asking for attention here — they have already been used, and the
-  // swatches are the new thing. Two invitations at once is neither.
-  bigEditors.forEach((e) => e.setAsking(true))
+  // Both controls on this card are new, so both say so. They are told apart by kind rather
+  // than by timing — the swatch knocks a ring out of itself, the handles slide sideways — and
+  // each stops for good the moment it has been used.
+  bigEditors.forEach((e) => {
+    e.setAsking(true)
+    e.setPulsing(true)
+  })
 }
 
 /**

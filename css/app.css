@@ -766,6 +766,8 @@ body[data-rot="270"] .framed { transform: translate(-50%, -50%) rotate(270deg) s
   45% { transform: translate(0.055em, -0.05em); }
 }
 @media (prefers-reduced-motion: reduce) {
+  /* The grip stays; it was never the moving part. */
+  .levels.pulsing .levels-handle { animation: none; }
   .real-word i { animation: none; }
   .spectrum.asking .spectrum-pick::after { animation: none; opacity: 0.55; }
 }
@@ -1528,6 +1530,16 @@ body[data-rot="270"] .framed { transform: translate(-50%, -50%) rotate(270deg) s
   border-radius: 50%;
   cursor: grab;
   transition: transform 140ms var(--ease), box-shadow 300ms ease;
+  /* Two chevrons back to back: the mark for a thing that travels left and right. A pair of
+     upright bars was tried first and is the wrong idiom in a circle — two bars in a round chip
+     is the play/pause button every screen in the building already uses, and a visitor reading
+     it that way presses it once and waits. Drawn as an image rather than with a pseudo-element
+     because both of those are spoken for: ::before is the oversized touch target, and masking
+     that to make a mark out of it would shrink the target back to what is drawn. */
+  background-image: var(--grip);
+  background-size: 56%;
+  background-position: center;
+  background-repeat: no-repeat;
 }
 
 /* Each handle sits outside the value it marks: the black one's right edge is on its value, the
@@ -1550,42 +1562,31 @@ body[data-rot="270"] .framed { transform: translate(-50%, -50%) rotate(270deg) s
   border-radius: 50%;
 }
 
-/* The pulse is the affordance. This runs on a touchscreen, so there is no hover state to hint
-   with, and nothing else on screen says these two chips are the thing to grab. It stops for
-   good the moment either handle moves — a cue that keeps going after it has been understood
-   stops being a cue and starts being noise. */
-/* A feathered ring rather than a hard 2px border. A crisp border being scaled either
-   re-rasterises every frame or blurs as the layer stretches; a gradient with soft edges has no
-   hard edge to spoil, so it stays smooth at any scale and stays on the compositor. */
-.levels-handle::after {
-  content: "";
-  position: absolute;
-  inset: -9px;
-  border-radius: 50%;
-  background: radial-gradient(closest-side, transparent 54%, var(--acc) 74%, transparent 100%);
-  opacity: 0;
-  pointer-events: none;
-}
-.levels.pulsing .levels-handle {
-  box-shadow: 0 0 16px -2px var(--acc);
-}
-.levels.pulsing .levels-handle::after {
-  animation: handlePulse 2.3s linear infinite;
-  will-change: transform, opacity;
-}
-/* Staggered, so the two read as a pair rather than one wide flash. */
-.levels.pulsing .handle-white::after { animation-delay: 0.42s; }
+/* The affordance. This runs on a touchscreen, so there is no hover to hint with, and nothing
+   else on screen says these two chips are the thing to grab.
 
-/* Ping rhythm, not a continuous swell. The expansion is one steady 45% of the cycle and the
-   rest is a dead hold, so the eye sees a complete travel and then a deliberate pause. Easing
-   the whole 2.3s instead put nearly all the motion in the first half-second and left the ring
-   crawling for the remainder, which reads as dropped frames even at a solid 75fps. */
-@keyframes handlePulse {
-  0% { transform: scale(0.92); opacity: 0; }
-  8% { transform: scale(1); opacity: 0.9; }
-  30% { opacity: 0.55; }
-  50% { transform: scale(2.05); opacity: 0; }
-  100% { transform: scale(2.05); opacity: 0; }
+   It is a movement, not a light. The version before this put a 16px `box-shadow` glow behind
+   each handle and expanded a feathered ring out of it — which is the exact ramp the exhibit's
+   6-bit panel cannot hold still, and the exact source of the red and blue speckle this piece
+   spent a day chasing. A handle that slides a few pixels and comes back says the one thing a
+   halo cannot: which way it goes. The grip above says it can be held; this says it travels.
+
+   It stops for good the moment either handle moves — a cue that keeps going after it has been
+   understood stops being a cue and starts being noise. */
+.levels.pulsing .levels-handle {
+  animation: handle-rock 2.6s ease-in-out infinite;
+  will-change: transform;
+}
+/* Inwards, which is the direction that does something: the two of them closing on the light
+   that is actually in the picture. Staggered, so they read as a pair rather than as a twitch. */
+.levels.pulsing .handle-black { --rock: 9px; }
+.levels.pulsing .handle-white { --rock: -9px; animation-delay: 0.28s; }
+
+/* One travel and a long dead hold, the same rhythm the spectrum's knock has: the eye sees a
+   complete movement and then a deliberate pause, rather than a continuous fidget. */
+@keyframes handle-rock {
+  0%, 58%, 100% { transform: translateX(0); }
+  24% { transform: translateX(var(--rock, 0)); }
 }
 
 .levels-handle:hover { transform: scale(1.14); }
@@ -1594,8 +1595,18 @@ body[data-rot="270"] .framed { transform: translate(-50%, -50%) rotate(270deg) s
   outline: none;
   box-shadow: 0 0 0 3px rgba(143, 182, 255, 0.55);
 }
-.handle-black { background: #0b0d11; }
-.handle-white { background: #fff; }
+/* background-color, not background: the shorthand would wipe the mark out from under them.
+   Each chip carries its own ink, because one of them is nearly black and the other is white and
+   a mark that reads on both does not exist. The colour is baked into the data URI — `stroke` in
+   an SVG loaded as an image cannot see `currentColor`, which is why this is two of them. */
+.handle-black {
+  background-color: #0b0d11;
+  --grip: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='rgba(255,255,255,0.82)' stroke-width='2.4' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M3.5 12h17M8 6.5 2.5 12 8 17.5M16 6.5 21.5 12 16 17.5'/%3E%3C/svg%3E");
+}
+.handle-white {
+  background-color: #fff;
+  --grip: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='rgba(0,0,0,0.5)' stroke-width='2.4' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M3.5 12h17M8 6.5 2.5 12 8 17.5M16 6.5 21.5 12 16 17.5'/%3E%3C/svg%3E");
+}
 
 .levels-compact {
   --hw: 40px;
@@ -1614,7 +1625,7 @@ body[data-rot="270"] .framed { transform: translate(-50%, -50%) rotate(270deg) s
    crashes is worth more with plain gradients than it is pretty. Also the fastest way to find
    out whether the GPU is what is wrong: load with ?fx=lite and see if it stops. */
 body[data-fx="lite"] .shutter { backdrop-filter: none; }
-body[data-fx="lite"] .levels.pulsing .levels-handle::after { animation: none; opacity: 0.55; }
+body[data-fx="lite"] .levels.pulsing .levels-handle { animation: none; }
 body[data-fx="lite"] .caret { animation: none; }
 body[data-fx="lite"] .spectrum.asking .spectrum-pick { animation: none; }
 body[data-fx="off"] .spectrum.asking .spectrum-pick { animation: none; }

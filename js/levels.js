@@ -183,9 +183,11 @@ export function createLevels({
   /**
    * Ask for the spectrum to be noticed.
    *
-   * Separate from the handle pulse, and never both at once: on step 3 the handles have already
-   * been used and the spectrum is the new thing, so two things asking for a finger at the same
-   * time would only split the attention of someone who has one question to answer.
+   * Runs alongside the handles' own invitation rather than instead of it — both controls are
+   * new when this screen arrives, and leaving one of them unmarked is how a visitor comes away
+   * having found only the other. They are told apart by kind rather than by timing: the
+   * spectrum knocks a ring out of its swatch, the handles slide. Two different gestures in two
+   * different corners of the card, not two of the same thing competing.
    */
   function setAsking(on) {
     spectrum?.classList.toggle('asking', on)
