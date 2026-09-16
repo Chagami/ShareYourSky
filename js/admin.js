@@ -17,6 +17,7 @@ const refreshBtn = document.getElementById('refresh')
 const selectAllBtn = document.getElementById('selectAll')
 const removeSelBtn = document.getElementById('removeSel')
 const clearAllBtn = document.getElementById('clearAll')
+const clearAnswersBtn = document.getElementById('clearAnswers')
 
 let items = []
 let selected = new Set()
@@ -163,13 +164,17 @@ function arm(button, idle, confirmLabel, run) {
       return
     }
     stand()
-    button.disabled = true
+    // A class rather than `disabled`, which belongs to whoever decides whether this button has
+    // anything to do — syncTools for the selection, syncAnswers for the count. Both of those
+    // run inside run(), and a finally that put `disabled = false` back afterwards left the
+    // button live and saying it had nothing left to delete.
+    button.classList.add('working')
     try {
       await run()
     } catch (err) {
       say(`Could not delete: ${err.message}`)
     } finally {
-      button.disabled = false
+      button.classList.remove('working')
     }
   })
 }
@@ -188,7 +193,10 @@ function reset(button, idle) {
 
 // ── the toolbar ─────────────────────────────────────────────────────────────
 
-refreshBtn.addEventListener('click', load)
+refreshBtn.addEventListener('click', () => {
+  load()
+  syncAnswers()
+})
 
 selectAllBtn.addEventListener('click', () => {
   selected = selected.size === items.length ? new Set() : new Set(items.map((i) => i.id))
@@ -216,6 +224,44 @@ arm(clearAllBtn, 'Delete everything', 'Press again — this cannot be undone', a
   selected.clear()
   await load()
 })
+
+// ── the answers ─────────────────────────────────────────────────────────────
+//
+// A separate store with a separate button, because they are separate things: the pictures stay
+// on disk after they scroll off the wall, and these are rows in a file that nothing else holds
+// a copy of. Hence "download it first" rather than "this cannot be undone" — it is the same
+// warning, but it names the thing to do about it, and the download is the button to its left.
+
+/** How many answers are on file, for the button that throws them away. */
+async function countAnswers() {
+  try {
+    const res = await fetch('api/answer/summary', { cache: 'no-store' })
+    if (!res.ok) return null
+    const totals = (await res.json())?.totals ?? {}
+    return Object.values(totals).reduce((a, b) => a + b, 0)
+  } catch {
+    return null // the page still works without it; the button simply cannot count
+  }
+}
+
+async function syncAnswers() {
+  const n = await countAnswers()
+  // Not `!n`: unreachable is not the same as empty, and a button that refuses to be pressed
+  // because the count failed is worse than one that tries and reports what happened.
+  clearAnswersBtn.disabled = n === 0
+  reset(clearAnswersBtn, n === null ? 'Clear answers' : n === 0 ? 'No answers yet' : `Clear ${n} answers`)
+}
+
+arm(clearAnswersBtn, 'Clear answers', 'Press again — download it first', async () => {
+  const res = await fetch('api/answer', { method: 'DELETE' })
+  if (!res.ok) throw new Error(`the answers answered ${res.status}`)
+  // Nothing to say: the button itself goes from "Clear 12 answers" to "No answers yet", which
+  // is the confirmation, in the place the operator is already looking. The note beside it is
+  // styled as a warning, and a warning that says the thing worked is a worse message than none.
+  await syncAnswers()
+})
+
+syncAnswers()
 
 // ── keeping up with the exhibit ─────────────────────────────────────────────
 

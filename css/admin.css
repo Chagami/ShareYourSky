@@ -61,6 +61,8 @@ body.admin {
 }
 .abtn:hover:not(:disabled) { background: rgba(255, 255, 255, 0.13); }
 .abtn:disabled { opacity: 0.35; cursor: default; }
+/* Mid-delete. Separate from :disabled, which means "nothing to do" rather than "doing it". */
+.abtn.working { opacity: 0.5; pointer-events: none; }
 .abtn.danger { border-color: rgba(255, 120, 100, 0.45); color: #ffb3a6; }
 .abtn.danger.ghost { background: transparent; }
 

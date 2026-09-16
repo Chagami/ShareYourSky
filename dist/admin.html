@@ -4,10 +4,10 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Share Your Sky — Photos</title>
-  <script type="module" crossorigin src="./assets/admin-BuIx9D39.js"></script>
+  <script type="module" crossorigin src="./assets/admin-DYx7ybBL.js"></script>
   <link rel="modulepreload" crossorigin href="./assets/app-U22gwF0O.js">
   <link rel="stylesheet" crossorigin href="./assets/app-fzCXnZu_.css">
-  <link rel="stylesheet" crossorigin href="./assets/admin-1eEwtVz6.css">
+  <link rel="stylesheet" crossorigin href="./assets/admin-DppTu3-F.css">
 </head>
 <!-- Not the exhibit. This is the page for whoever is running it: every picture ever shared,
      what is on the wall, and a way to take one down. Deliberately linked from nowhere. -->
@@ -19,9 +19,11 @@
     <p class="admin-count" id="count">Loading…</p>
   </div>
   <div class="admin-tools">
-    <!-- What visitors answered to "Is this image real?", one row per visitor. Written by
-         server/answers.js; a plain link, because the browser saves it as a file. -->
+    <!-- What visitors answered to "Is this image real?", one row per visitor per question.
+         Written by server/answers.js; a plain link, because the browser saves it as a file —
+         and the button beside it throws the file away, so they are kept together. -->
     <a class="abtn" href="api/answer" download>Answers (CSV)</a>
+    <button class="abtn danger ghost" id="clearAnswers" disabled>Clear answers</button>
     <button class="abtn" id="refresh">Refresh</button>
     <button class="abtn" id="selectAll">Select all</button>
     <button class="abtn danger" id="removeSel" disabled>Delete selected</button>

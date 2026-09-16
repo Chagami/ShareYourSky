@@ -17,9 +17,11 @@
     <p class="admin-count" id="count">Loading…</p>
   </div>
   <div class="admin-tools">
-    <!-- What visitors answered to "Is this image real?", one row per visitor. Written by
-         server/answers.js; a plain link, because the browser saves it as a file. -->
+    <!-- What visitors answered to "Is this image real?", one row per visitor per question.
+         Written by server/answers.js; a plain link, because the browser saves it as a file —
+         and the button beside it throws the file away, so they are kept together. -->
     <a class="abtn" href="api/answer" download>Answers (CSV)</a>
+    <button class="abtn danger ghost" id="clearAnswers" disabled>Clear answers</button>
     <button class="abtn" id="refresh">Refresh</button>
     <button class="abtn" id="selectAll">Select all</button>
     <button class="abtn danger" id="removeSel" disabled>Delete selected</button>

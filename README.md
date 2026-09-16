@@ -611,9 +611,15 @@ time,stage,value
 `value` is 0 at No and 1 at Yes; `stage` is which picture was being asked about. Rows of only two
 fields are from before there were two questions to tell apart, and are read as `edited`, which is
 the one that existed then. The folder is in `.gitignore`: it is data, and it belongs to the
-machine that collected it. **Admin page → Answers (CSV)** downloads it; so does `GET api/answer`,
-`GET api/answer/summary` returns both stages binned for step 4, and `DELETE api/answer` starts a
-fresh one. A visitor who is mid-answer when the kiosk reloads is still counted — the report goes
+machine that collected it.
+
+On the **admin page** the two buttons for it sit together: **Answers (CSV)** downloads the file,
+and **Clear _n_ answers** throws it away — it counts what is on file, so the operator can see
+what they are about to lose, greys out at zero, and asks twice ("Press again — download it
+first"), disarming on its own after four seconds so a half-pressed button cannot be finished by
+somebody walking past. Clearing is the one thing here that cannot be undone: the pictures stay
+on disk after they scroll off the wall, and these rows exist nowhere else. The same three things
+are `GET api/answer`, `DELETE api/answer`, and `GET api/answer/summary` for step 4's charts. A visitor who is mid-answer when the kiosk reloads is still counted — the report goes
 out as a beacon, which survives the page where a fetch would not.
 
 One thing worth knowing if this is ever changed: the answers are kept in a module-level
