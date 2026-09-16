@@ -974,16 +974,21 @@ body[data-rot="270"] .framed { transform: translate(-50%, -50%) rotate(270deg) s
   position: absolute;
   top: 0;
   bottom: 0;
-  left: calc(var(--you, 0.5) * 100%);
+  /* Clamped, so an answer at the very end of the scale still draws its full width instead of
+     half of it disappearing past the edge of the well. */
+  left: clamp(1px, calc(var(--you, 0.5) * 100%), calc(100% - 1px));
   width: 2px;
   margin-left: -1px;
   background: rgba(255, 255, 255, 0.75);
 }
+/* The tag is centred on the line until that would take it outside the well, and then it slides
+   back in by however much it needs — js/main.js measures that, because it depends on how wide
+   the word came out and how wide the chart is. The line stays where the answer is either way. */
 .answer-you b {
   position: absolute;
   top: 6px;
   left: 50%;
-  transform: translateX(-50%);
+  transform: translateX(calc(-50% + var(--nudge, 0px)));
   padding: 0.25em 0.6em;
   border-radius: 999px;
   background: #fff;

@@ -1448,8 +1448,8 @@ const REALITY_LEAD = [
   {
     block: true,
     text:
-      'Everyone who stands here is asked the same question twice — once of the photo the ' +
-      'camera made, and again once they have changed its colors. This is what they said.',
+      'Everyone was asked if the image taken by the camera was "real" and if the ' +
+      'image they edited was "real". Here are the results:',
   },
 ]
 
@@ -2441,6 +2441,26 @@ function drawAnswers(canvas, counts) {
 }
 
 /**
+ * Keep the "you" tag inside the chart.
+ *
+ * It is centred on its line, and a line at either end of the scale would take half of it past
+ * the edge of the well, which is clipped. This pushes it back by exactly as much as it hangs
+ * over — measured rather than guessed, because how far that is depends on how wide the word
+ * came out at this screen's size.
+ */
+function nudgeTag(chart, you, at) {
+  const tag = you.querySelector('b')
+  tag.style.setProperty('--nudge', '0px')
+  const plot = chart.querySelector('.answer-plot').getBoundingClientRect()
+  const box = tag.getBoundingClientRect()
+  if (!plot.width || !box.width) return
+
+  const edge = 6
+  const over = Math.max(0, plot.left + edge - box.left) + Math.min(0, plot.right - edge - box.right)
+  tag.style.setProperty('--nudge', `${Math.round(over)}px`)
+}
+
+/**
  * Bring up what everyone has answered, and mark where this visitor stood on each.
  *
  * The summary is asked for rather than kept: the answer this visitor has just given is one of
@@ -2472,7 +2492,10 @@ async function showAnswers() {
     const you = chart.querySelector('.answer-you')
     const mine = answered[stage]
     you.hidden = mine === null
-    if (mine !== null) you.style.setProperty('--you', mine.toFixed(4))
+    if (mine !== null) {
+      you.style.setProperty('--you', mine.toFixed(4))
+      nudgeTag(chart, you, mine)
+    }
   }
 
   setInfo('answers', `${data?.totals?.unedited ?? 0} / ${data?.totals?.edited ?? 0}`)
