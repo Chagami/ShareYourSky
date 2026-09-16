@@ -1219,25 +1219,29 @@ const ADJUST_STORY = [
 // photograph, edge to edge, and the rest of it runs off the screen. A visitor sees a piece of
 // glass in front of the picture rather than a diagram of one.
 //
-// The names are the ones a visitor can use. H\u03B1, OIII and SII are what the filters are called
-// on the shelf, but a name nobody can read is a name that gets skipped — and these three are
-// exactly the three the Pillars of Creation were taken through, which is the picture this wheel
-// is standing in for. H\u03B2 has gone: it is hydrogen as well, and a wheel with two stops both
-// called Hydrogen says nothing the first one did not.
+// Red, green and blue, because that is what these filters do. They were named for the elements
+// whose lines they pass — H\u03B1, OIII, SII, or Hydrogen, Oxygen and Sulfur in plainer words — and
+// that reads as the glass sorting light by what it came off, which is not what a filter does at
+// all. A filter passes a band of light and stops the rest; which elements happen to glow in that
+// band is the astronomer's business, not the glass's.
 //
-// `pass` is a backdrop-filter, and what it has to do is what a narrow-band filter does: keep the
-// brightness, throw the colour away, pass one line. Everything after grayscale here is one linear
-// map, so grey goes in and one fixed colour times that grey comes out — and the brightness in
-// front of it is chosen to put the brightest pixel exactly at the top of its channel, so nothing
-// clips anywhere on the ramp and the picture's own shading survives. Get that wrong in either
-// direction and the glass either crushes to black or blows out: a nearly white pixel has no
-// colour left to push, so an over-saturated chain turns it yellow whatever line it was meant to
-// be. The numbers are solved, not picked.
+// RGB is still the first stop, and now it is the sum of the three that follow it: the camera the
+// visitor just used, taking all three at once, against three pieces of glass that each take one.
+//
+// `pass` is a backdrop-filter, and what it has to do is keep the brightness and throw away
+// everything but one band. Everything after grayscale here is one linear map, so grey goes in and
+// one fixed colour times that grey comes out — and the brightness in front of it is chosen to put
+// the brightest pixel exactly at the top of its channel, so nothing clips anywhere on the ramp
+// and the picture's own shading survives. Get that wrong in either direction and the glass either
+// crushes to black or blows out: a nearly white pixel has no colour left to push, so an
+// over-saturated chain turns it yellow whatever band it was meant to be. The numbers are solved,
+// not picked — measured on a mid grey, each of these comes out on its own channel with nothing at
+// all in the other two.
 const FILTERS = [
   { name: 'RGB', sub: 'your camera', pass: 'saturate(1.06)' },
-  { name: 'Hydrogen', sub: 'filter \u00B7 656 nm', pass: 'grayscale(1) brightness(0.192) sepia(1) hue-rotate(313deg) saturate(13.5)' },
-  { name: 'Oxygen', sub: 'filter \u00B7 501 nm', pass: 'grayscale(1) brightness(0.614) sepia(1) hue-rotate(95.5deg) saturate(4.25)' },
-  { name: 'Sulfur', sub: 'filter \u00B7 672 nm', pass: 'grayscale(1) brightness(0.188) sepia(1) hue-rotate(296deg) saturate(13.25)' },
+  { name: 'Red', sub: '620\u2013750 nm', pass: 'grayscale(1) brightness(0.173) sepia(1) hue-rotate(311deg) saturate(15.25)' },
+  { name: 'Green', sub: '495\u2013570 nm', pass: 'grayscale(1) brightness(0.59) sepia(1) hue-rotate(71deg) saturate(5.5)' },
+  { name: 'Blue', sub: '450\u2013495 nm', pass: 'grayscale(1) brightness(0.059) sepia(1) hue-rotate(201.5deg) saturate(51)' },
 ]
 const WHEEL_STEP = 360 / FILTERS.length
 const WHEEL_SWING = 900 // the swing from one filter to the next; matches the CSS transition

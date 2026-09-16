@@ -479,18 +479,17 @@ point.
 ### The filter wheel
 
 While the first two sentences are being read, a filter lies across the right-hand quarter of the
-photograph, and the visitor turns the wheel it belongs to. It is making the argument the
-sentences make: a camera on Earth splits light into red, green and blue and stops there — which
-is the first stop on the wheel — and an astrophotographer puts a different piece of glass in the
-way, one that passes a single line of the spectrum and nothing else. **RGB**, then
-**Hydrogen**, **Oxygen**, **Sulfur**.
+photograph, and the visitor turns the wheel it belongs to. A filter passes a band of light and
+stops the rest, and turning the wheel shows the picture through each one: **RGB**, then **Red**,
+**Green**, **Blue**. RGB is the first stop and the sum of the three that follow it — the camera
+the visitor has just used, taking all three at once, against three pieces of glass that each
+take one.
 
-**The names are the ones a visitor can use.** On the shelf these are Hα, OIII and SII, but a
-name nobody can read is a name that gets skipped, and the elements are the interesting half
-anyway — the wavelength is kept underneath, where it is precise rather than decorative. Those
-three are also exactly the three the Pillars of Creation were taken through, which is the picture
-waiting two screens later. **Hβ has gone**: it is hydrogen as well, and a wheel with two stops
-both called Hydrogen says nothing the first one did not.
+**They used to be named for elements** — Hα, OIII and SII, written out as Hydrogen, Oxygen and
+Sulfur — which reads as the glass sorting light by what it came off. That is not what a filter
+does: which elements happen to glow in the band it passes is the astronomer's business, not the
+glass's. The band in nanometres is kept underneath each name, where it is precise rather than
+decorative.
 
 **The size falls out of the shape.** A circle that bulges a quarter of the picture's width at the
 middle of its travel and still reaches the top and bottom corners of that band has a radius of
@@ -527,15 +526,15 @@ Nobody swipes a photograph unprompted, so if the arrows are not taken up within 
 wheel turns itself and keeps going, and the point is still made to a visitor who only watches.
 The first touch ends that for good and the arrows fade.
 
-**What the glass does.** A narrow-band filter keeps the brightness, throws the colour away and
-passes one line. Everything after `grayscale(1)` in the chain composes to a single linear map, so
-grey goes in and one fixed colour times that grey comes out; the `brightness()` in front of it is
+**What the glass does.** A filter keeps the brightness and throws away everything but its own
+band. Everything after `grayscale(1)` in the chain composes to a single linear map, so grey goes
+in and one fixed colour times that grey comes out; the `brightness()` in front of it is
 **solved**, not picked, to put the brightest pixel exactly at the top of its channel so nothing
-clips anywhere on the ramp and the picture's own shading survives. Measured in the browser, with
-hydrogen in the gate: grey 204 comes out **(204, 6, 0)** and grey 51 comes out **(51, 1, 0)** —
-the red channel tracking the picture one for one, the other two at nothing. Oxygen
-**(0, 204, 95)**, sulfur **(204, 0, 46)**. RGB passes the picture through unchanged, which is the
-honest first stop: it is the camera the visitor has just used.
+clips anywhere on the ramp and the picture's own shading survives. Measured in the browser, a
+mid grey of 204 comes out **(204, 0, 0)** through red, **(1, 204, 1)** through green and
+**(0, 0, 204)** through blue — each on its own channel, tracking the picture one for one, with
+nothing at all in the other two. RGB passes the picture through unchanged, which is the honest
+first stop: it is the camera the visitor has just used.
 
 Get that chain wrong in either direction and the glass either crushes to black or blows out.
 Saturating a nearly-white pixel cannot colour it — there is no colour left to push — so an
