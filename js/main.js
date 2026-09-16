@@ -71,13 +71,10 @@ const TIMELINE = {
   phaseSwap: 720, // the picture moving aside to make room for the charts
 
   // Step 4, which opens on an empty screen.
-  astroHold: 1200, // the line about the gallery, read before the famous photo arrives
-  astroPicIn: 700, // the photo fading up
-  astroChartIn: 300, // between one chart arriving and the next
+  realityHold: 1200, // the line about the room, read before its answers arrive
+  chartIn: 420, // between one chart arriving and the next, on either screen that has them
 
   handlePulseAt: 260, // the handles start asking to be touched, once they have settled
-  levelsSettleAt: 320, // the handles wait for the charts to land before they move...
-  levelsSettle: 700, // ...then slide from the ends of the track to the channel's own range
 
   cameraRetryAt: 15000, // a camera that will not open is retried until it does
 }
@@ -101,7 +98,6 @@ const VIEW_EDGE = 1600
 const THUMB_EDGE = 340
 // The famous photo is 1280x1335, so this keeps all of it. It was 900, which threw away a third
 // of a picture the piece then invites the visitor to look at closely.
-const PILLARS_EDGE = 1400
 
 // A sideways-mounted camera. Which way it is turned is a property of the bracket it is screwed
 // to and not of the exhibit, so it is set on the machine rather than in the code — on the kiosk
@@ -148,13 +144,8 @@ const adjustPic = $('adjustPic')
 const adjustCanvas = $('adjustCanvas')
 const adjustStoryEl = $('adjustStory')
 const adjustChannels = $('adjustChannels')
-const astroLeadEl = $('astroLead')
-const astroSplit = $('astroSplit')
-const astroChannels = $('astroChannels')
-const astroStoryEl = $('astroStory')
-const pillarsPic = $('pillarsPic')
-const pillarsCanvas = $('pillarsCanvas')
-const pillarsSrc = $('pillarsSrc')
+const realityLead = $('realityLead')
+const realityCharts = $('realityCharts')
 const stepBar = $('stepBar')
 const stepsBar = $('stepsBar')
 const stepBlob = $('stepBlob')
@@ -166,10 +157,9 @@ const yesBtn = $('yesBtn')
 const resetBtn = $('resetBtn')
 const slidersTitle = $('slidersTitle')
 const filterWheel = $('filterWheel')
-const realAsk = $('realAsk')
-const verdict = $('verdict')
-const verdictScale = $('verdictScale')
-const verdictTrack = $('verdictTrack')
+const verdictBlock = $('verdict')
+const editVerdictBlock = $('editVerdict')
+const scaleTpl = $('scaleTpl')
 const confirmAsk = $('confirmAsk')
 const confirmPic = $('confirmPic')
 const confirmCanvas = $('confirmCanvas')
@@ -199,7 +189,7 @@ const STEPS = [
   { id: 'edit', action: ['nextBtn'], mark: 0 },
   { id: 'adjust', action: ['coloursBtn', 'submitBtn'], mark: 1 },
   { id: 'confirm', action: ['noBtn', 'yesBtn'], mark: 2 },
-  { id: 'astro', action: ['resetBtn'], mark: 3 },
+  { id: 'reality', action: ['resetBtn'], mark: 3 },
 ]
 const STEP_IDS = STEPS.map((s) => s.id)
 
@@ -219,11 +209,6 @@ let levels = null // [{black, white} x3] — the only thing the visitor changes
 let shownHue = CHANNELS.map((c) => c.hue)
 let recoloured = false
 
-// Step 4 works on a different picture with a different set of numbers, so that adjusting the
-// famous photo cannot quietly rewrite what the visitor already shared.
-let pillarsFrame = null
-let pillarsReady = null
-let astroLevels = null
 let bigEditors = []
 let front = photoA // which stacked canvas is currently showing
 
@@ -311,9 +296,12 @@ function goToStep(id, { animate = true, blob = true } = {}) {
   // picture out of. Measured now, because a step that is no longer current has no rectangle.
   flightFrom = HERO[step()]?.()?.getBoundingClientRect() ?? null
 
-  // Leaving the adjust screen is the moment the answer is final, however it is left — pressing
-  // on, or the exhibit giving up and starting again with nobody there.
-  if (step() === 'adjust' && id !== 'adjust') sendVerdict()
+  // Leaving a screen that asked is the moment its answer is final, however it is left —
+  // pressing on, or the exhibit giving up and starting again with nobody there.
+  if (step() !== id) {
+    if (step() === 'edit') editVerdict.send()
+    if (step() === 'adjust') adjustVerdict.send()
+  }
 
   stepIndex = i
   document.body.dataset.step = id
@@ -692,10 +680,6 @@ const lutsNow = () => levels.map((l) => levelsLut(l.black, l.white))
 /** What the drawing path wants: each channel's colour as weights on the three outputs. */
 const tints = () => shownHue.map(hueTint)
 
-const editingAstro = () => step() === 'astro'
-const activeLevels = () => (editingAstro() ? astroLevels : levels)
-const activeFrame = () => (editingAstro() ? pillarsFrame : frame)
-
 /** Draw straight onto whichever canvas is showing — no transition. */
 function paint(drawFn) {
   drawFn(front)
@@ -730,13 +714,12 @@ function runQueuedDraw() {
   const only = dirtyAll ? -1 : dirtyChannel
   dirtyChannel = -1
   dirtyAll = false
-  if (!activeFrame() || !activeLevels()) return
+  if (!frame || !levels) return
 
   count('draws')
   measure('levels', () => {
     bigEditors.forEach((e, i) => (only === -1 || only === i) && e.redraw())
-    if (editingAstro()) drawComposite(pillarsCanvas, pillarsFrame, astroLuts())
-    else if (step() === 'adjust') drawAdjust()
+    if (step() === 'adjust') drawAdjust()
     else drawUpTo(lit)
   })
 }
@@ -746,47 +729,6 @@ function onLevelsChanged(index) {
   queueDraw(index)
 }
 
-/**
- * Introduce the control by using it: slide this channel's handles from the ends of the track
- * to where its light actually is.
- *
- * Two objects visibly travelling is a far stronger cue that they can be moved than any amount
- * of styling, it demonstrates the gesture before the visitor has to guess it, and it leaves
- * them resting inset, where they read as things sitting on a track rather than as the frame
- * around the chart. Tweened in JS rather than with the Web Animations API because every frame
- * has to redraw the histogram and the channel image, not just move a box.
- */
-function settleLevels(index) {
-  const store = activeLevels()
-  const target = activeFrame().rest[index]
-  const from = { ...store[index] }
-  const g = gen
-  const started = performance.now()
-  const duration = t(TIMELINE.levelsSettle)
-
-  // Named `tick`, not `step`: a local called `step` would shadow the module's step() and this
-  // would silently call itself instead of asking which screen is open.
-  const tick = (now) => {
-    if (g !== gen) return
-    // Taken hold of mid-slide. Leave it exactly where the visitor has put it.
-    if (touchedChannels.has(index)) return
-    // Left the editing screens mid-slide: land on the target rather than leaving it half moved.
-    if (step() !== 'edit' && step() !== 'astro') {
-      store[index] = { ...target }
-      bigEditors.forEach((e) => e.redraw())
-      return
-    }
-    const p = Math.min(1, (now - started) / duration)
-    const e = 1 - (1 - p) ** 5 // an ease-out close enough to the house curve
-    store[index] = {
-      black: Math.round(from.black + (target.black - from.black) * e),
-      white: Math.round(from.white + (target.white - from.white) * e),
-    }
-    onLevelsChanged(index)
-    if (p < 1) requestAnimationFrame(tick)
-  }
-  requestAnimationFrame(tick)
-}
 
 /**
  * The way in with no keyboard: tap the camera step five times, then the adjust step.
@@ -831,7 +773,6 @@ async function boot() {
   initPerf()
   registerDebugActions()
   wireDebugKnock()
-  loadPillars() // step 4's picture, decoded and split into planes while nobody is watching
   applyRotation()
   applyCrop()
   applyGround()
@@ -1045,7 +986,7 @@ const HERO = {
  * What each step does when it is opened.
  *
  * Kept as a lookup rather than a chain of calls so that no step knows about any other. That is
- * what lets `?step=astro` work: the step builds whatever it needs and does not care how the
+ * what lets `?step=reality` work: the step builds whatever it needs and does not care how the
  * visitor got there. Three of the four are sequences rather than screens, and each is written
  * as one async function so that the code reads in the order the visitor sees it.
  */
@@ -1145,26 +1086,25 @@ const STEP_ENTER = {
     pop(yesBtn, 90)
   },
 
-  // Opens blank, on purpose. The line arrives on its own, and only then the famous photo and
-  // the same three controls the visitor has just used — in the same arrangement as step 2,
-  // because that likeness is the entire argument of the piece.
-  async astro() {
+  // Not about the visitor's picture at all. It is about the room: everyone who stands here is
+  // asked the same question twice, and the two answers are rarely the same.
+  async reality() {
     clearBeats()
     resetBtn.classList.add('waiting')
-    const alive = () => step() === 'astro'
+    const alive = () => step() === 'reality'
 
-    await fadeIn(astroLeadEl, ASTRO_LEAD)
+    await fadeIn(realityLead, REALITY_LEAD)
     if (!alive()) return
-    await wait(t(TIMELINE.astroHold))
+    await wait(t(TIMELINE.realityHold))
     if (!alive()) return
 
-    await showPillars()
+    await showAnswers()
     if (!alive()) return
 
     resetBtn.classList.remove('waiting')
     rise(resetBtn)
-    await fadeIn(astroStoryEl, ASTRO_STORY)
   },
+
 }
 
 /** Advance to the next step, or wrap back to the camera from the last one. */
@@ -1258,7 +1198,7 @@ const STORY = [
 
 const STORY_AFTER = [
   { text: 'In an instant, the camera combines these colors. ' },
-  { block: true, text: 'The result is an image that approximates what you see with your eyes. Is this image real?' },
+  { block: true, text: 'The result is an image that approximates what you see with your eyes.' },
 ]
 
 const ADJUST_STORY = [
@@ -1281,9 +1221,9 @@ const ADJUST_STORY = [
 //
 // The names are the ones a visitor can use. H\u03B1, OIII and SII are what the filters are called
 // on the shelf, but a name nobody can read is a name that gets skipped — and these three are
-// exactly the three the Pillars of Creation were taken through, which is the picture waiting two
-// screens later. H\u03B2 has gone: it is hydrogen as well, and a wheel with two stops both called
-// Hydrogen says nothing the first one did not.
+// exactly the three the Pillars of Creation were taken through, which is the picture this wheel
+// is standing in for. H\u03B2 has gone: it is hydrogen as well, and a wheel with two stops both
+// called Hydrogen says nothing the first one did not.
 //
 // `pass` is a backdrop-filter, and what it has to do is what a narrow-band filter does: keep the
 // brightness, throw the colour away, pass one line. Everything after grayscale here is one linear
@@ -1503,15 +1443,13 @@ const REAL_ASK_AFTER = '?'
 
 const CONFIRM_ASK = [{ text: 'Would you like to share your sky to the gallery?' }]
 
-const ASTRO_LEAD = [
-  { text: 'Your image was shared and is now part of the gallery! Take a look at this famous photo:' },
-]
-
-const ASTRO_STORY = [
+const REALITY_LEAD = [
+  { text: 'Your image was shared and is now part of the gallery.' },
   {
+    block: true,
     text:
-      'Astrophotographers use filters to look only at light coming from specific objects. ' +
-      'Then, they give that light color so you can see the objects all together in a picture.',
+      'Everyone who stands here is asked the same question twice — once of the photo the ' +
+      'camera made, and again once they have changed its colors. This is what they said.',
   },
 ]
 
@@ -1653,14 +1591,14 @@ async function revealStory() {
   }
   if (!alive()) return
 
-  nextBtn.classList.remove('waiting')
-  pop(nextBtn)
+  // The question, and nothing to press until it has been answered.
+  editVerdict.show()
 }
 
 /** Put every step that says something back to the empty screen it starts from. */
 function clearBeats() {
-  ;[storyEl, storyAfterEl, adjustStoryEl, realAsk, confirmAsk, astroLeadEl, astroStoryEl].forEach(
-    (el) => el.replaceChildren()
+  ;[storyEl, storyAfterEl, adjustStoryEl, confirmAsk, realityLead].forEach((el) =>
+    el.replaceChildren()
   )
   document.querySelectorAll('.channel, .chan-layer').forEach((el) => el.classList.remove('in'))
   slidersTitle.classList.remove('in')
@@ -1670,13 +1608,13 @@ function clearBeats() {
   coloursBtn.disabled = false
   coloursPop?.cancel()
   coloursPop = null
-  realAsk.replaceChildren()
-  clearVerdict()
+  editVerdict.clear()
+  adjustVerdict.clear()
   stopReels()
   stopWheel()
   confirmPic.style.visibility = ''
   fliers.replaceChildren()
-  astroSplit.hidden = true
+  realityCharts.hidden = true
   adjustSplit.dataset.phase = 'ask'
   shownHue = CHANNELS.map((c) => c.hue)
   recoloured = false
@@ -2129,7 +2067,7 @@ async function openColours() {
   for (let i = 0; i < CHANNELS.length; i++) {
     if (step() !== 'adjust') return
     adjustChannels.querySelector(`[data-ch="${i}"]`).classList.add('in')
-    await wait(t(TIMELINE.astroChartIn))
+    await wait(t(TIMELINE.chartIn))
   }
   // The handles are not asking for attention here — they have already been used, and the
   // swatches are the new thing. Two invitations at once is neither.
@@ -2152,9 +2090,8 @@ function pickHue(src, deg) {
   // touched the strip — landing back where you started has not answered the question.
   if (!recoloured && deg !== CHANNELS[src].hue) {
     recoloured = true
-    showRealQuestion()
-    submitBtn.classList.remove('waiting')
-    pop(submitBtn)
+    // Share my sky arrives with the answer, not with the question — see makeVerdict's onTouch.
+    adjustVerdict.show()
     bigEditors.forEach((e) => e.setAsking(false))
   }
 
@@ -2185,12 +2122,23 @@ async function onColours() {
 
 // ── the answer ─────────────────────────────────────────────────────────────
 //
-// A figure dragged between No and Yes. Where it is left is the answer, as a number from 0 (no)
-// to 1 (yes), and it goes to api/answer — one row per visitor — when they leave this screen.
+// The exhibit asks "Is this image real?" twice, and the point is the pair: once of the picture
+// the camera made on its own, and again of the same picture after the visitor has moved its
+// colours somewhere the camera never put them. Each time a figure is dragged between No and
+// Yes, and where it is left is the answer, as a number from 0 (no) to 1 (yes).
 //
-// It starts in the middle and is only reported if it was moved. An untouched scale is not a
+// Both go to api/answer, one row per visitor per question, when that screen is left. Each
+// starts in the middle and is only reported if it was moved: an untouched scale is not a
 // visitor answering "undecided", it is a visitor who walked away, and averaging the two
 // together would bury the difference in exactly the number this is being kept for.
+
+// What this visitor answered, kept for the last screen to mark them on its charts.
+//
+// Held here rather than read off the scales themselves: every step handler calls clearBeats on
+// the way in, which puts both scales back to untouched, so by the time the Reality screen asks
+// them they no longer know. This is written when the answer is reported and cleared with the
+// visitor, which is exactly the life it should have.
+const answered = { unedited: null, edited: null }
 
 // No, undecided, yes. The same three the stylesheet paints the bar with, because the figure
 // takes the colour of the bar under its feet and the two must agree.
@@ -2199,11 +2147,6 @@ const VERDICT_COLOURS = [
   [0.5, [58, 160, 255]],
   [1.0, [34, 197, 94]],
 ]
-
-let verdictAt = 0.5
-let verdictTouched = false
-let verdictSent = false
-let verdictDrag = null
 
 /** The colour of the bar at p, which is the colour the figure standing there takes. */
 function verdictColour(p) {
@@ -2220,104 +2163,16 @@ function verdictColour(p) {
   return `rgb(${VERDICT_COLOURS.at(-1)[1].join(', ')})`
 }
 
-function drawVerdict() {
-  verdictScale.style.setProperty('--p', verdictAt.toFixed(4))
-  verdictScale.style.setProperty('--at', verdictColour(verdictAt))
-  verdictScale.setAttribute('aria-valuenow', verdictAt.toFixed(2))
-}
-
-function setVerdict(p, { touched = true } = {}) {
-  verdictAt = Math.min(1, Math.max(0, p))
-  if (touched) verdictTouched = true
-  drawVerdict()
-}
-
-/** Where along the bar a point on the screen is. */
-function verdictFrom(clientX) {
-  const r = verdictTrack.getBoundingClientRect()
-  return r.width ? (clientX - r.left) / r.width : 0.5
-}
-
-function verdictDown(e) {
-  if (!verdict.classList.contains('in')) return
-  verdictDrag = e.pointerId
-  verdictScale.classList.add('dragging')
-  setVerdict(verdictFrom(e.clientX))
-  try {
-    verdictScale.setPointerCapture(e.pointerId)
-  } catch {}
-  e.preventDefault()
-}
-
-function verdictMove(e) {
-  if (verdictDrag !== e.pointerId) return
-  setVerdict(verdictFrom(e.clientX))
-}
-
-function verdictUp(e) {
-  if (verdictDrag !== e.pointerId) return
-  verdictDrag = null
-  verdictScale.classList.remove('dragging')
-}
-
-verdictScale.addEventListener('pointerdown', verdictDown)
-verdictScale.addEventListener('pointermove', verdictMove)
-verdictScale.addEventListener('pointerup', verdictUp)
-verdictScale.addEventListener('pointercancel', verdictUp)
-// Cheap, and it is the only way anyone gets at this without a touchscreen.
-verdictScale.addEventListener('keydown', (e) => {
-  const by = { ArrowLeft: -0.05, ArrowRight: 0.05, Home: -1, End: 1 }[e.key]
-  if (by === undefined) return
-  setVerdict(Math.abs(by) === 1 ? (by + 1) / 2 : verdictAt + by)
-  e.preventDefault()
-})
-
-/** Put the scale back to undecided for the next visitor. */
-function clearVerdict() {
-  verdictAt = 0.5
-  verdictTouched = false
-  verdictSent = false
-  verdictDrag = null
-  verdictScale.classList.remove('dragging')
-  verdict.classList.remove('in')
-  drawVerdict()
-}
-
 /**
- * Report it, once, when the visitor leaves the screen.
- *
- * Deliberately not awaited and deliberately never in the way: a visitor pressing on must not
- * wait for a network, and an exhibit machine that cannot write the file is a thing for whoever
- * runs it to find in the debug overlay, not a thing to stop a visitor with.
- */
-function sendVerdict() {
-  if (verdictSent || !verdictTouched) return
-  verdictSent = true
-  const body = JSON.stringify({ value: Number(verdictAt.toFixed(3)) })
-  setInfo('answer', verdictAt.toFixed(3))
-  try {
-    // A visitor who closes the tab mid-answer still gets counted: a beacon survives the page,
-    // and a fetch does not.
-    if (navigator.sendBeacon?.(new URL('api/answer', location.href), new Blob([body], { type: 'application/json' }))) return
-  } catch {}
-  fetch('api/answer', { method: 'POST', headers: { 'content-type': 'application/json' }, body, keepalive: true })
-    .catch((err) => setInfo('answer', `not written: ${err?.message ?? err}`))
-}
-
-// The kiosk is never closed, but it is reloaded, and a visitor mid-answer when that happens is
-// still a visitor who answered.
-addEventListener('pagehide', sendVerdict)
-
-/**
- * The question, once a colour has actually been changed.
+ * Write "Is this image real?" into an element, with the word itself in three colours.
  *
  * "real" is written four times: once in the parent to hold the line's width, and once per
  * channel on top of it. The three are added together rather than painted over each other, so
  * apart you can see the colours the word is made of and together they come back to white —
  * which is the same arithmetic, and the same point, as the three layers that made the picture.
  */
-function showRealQuestion() {
-  if (realAsk.childNodes.length) return
+function writeRealAsk(el) {
+  if (el.childNodes.length) return
 
   const word = document.createElement('span')
   word.className = 'real-word'
@@ -2331,23 +2186,160 @@ function showRealQuestion() {
     layer.style.setProperty('--acc', channel.accent)
     word.append(layer)
   }
-  realAsk.append(REAL_ASK_BEFORE, word, REAL_ASK_AFTER)
-  // The question and the way to answer it arrive together: a question with no answer under it
-  // is rhetorical, and this one is not.
-  verdict.classList.add('in')
-  drawVerdict()
-
-  const fade = track(
-    verdict.animate([{ opacity: 0 }, { opacity: 1 }], {
-      duration: t(TIMELINE.blockFade),
-      easing: 'linear',
-      fill: 'both',
-    })
-  )
-  // Let go of it once it has landed. A running opacity animation makes a stacking context, and
-  // a stacking context is precisely what stops plus-lighter reaching the page behind the word.
-  fade.finished.then(() => fade.cancel()).catch(() => {})
+  el.append(REAL_ASK_BEFORE, word, REAL_ASK_AFTER)
 }
+
+/**
+ * One asking of the question, and the figure that answers it.
+ *
+ * `stage` is what goes in the file: which of the two pictures this answer is about. `onTouch`
+ * fires the first time the figure is moved — which is what lets the screen hold its way-on
+ * button back until the visitor has actually answered.
+ */
+function makeVerdict(stage, block, onTouch) {
+  const ask = block.querySelector('.real-ask')
+  block.append(scaleTpl.content.cloneNode(true))
+  const scale = block.querySelector('.scale')
+  const bar = block.querySelector('.scale-track')
+
+  let at = 0.5
+  let touched = false
+  let sent = false
+  let drag = null
+
+  function draw() {
+    scale.style.setProperty('--p', at.toFixed(4))
+    scale.style.setProperty('--at', verdictColour(at))
+    scale.setAttribute('aria-valuenow', at.toFixed(2))
+  }
+
+  function set(p) {
+    at = Math.min(1, Math.max(0, p))
+    draw()
+    if (touched) return
+    touched = true
+    onTouch?.()
+  }
+
+  /** Where along the bar a point on the screen is. */
+  const from = (clientX) => {
+    const r = bar.getBoundingClientRect()
+    return r.width ? (clientX - r.left) / r.width : 0.5
+  }
+
+  scale.addEventListener('pointerdown', (e) => {
+    if (!block.classList.contains('in')) return
+    drag = e.pointerId
+    scale.classList.add('dragging')
+    set(from(e.clientX))
+    try {
+      scale.setPointerCapture(e.pointerId)
+    } catch {}
+    e.preventDefault()
+  })
+  scale.addEventListener('pointermove', (e) => {
+    if (drag === e.pointerId) set(from(e.clientX))
+  })
+  const release = (e) => {
+    if (drag !== e.pointerId) return
+    drag = null
+    scale.classList.remove('dragging')
+  }
+  scale.addEventListener('pointerup', release)
+  scale.addEventListener('pointercancel', release)
+  // Cheap, and it is the only way anyone gets at this without a touchscreen.
+  scale.addEventListener('keydown', (e) => {
+    const by = { ArrowLeft: -0.05, ArrowRight: 0.05, Home: -1, End: 1 }[e.key]
+    if (by === undefined) return
+    set(Math.abs(by) === 1 ? (by + 1) / 2 : at + by)
+    e.preventDefault()
+  })
+
+  return {
+    get touched() {
+      return touched
+    },
+    /** Where this visitor left it — read by the Reality screen to mark them on its charts. */
+    get value() {
+      return at
+    },
+
+    /** Ask it. */
+    show() {
+      writeRealAsk(ask)
+      block.classList.add('in')
+      draw()
+      const fade = track(
+        block.animate([{ opacity: 0 }, { opacity: 1 }], {
+          duration: t(TIMELINE.blockFade),
+          easing: 'linear',
+          fill: 'both',
+        })
+      )
+      // Let go of it once it has landed. A running opacity animation makes a stacking context,
+      // and a stacking context is precisely what stops plus-lighter reaching the page behind
+      // the word.
+      fade.finished.then(() => fade.cancel()).catch(() => {})
+    },
+
+    /** Put it back to unasked and undecided for the next visitor. */
+    clear() {
+      at = 0.5
+      touched = false
+      sent = false
+      drag = null
+      scale.classList.remove('dragging')
+      block.classList.remove('in')
+      ask.replaceChildren()
+      draw()
+    },
+
+    /**
+     * Report it, once.
+     *
+     * Deliberately not awaited and deliberately never in the way: a visitor pressing on must
+     * not wait for a network, and an exhibit machine that cannot write the file is a thing for
+     * whoever runs it to find in the debug overlay, not a thing to stop a visitor with.
+     */
+    send() {
+      if (sent || !touched) return
+      sent = true
+      answered[stage] = at
+      const body = JSON.stringify({ stage, value: Number(at.toFixed(3)) })
+      setInfo('answer', `${stage} ${at.toFixed(3)}`)
+      try {
+        // A visitor who is mid-answer when the kiosk reloads still gets counted: a beacon
+        // survives the page, and a fetch does not.
+        if (navigator.sendBeacon?.(new URL('api/answer', location.href), new Blob([body], { type: 'application/json' }))) return
+      } catch {}
+      fetch('api/answer', { method: 'POST', headers: { 'content-type': 'application/json' }, body, keepalive: true })
+        .catch((err) => setInfo('answer', `not written: ${err?.message ?? err}`))
+    },
+  }
+}
+
+// Asked of the camera's own picture, before anything has been changed...
+const editVerdict = makeVerdict('unedited', editVerdictBlock, () => {
+  // ...and only now is there a way on. The question is the screen's whole business; a Next
+  // button sitting there while it is being asked invites skipping past it.
+  nextBtn.classList.remove('waiting')
+  pop(nextBtn)
+})
+
+// ...and again of the same picture once its colours have been moved somewhere the camera never
+// put them.
+const adjustVerdict = makeVerdict('edited', verdictBlock, () => {
+  submitBtn.classList.remove('waiting')
+  pop(submitBtn)
+})
+
+// The kiosk is never closed, but it is reloaded, and a visitor mid-answer when that happens is
+// still a visitor who answered.
+addEventListener('pagehide', () => {
+  editVerdict.send()
+  adjustVerdict.send()
+})
+
 
 /** "Share my sky" no longer shares anything — it asks. */
 async function onSubmit() {
@@ -2385,7 +2377,7 @@ async function onYes() {
   // Into a space on the wall if there is a wall; off to the side if the folder is empty.
   const joined = await joinTheWall(confirmPic)
   if (!joined) await spinAwayRight(confirmPic, TIMELINE.spinOut)
-  goToStep('astro')
+  goToStep('reality')
 }
 
 /**
@@ -2402,68 +2394,95 @@ async function onNo() {
   reset()
 }
 
-// ── 4. the famous photo ─────────────────────────────────────────────────────
+// ── 4. what the room has answered ─────────────────────────────────
 
-const astroLuts = () => astroLevels.map((l) => levelsLut(l.black, l.white))
+const ANSWER_CHARTS = [
+  { stage: 'unedited', title: 'the camera’s own picture' },
+  { stage: 'edited', title: 'the one the visitor changed' },
+]
 
 /**
- * Load the nebula and take it apart into channels.
+ * One chart: a count of everybody's answers across the scale they gave them on.
  *
- * Started at boot, awaited on step 4. Decoding a megapixel and splitting it into three planes
- * takes long enough on the exhibit tablet to be visible, and the one moment it must not be
- * visible is while a visitor is watching an empty screen waiting for it.
+ * Linear, not the log the photo histograms use. A photo's histogram is dominated by a few huge
+ * bins and a linear plot flattens the rest into the axis; a day of answers is tens, not
+ * millions, and log would flatten the difference between "a few people" and "nearly everybody"
+ * — which is the entire thing this chart exists to show.
  */
-function loadPillars() {
-  if (pillarsReady) return pillarsReady
+function drawAnswers(canvas, counts) {
+  const box = canvas.getBoundingClientRect()
+  if (!box.width) return
+  const dpr = Math.min(2, devicePixelRatio || 1)
+  canvas.width = Math.round(box.width * dpr)
+  canvas.height = Math.round(box.height * dpr)
 
-  pillarsReady = new Promise((resolve) => {
-    if (pillarsSrc.complete && pillarsSrc.naturalWidth) return resolve()
-    pillarsSrc.addEventListener('load', resolve, { once: true })
-    pillarsSrc.addEventListener('error', resolve, { once: true })
-  }).then(() => {
-    if (!pillarsSrc.naturalWidth) {
-      setInfo('pillars', `did not load: ${pillarsSrc.getAttribute('src')}`)
-      return null
-    }
-    // It is not the shape of the camera in the room, so it carries its own ratio.
-    document.documentElement.style.setProperty(
-      '--pillars-ar',
-      (pillarsSrc.naturalWidth / pillarsSrc.naturalHeight).toFixed(4)
-    )
-    pillarsFrame = frameFromImage(pillarsSrc, PILLARS_EDGE)
-    setInfo('pillars', `${pillarsFrame.width}x${pillarsFrame.height}`)
-    return pillarsFrame
+  const ctx = canvas.getContext('2d')
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0)
+  const w = box.width
+  const h = box.height
+  ctx.clearRect(0, 0, w, h)
+
+  const peak = Math.max(1, ...counts)
+  const slot = w / counts.length
+  const gap = Math.min(6, slot * 0.18)
+
+  counts.forEach((n, i) => {
+    if (!n) return
+    const share = n / peak
+    // A floor, so that one person is a mark on the wall rather than nothing at all.
+    const bar = Math.max(4, share * (h - 14))
+    ctx.fillStyle = verdictColour((i + 0.5) / counts.length)
+    // Taller and brighter where more people said it: height alone reads as a shape, and the
+    // exhibit is asking the room a question, not plotting it.
+    ctx.globalAlpha = 0.45 + 0.55 * share
+    ctx.fillRect(i * slot + gap / 2, h - bar, slot - gap, bar)
   })
-  return pillarsReady
+  ctx.globalAlpha = 1
 }
 
-/** Bring in the nebula and its three controls, in step 2's arrangement. */
-async function showPillars() {
-  const pic = await loadPillars()
-  // Without the picture there is nothing to adjust, but the sentence is still worth saying —
-  // so this returns quietly rather than leaving the visitor on a screen that never finishes.
-  if (!pic || step() !== 'astro') return
-
-  astroLevels = CHANNELS.map(() => ({ black: 0, white: 255 }))
-  buildEditors(astroChannels, pic, astroLevels)
-  drawComposite(pillarsCanvas, pic, astroLuts())
-
-  // The line slides up to make room rather than jumping there.
-  const leadFrom = astroLeadEl.getBoundingClientRect()
-  astroSplit.hidden = false
-  flipTo(astroLeadEl, leadFrom, TIMELINE.astroPicIn)
-
-  rise(pillarsPic)
-  await wait(t(TIMELINE.astroPicIn))
-
-  // One chart at a time, each sliding its handles in off the ends of the track — the same
-  // introduction they were given on step 2, minus the beams, which have already said their bit.
-  for (let i = 0; i < CHANNELS.length; i++) {
-    astroChannels.querySelector(`[data-ch="${i}"]`).classList.add('in')
-    settleLevels(i)
-    await wait(t(TIMELINE.astroChartIn))
+/**
+ * Bring up what everyone has answered, and mark where this visitor stood on each.
+ *
+ * The summary is asked for rather than kept: the answer this visitor has just given is one of
+ * the rows in it, and by this screen it has been written.
+ */
+async function showAnswers() {
+  let data = null
+  try {
+    const res = await fetch('api/answer/summary', { cache: 'no-store' })
+    if (res.ok) data = await res.json()
+  } catch (err) {
+    setInfo('answers', `not read: ${err?.message ?? err}`)
   }
-  bigEditors.forEach((e) => e.setPulsing(true))
+
+  realityCharts.hidden = false
+
+  for (const { stage } of ANSWER_CHARTS) {
+    const chart = realityCharts.querySelector(`[data-stage="${stage}"]`)
+    if (!chart) continue
+    const counts = data?.counts?.[stage] ?? new Array(data?.bins ?? 25).fill(0)
+    const total = data?.totals?.[stage] ?? 0
+
+    chart.querySelector('.answer-count').textContent =
+      total === 1 ? '1 answer so far' : `${total} answers so far`
+    drawAnswers(chart.querySelector('canvas'), counts)
+
+    // Only if they answered this one. A marker at the middle of the scale for somebody who
+    // never touched it is a claim they did not make.
+    const you = chart.querySelector('.answer-you')
+    const mine = answered[stage]
+    you.hidden = mine === null
+    if (mine !== null) you.style.setProperty('--you', mine.toFixed(4))
+  }
+
+  setInfo('answers', `${data?.totals?.unedited ?? 0} / ${data?.totals?.edited ?? 0}`)
+
+  // One at a time, the way the charts arrived on the screen before this one.
+  for (const { stage } of ANSWER_CHARTS) {
+    const chart = realityCharts.querySelector(`[data-stage="${stage}"]`)
+    if (chart) rise(chart)
+    await wait(t(TIMELINE.chartIn))
+  }
 }
 
 // ── reset ───────────────────────────────────────────────────────────────────
@@ -2472,16 +2491,16 @@ function reset() {
   cancelAll()
 
   frame = null
+  answered.unedited = null
+  answered.edited = null
   viewFrame = null
   thumbFrame = null
   levels = null
-  astroLevels = null
   destroyEditors()
   clearBeats()
   document.querySelectorAll('.channel-editor').forEach((el) => el.replaceChildren())
 
-  // Undo anything left on the elements that outlive a visitor. `pillarsFrame` deliberately
-  // survives: it is the same picture for every visitor and costs a second to rebuild.
+  // Undo anything left on the elements that outlive a visitor.
   front = photoA
   feed.play().catch(() => {}) // takePhoto() paused it for the hand-off
   // A different borrowed picture for the next visitor, so a camera that stays broken all day
@@ -2489,10 +2508,9 @@ function reset() {
   if (standingIn) useStandIn({ fresh: true })
   countdownEl.textContent = ''
   submitBtn.disabled = false
-  ;[
-    photoA, photoB, adjustCanvas, confirmCanvas, pillarsCanvas,
-    ...chanLayers.querySelectorAll('.chan-img'),
-  ].forEach((c) => c.getContext('2d').clearRect(0, 0, c.width, c.height))
+  ;[photoA, photoB, adjustCanvas, confirmCanvas, ...chanLayers.querySelectorAll('.chan-img')].forEach(
+    (c) => c.getContext('2d').clearRect(0, 0, c.width, c.height)
+  )
 
   // A hard cut, blob included: "Start again" is not a transition, it is the piece ending.
   goToStep('camera', { animate: false, blob: false })

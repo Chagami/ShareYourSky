@@ -334,10 +334,10 @@ part and the one thing to press is always at the foot, within reach.
 | Step | Screen | The dock offers |
 | --- | --- | --- |
 | `camera` | Title, viewfinder, countdown | the shutter |
-| `edit` | Their photo built up a colour at a time, the three channels it is made of beside it, and the two paragraphs that explain both | `Next`, once the picture is made |
-| `adjust` | The picture alone and large with two sentences; then, on `Next`, the same charts back with a spectrum across each | `Next`, then `Share my sky` once a colour has been moved |
+| `edit` | Their photo built up a colour at a time, the three channels it is made of beside it, the paragraphs that explain both, and then **the question** | `Next`, once the question has been answered |
+| `adjust` | The picture alone and large with two sentences; then, on `Next`, the same charts back with a spectrum across each, and **the question again** | `Next`, then `Share my sky` once the second question has been answered |
 | `confirm` | The picture across the screen, the question large underneath it | `No` / `Yes` |
-| `astro` | The Pillars of Creation in step 2's exact arrangement, with the same three charts | `Start again` |
+| `reality` | What everybody has answered: the camera's picture against the edited one | `Start again` |
 
 Each step is a self-contained `<section>`; only one is on screen, chosen by `body[data-step]`.
 `STEP_ENTER[id]` is the only place a step's content is built, and **no step knows about any
@@ -561,44 +561,65 @@ Four things worth knowing if it is ever touched:
   and half of them end up upside down; on a wall read from two metres away, legible beats
   faithful.
 
-### The answer, and where it goes
+### The question, twice, and where the answers go
 
-The question is a block of its own now, set off from the paragraph above it by a rule and a good
-deal of air, and set at twice that paragraph's size — measured, 80px against 37px on the kiosk. It
-had been sitting tucked under the explanation, which read as a footnote to it rather than as the
-thing the whole exhibit is asking.
+**It is asked twice, and the pair is the point.** Once on step 2, of the picture the camera made
+on its own — the paragraph ends at *"an image that approximates what you see with your eyes"* and
+the question is a block of its own underneath it. Then again on step 3, of the same picture once
+the visitor has moved its colours somewhere the camera never put them. Both are set at twice the
+paragraph's size (measured, 80px against 35px on the kiosk), separated by a rule and a good deal
+of air, and both carry the three-colour **"real"** — the word written four times, once per
+channel in `plus-lighter` on top of a parent that holds the line's width, so apart you see the
+colours it is made of and together they come back to white.
 
-Under it is the answer: **a figure the visitor drags between No and Yes**, standing on a bar that
-runs red through blue to green. It is drawn the way a bathroom sign is — a round head, a fat
+**The way on does not exist until the question is answered.** `Next` on step 2 and `Share my sky`
+on step 3 stay in `.waiting` — in the dock, holding their place, at zero opacity — until the
+figure is moved, and then `pop()` them in. A question with a way past it sitting next to it is a
+question a visitor is invited to skip; this one is the screen's whole business. (The `Next` that
+brings up the spectra on step 3 is *not* gated, because that screen's question has not been asked
+yet at that point.)
+
+Under each is the answer: **a figure the visitor drags between No and Yes**, standing on a bar
+that runs red through blue to green. It is drawn the way a bathroom sign is — a round head, a fat
 rounded stroke for a body, and four limbs of one thickness with round ends, all of it one colour.
-Short and big-headed on purpose. An earlier one had thin limbs at odd angles and a dark outline
-round the head, which made it read as a head sitting next to a body rather than on one. It takes the colour of the bar under its feet — measured at five
+Short and big-headed on purpose. It takes the colour of the bar under its feet — measured at five
 positions, the pixels the browser actually painted match the computed colour exactly, from
 `rgb(247,63,56)` at one end to `rgb(34,196,97)` at the other. No is on the left because the
-colours were given as red for no and green for yes, and left-to-right agreement is the way every
-other scale a visitor has ever filled in runs.
+colours are red for no and green for yes, and left-to-right agreement is the way every other
+scale a visitor has ever filled in runs.
 
 The whole block is the handle, not just the figure: a person standing on a bar is a small target
 and the bar is the obvious thing to reach for. Arrow keys work too, which is the only way anyone
-gets at it without a touchscreen.
+gets at it without a touchscreen. The scale itself is written once, in a `<template>` at the foot
+of `index.html`, and cloned into each question — two copies of it in the page is two copies that
+drift apart.
 
-It starts in the middle, undecided, and **is only reported if it was moved**. An untouched scale
-is not somebody answering "undecided", it is somebody who walked away, and averaging the two
-together would bury the difference in exactly the number this is being kept for.
+Each starts in the middle, undecided, and **is only reported if it was moved**. An untouched
+scale is not somebody answering "undecided", it is somebody who walked away, and averaging the
+two together would bury the difference in exactly the number this is being kept for.
 
-**Where it goes.** One row per visitor, written when they leave the screen — pressing on, or the
-exhibit giving up and starting again with nobody there. `server/answers.js` appends it to
+**Where they go.** One row per visitor per question, written when that screen is left — pressing
+on, or the exhibit giving up and starting again with nobody there. `server/answers.js` appends to
 `data/answers.csv` on whichever machine serves the pages:
 
 ```
-time,value
-2026-09-15T22:09:19.286Z,0.310
+time,stage,value
+2026-09-16T01:00:13.373Z,unedited,0.861
+2026-09-16T01:00:25.931Z,edited,0.221
 ```
 
-`value` is 0 at No and 1 at Yes. The folder is in `.gitignore`: it is data, and it belongs to the
+`value` is 0 at No and 1 at Yes; `stage` is which picture was being asked about. Rows of only two
+fields are from before there were two questions to tell apart, and are read as `edited`, which is
+the one that existed then. The folder is in `.gitignore`: it is data, and it belongs to the
 machine that collected it. **Admin page → Answers (CSV)** downloads it; so does `GET api/answer`,
-and `DELETE api/answer` starts a fresh one. A visitor who is mid-answer when the kiosk reloads is
-still counted — the report goes out as a beacon, which survives the page where a fetch would not.
+`GET api/answer/summary` returns both stages binned for step 4, and `DELETE api/answer` starts a
+fresh one. A visitor who is mid-answer when the kiosk reloads is still counted — the report goes
+out as a beacon, which survives the page where a fetch would not.
+
+One thing worth knowing if this is ever changed: the answers are kept in a module-level
+`answered` object, written when each is reported, **not** read back off the scales. Every step
+handler calls `clearBeats` on the way in, which puts both scales back to untouched, so by the
+time step 4 asks them they no longer know.
 
 ### Asking the question
 
@@ -638,9 +659,10 @@ Two things that would break it, both avoided by construction:
   brightest pixel in the word is `rgb(255, 255, 255)`, channel spread **0**.
 - The three copies carry `aria-hidden`, or the line is read out as "realrealrealreal".
 
-7. `Share my sky` is not offered until a colour has been moved *off its own hue*. Touching the
-   strip and landing back where you started has not answered the question. It no longer shares
-   anything either — it asks.
+7. The question arrives only once a colour has been moved *off its own hue* — touching the strip
+   and landing back where you started has not answered anything. `Share my sky` then waits on
+   the question itself, and appears when the figure is moved. It no longer shares anything
+   either: it asks.
 
 **Step 4 — the one question with a wrong answer.** Sharing is not a side effect of finishing the
 adjusting, so it gets a screen of its own: *"Would you like to share your sky to the gallery?"*,
@@ -695,26 +717,22 @@ the primaries, 8.56ms for arbitrary hues** — the general case costs 5%, not do
 The chosen hues are stored with the shared image, because they are the one thing about a
 visitor's picture that is a choice rather than a measurement.
 
-**Step 4 — the famous photo:**
+**Step 4 — what the room answered:**
 
-8. Opens blank, deliberately. The line about the gallery types on an empty screen, holds, and
-   then rides up to the top as the two columns arrive underneath it.
-9. The Pillars of Creation appears in step 2's place, and the same three charts arrive down the
-   right, one at a time, each sliding its handles in off the ends of the track. **The whole
-   arrangement is step 2's, reused unchanged** — that likeness is the argument the step is
-   making, so if you restyle one, restyle both.
-10. The explanation types where step 2's sentence was.
+8. Opens blank, deliberately. The line types on an empty screen, holds, and then rides up as the
+   charts arrive underneath it.
+9. Two charts, one above the other: every answer to *Is this image real?* given about the
+   camera's own picture, and every answer given about the same picture once its colours had been
+   moved. Bars rise where more people said that, in the colour of the scale they said it on, and
+   a white marker shows where this visitor stood on each.
 
-The nebula is `img/pillars.jpg` — ESA/Hubble `heic1501a`, the 2015 WFC3 revisit, public domain
-with credit. Swapping it for another picture needs nothing but the file: its aspect ratio is
-read from the image and written to `--pillars-ar`, and it is decoded and split into channels at
-boot rather than on step 4, because doing that work while a visitor watches an empty screen is
-exactly the wrong moment for it. **The credit line under it is not decoration** — it is somebody
-else's photograph on a museum wall.
+The screen is not about the visitor's picture at all, which is the point of ending on it: they
+have just been asked the same question twice and been shown that their two answers were
+different, and this is the room answering it the same way.
 
-Steps 2 and 4 edit **different numbers over different pictures** (`levels` / `frame` against
-`astroLevels` / `pillarsFrame`). `buildEditors` is given both, rather than reaching for module
-state, so adjusting the nebula cannot quietly rewrite the picture the visitor already shared.
+*(Step 4 used to be the Pillars of Creation in step 2's arrangement, with the same three charts
+over it. It was removed in favour of this; `git log -- img/pillars.jpg` finds it if it is ever
+wanted back. `img/pillars.jpg` is still in the repo.)*
 
 Three things are worth knowing before changing any of it:
 
@@ -959,11 +977,10 @@ this was.
 ## Where to change things
 
 - `js/main.js` — **every word the visitor reads**, in `STORY`, `STORY_AFTER`, `SHARE_STORY`,
-  `ASTRO_LEAD` and `ASTRO_STORY`, near the top of the step-2 section. A segment marked
+  `REALITY_LEAD`, near the top of the step-2 section. A segment marked
   `block: true` starts its own line after a pause. They are typed rather
   than rendered, so they live in the script and not in the markup.
 - `index.html` — the structure of each step, and the credit line.
-- `img/pillars.jpg` — the famous photo. Any image works; nothing is hard-coded to this one.
 - `js/main.js` — the `TIMELINE` object at the top is the entire pacing of the piece in one block:
   countdown cadence, the didactic beats, the three reveal crossfades, the reset timings.
 - `css/app.css` — `--shot-ar` is the photo's shape, set from the camera; which screen is on is

@@ -42,9 +42,9 @@
         <span class="dot-mark"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 15V4M12 4 8 8M12 4l4 4"/><path d="M5 13v5.5A1.5 1.5 0 0 0 6.5 20h11a1.5 1.5 0 0 0 1.5-1.5V13"/></svg></span>
         <span class="dot-label"><b class="dot-no">3.</b> Share</span>
       </li>
-      <li class="dot" data-step="astro">
-        <span class="dot-mark"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M13 3.5 15 9l5.5 2-5.5 2-2 5.5L11 13l-5.5-2L11 9z"/><circle cx="5" cy="5" r="1.1"/><circle cx="19.2" cy="17.5" r="1.1"/></svg></span>
-        <span class="dot-label"><b class="dot-no">4.</b> Channels</span>
+      <li class="dot" data-step="reality">
+        <span class="dot-mark"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 20h16"/><path d="M7 20v-6M12 20V6M17 20v-9"/></svg></span>
+        <span class="dot-label"><b class="dot-no">4.</b> Reality</span>
       </li>
     </ol>
   </div>
@@ -87,6 +87,13 @@
         </div>
         <p class="story" id="story"></p>
         <p class="story" id="storyAfter"></p>
+        <!-- The first time the question is asked: of the picture the camera made, before the
+             visitor has touched anything. Its own block rather than the last line of the
+             paragraph above, and the scale inside it is built by js/main.js from the template
+             at the foot of this file. -->
+        <div class="verdict" id="editVerdict">
+          <p class="real-ask"></p>
+        </div>
       </div>
 
       <!-- The same light, taken apart. Each one arrives at the moment its name lights in the
@@ -140,24 +147,7 @@
              starts in the middle, undecided, and js/main.js reports it to api/answer when the
              visitor leaves this screen — but only if they moved it. -->
         <div class="verdict" id="verdict">
-          <p class="real-ask" id="realAsk"></p>
-          <div class="scale" id="verdictScale" tabindex="0" role="slider"
-               aria-label="Is this image real?" aria-valuemin="0" aria-valuemax="1"
-               aria-valuenow="0.5" aria-valuetext="undecided">
-            <div class="scale-track" id="verdictTrack">
-              <span class="scale-figure" id="verdictFigure">
-                <!-- A bathroom-sign figure: a round head, a rounded bar for a body, and four
-                     limbs of one thickness with round ends. Short and big-headed on purpose.
-                     All of it is one colour, taken from the bar it is standing on. -->
-                <svg viewBox="0 0 64 62" aria-hidden="true">
-                  <circle cx="32" cy="12" r="10.5" />
-                  <path class="torso" d="M32 31L32 39" />
-                  <path class="limbs" d="M32 32L12.5 43M32 32L51.5 43M28.5 41L23.5 57M35.5 41L40.5 57" />
-                </svg>
-              </span>
-            </div>
-            <div class="scale-ends"><span>No</span><span>Yes</span></div>
-          </div>
+          <p class="real-ask"></p>
         </div>
       </div>
       <div class="channels" id="adjustChannels">
@@ -187,37 +177,66 @@
     <div class="reel" id="reelBottom" aria-hidden="true"><div class="reel-track"></div></div>
   </section>
 
-  <!-- 4 ─ ASTROPHOTOGRAPHY ───────────────────────────────────────────────── -->
-  <!-- Opens blank. The line arrives first, on its own; then the famous photo and the same three
-       controls the visitor has just used, in the same arrangement as step 2 — which is the
-       whole argument of the piece: what they did to their photo is what was done to this one. -->
-  <section class="step" data-step="astro">
-    <p class="story story-wide" id="astroLead"></p>
+  <!-- 4 ─ REALITY ──────────────────────────────────────────────────────── -->
+  <!-- The last screen is not about the visitor's picture at all. It is about the room: everyone
+       who stands here is asked the same question twice, and the two answers are rarely the
+       same. Both charts are drawn by js/main.js from api/answer/summary. -->
+  <section class="step" data-step="reality">
+    <p class="story story-wide" id="realityLead"></p>
 
-    <div class="split" id="astroSplit" hidden>
-      <div class="split-left">
-        <div class="pic pic-pillars" id="pillarsPic">
-          <canvas id="pillarsCanvas" class="photo"></canvas>
+    <div class="reality" id="realityCharts" hidden>
+      <figure class="answer-chart" data-stage="unedited">
+        <figcaption>
+          <b>The photo the camera made</b>
+          <span class="answer-count"></span>
+        </figcaption>
+        <!-- Bars over a well, the scale under it: a levels chart, counting people instead of
+             pixels. The marker is where this visitor put their own figure. -->
+        <div class="answer-plot">
+          <canvas></canvas>
+          <i class="answer-you" hidden><b>you</b></i>
         </div>
-        <p class="credit">
-          Pillars of Creation, Eagle Nebula &mdash; NASA, ESA and the Hubble Heritage Team (STScI/AURA)
-        </p>
-        <p class="story" id="astroStory"></p>
-      </div>
-      <div class="channels" id="astroChannels">
-        <div class="channel" data-ch="0"><div class="channel-editor"></div></div>
-        <div class="channel" data-ch="1"><div class="channel-editor"></div></div>
-        <div class="channel" data-ch="2"><div class="channel-editor"></div></div>
-      </div>
-    </div>
+        <div class="answer-base"></div>
+        <div class="scale-ends"><span>No</span><span>Yes</span></div>
+      </figure>
 
-    <!-- Loaded and taken apart into channels at boot, long before this step is reached: pulling
-         a megapixel of image into three planes is not something to start doing while a visitor
-         is watching an empty screen. Hidden, because what is shown is the canvas built from it. -->
-    <img id="pillarsSrc" src="img/pillars.jpg" alt="" hidden>
+      <figure class="answer-chart" data-stage="edited">
+        <figcaption>
+          <b>After the colors were changed</b>
+          <span class="answer-count"></span>
+        </figcaption>
+        <div class="answer-plot">
+          <canvas></canvas>
+          <i class="answer-you" hidden><b>you</b></i>
+        </div>
+        <div class="answer-base"></div>
+        <div class="scale-ends"><span>No</span><span>Yes</span></div>
+      </figure>
+    </div>
   </section>
 
 </main>
+
+<!-- The scale, written once and cloned into each question by js/main.js. Two copies of this in
+     the page is two copies that drift apart. -->
+<template id="scaleTpl">
+  <div class="scale" tabindex="0" role="slider" aria-label="Is this image real?"
+       aria-valuemin="0" aria-valuemax="1" aria-valuenow="0.5">
+    <div class="scale-track">
+      <!-- A bathroom-sign figure: a round head, a rounded bar for a body, and four limbs of one
+           thickness with round ends. Short and big-headed on purpose. All of it is one colour,
+           taken from the bar it is standing on. -->
+      <span class="scale-figure">
+        <svg viewBox="0 0 64 62" aria-hidden="true">
+          <circle cx="32" cy="12" r="10.5" />
+          <path class="torso" d="M32 31L32 39" />
+          <path class="limbs" d="M32 32L12.5 43M32 32L51.5 43M28.5 41L23.5 57M35.5 41L40.5 57" />
+        </svg>
+      </span>
+    </div>
+    <div class="scale-ends"><span>No</span><span>Yes</span></div>
+  </div>
+</template>
 
 <!-- ═══════════ The dock ═══════════
      Always on screen at the foot: the one action this step offers, and where the visitor is in

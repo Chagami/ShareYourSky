@@ -47,7 +47,6 @@
   --shot-ar: 1.3333;
   /* Replaced from the image's own dimensions the moment it loads; this is only so the frame
      has a shape to reserve before then. */
-  --pillars-ar: 0.9588;
 
   /* One definition of the viewfinder's width, so the rotated case can be derived from it
      instead of guessed at again. */
@@ -312,7 +311,7 @@ body[data-rot="270"] .framed { transform: translate(-50%, -50%) rotate(270deg) s
    of a 3840-tall screen with half the panel empty underneath it; centred, the same content
    reads as a composition with margin, and the photo still arrives up and to the left of where
    the viewfinder was standing, which is what the flight has to say. */
-.step[data-step="astro"] {
+.step[data-step="reality"] {
   justify-content: center;
   padding: 3vh 5vw;
 }
@@ -331,7 +330,11 @@ body[data-rot="270"] .framed { transform: translate(-50%, -50%) rotate(270deg) s
      to the same corner. */
   align-items: center;
   gap: 4vw;
-  width: min(94vw, 2000px);
+  /* 100%, not 94vw. The step this sits in is padded in vw as well, so a vw width here is
+     measured against the whole screen and the padding is then added outside it — the same
+     arithmetic that once made the step indicator 102vw wide and pushed everything centred on
+     the page eleven pixels to the left. */
+  width: min(100%, 2000px);
   text-align: left;
 }
 
@@ -441,22 +444,6 @@ body[data-rot="270"] .framed { transform: translate(-50%, -50%) rotate(270deg) s
 }
 #photoB { opacity: 0; }
 
-/* Step 4, in step 2's place in the left column. */
-.pic-pillars {
-  width: min(100%, calc(52vh * var(--pillars-ar)));
-  aspect-ratio: var(--pillars-ar);
-}
-
-/* Whose photograph this is. Quiet, but not optional: it is somebody else's picture on a
-   museum wall, and the credit travels with it. */
-.credit {
-  margin: 0;
-  max-width: 46ch;
-  font-size: clamp(0.6rem, 1.05vw, 0.95rem);
-  line-height: 1.4;
-  letter-spacing: 0.02em;
-  color: var(--muted);
-}
 
 /* ─── 3. the share screen, phase one ───
 
@@ -632,8 +619,10 @@ body[data-rot="270"] .framed { transform: translate(-50%, -50%) rotate(270deg) s
    sentence of that explanation — it is the thing the whole exhibit is asking, and a question
    that arrives tucked under a paragraph reads as a footnote to it. */
 .verdict {
-  margin-top: 2.6vh;
-  padding-top: 2.6vh;
+  /* Tight enough that the edit screen, which carries the photograph, three layers, two
+     paragraphs and this, still clears the bottom of its step. */
+  margin-top: 2vh;
+  padding-top: 2.2vh;
   border-top: 1px solid var(--line);
   opacity: 0;
   transition: opacity 420ms ease;
@@ -658,7 +647,7 @@ body[data-rot="270"] .framed { transform: translate(-50%, -50%) rotate(270deg) s
    and green for yes, and left-to-right agreement is the way every other scale a visitor has
    ever filled in runs. */
 .scale {
-  margin-top: 2.8vh;
+  margin-top: 2.2vh;
   /* The whole block is the handle: a figure standing on a bar is a small target, and the bar it
      stands on is the obvious thing to reach for. */
   touch-action: none;
@@ -930,6 +919,92 @@ body[data-rot="270"] .framed { transform: translate(-50%, -50%) rotate(270deg) s
   .wheel-arrow { animation: none; }
 }
 
+/* ─── the Reality screen ─── */
+
+/* Two charts of the same question, one above the other so the shift between them is a shift
+   downwards rather than a comparison the eye has to carry sideways. */
+.reality {
+  display: flex;
+  flex-direction: column;
+  gap: 4.5vh;
+  width: min(100%, 1500px);
+  margin: 0 auto;
+}
+
+.answer-chart {
+  margin: 0;
+}
+.answer-chart figcaption {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 1em;
+  margin-bottom: 1.4vh;
+}
+.answer-chart b {
+  font-size: clamp(1.05rem, 2.5vw, 2.3rem);
+  font-weight: 700;
+  letter-spacing: -0.015em;
+}
+.answer-count {
+  color: var(--muted);
+  font-size: clamp(0.8rem, 1.7vw, 1.5rem);
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+/* The same well the levels editors sit in, so this reads as one of them. */
+.answer-plot {
+  position: relative;
+  height: clamp(150px, 20vh, 400px);
+  border-radius: 14px;
+  background: var(--well);
+  box-shadow: inset 0 0 0 1px var(--line);
+  overflow: hidden;
+}
+.answer-plot canvas {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
+/* Where this visitor put their own figure, on a chart of everybody else's. */
+.answer-you {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: calc(var(--you, 0.5) * 100%);
+  width: 2px;
+  margin-left: -1px;
+  background: rgba(255, 255, 255, 0.75);
+}
+.answer-you b {
+  position: absolute;
+  top: 6px;
+  left: 50%;
+  transform: translateX(-50%);
+  padding: 0.25em 0.6em;
+  border-radius: 999px;
+  background: #fff;
+  color: #05060a;
+  font-size: clamp(0.62rem, 1.2vw, 1.05rem);
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+/* The answer scale itself, under the bars — the same bar the figure was dragged along. */
+.answer-base {
+  height: clamp(10px, 1vh, 18px);
+  margin-top: 10px;
+  border-radius: 999px;
+  background: linear-gradient(90deg, var(--no) 0%, var(--maybe) 50%, var(--yes) 100%);
+}
+.answer-chart .scale-ends {
+  margin-top: 0.9vh;
+}
+
 /* ─── the share question ─── */
 
 /* The picture across the screen, the question underneath it. This is the last and longest look
@@ -1031,12 +1106,19 @@ body[data-rot="270"] .framed { transform: translate(-50%, -50%) rotate(270deg) s
   box-shadow: inset 0 0 0 2px rgba(255, 255, 255, 0.22);
 }
 
-/* ─── 4. the famous photo ─── */
+/* ─── 4. what the room has answered ─── */
 
 /* The step opens with nothing but the lead line on it, so the line is the only thing centred;
-   once the split arrives the line rides up to the top and the two columns take the rest. */
-.step[data-step="astro"] .story-wide { min-height: 0; }
-.step[data-step="astro"] .split { margin-top: 1vh; }
+   once the charts arrive the line rides up to the top and they take the rest.
+
+   Wider than 26ch here. That measure is right for a line read on its own against black, but
+   this one is a paragraph and the charts under it are the screen's business — at 26ch it stood
+   seven lines tall and pushed them into the floor. */
+.step[data-step="reality"] .story-wide {
+  min-height: 0;
+  max-width: 44ch;
+  margin-bottom: 3vh;
+}
 
 /* ─── the dock ─── */
 
