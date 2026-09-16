@@ -353,6 +353,23 @@ That is what makes them separable, and it buys the thing worth having while buil
 It takes a photo as soon as the camera is ready and then jumps, so the step has something real
 to work with.
 
+### How wide a line of it is
+
+Every paragraph is set for **about ten words to a line**, and the measures are in `ch` so they
+hold at any type size. Measured on the kiosk: the two paragraphs beside the layers run 10 and 13
+words, the share question is one line of 10, and the last screen's lead runs 7 to 11.
+
+They were all 24–26ch before, which on a 2160-wide screen is four or five words — that reads as
+a poem, and a reader spends the whole paragraph starting again. The one block still short of ten
+is the sentence beside the picture on step 3: at 50px it wants about 1875px and the column it
+sits in is 1598, so it balances into four and six. Widening that one needs either a narrower type
+size there or a column that spans the screen.
+
+The caps live in four places — `.step[data-step="edit"] .story`, the shared
+`.story-wide, .split[data-phase="ask"] .story`, `.story-ask`, and `.step[data-step="reality"]
+.story-wide`. Two rules used to set a measure on the ask-phase story at the same specificity, so
+the later one silently won and editing the other did nothing; there is one now.
+
 ### Three of the four steps are sequences, not screens
 
 Everything on steps 2, 3 and 4 arrives; nothing is authored in place. Each `STEP_ENTER` handler

@@ -469,7 +469,8 @@ body[data-rot="270"] .framed { transform: translate(-50%, -50%) rotate(270deg) s
 }
 .split[data-phase="ask"] .story {
   min-height: 0;
-  max-width: 26ch;
+  /* No measure here. The rule further down sets one for the same element at the same
+     specificity and wins by coming later; two of them is one of them silently doing nothing. */
   text-align: center;
 }
 
@@ -498,7 +499,7 @@ body[data-rot="270"] .framed { transform: translate(-50%, -50%) rotate(270deg) s
 }
 .step[data-step="edit"] .pic-col { width: min(100%, calc(42vh * var(--shot-ar))); }
 .step[data-step="edit"] .story {
-  max-width: 26ch;
+  max-width: 48ch;
   text-align: center;
   font-size: clamp(0.95rem, 2.1vw, 2.2rem);
   min-height: 0;
@@ -569,10 +570,15 @@ body[data-rot="270"] .framed { transform: translate(-50%, -50%) rotate(270deg) s
 }
 /* The second paragraph sits quieter than the first — it is the summary, not the explanation. */
 /* A line that is on its own on the screen and is asking a question, rather than one sitting
-   beside the controls it describes. Wider, centred, and bigger than the columns' text. */
+   beside the controls it describes. Wider, centred, and bigger than the columns' text.
+
+   The measure is set for about ten words to a line. Narrower reads as a poem: at 26ch this was
+   breaking four-word sentences across two lines, and a reader on a wall spends the whole
+   paragraph starting again. 54 rather than 48 because the longest sentence on the screen that
+   uses this is ten words, and two of them short of the line it was balanced into four and six. */
 .story-wide,
 .split[data-phase="ask"] .story {
-  max-width: 26ch;
+  max-width: 54ch;
   margin-inline: auto;
   text-align: center;
   font-size: clamp(1.15rem, 2.9vw, 3.1rem);
@@ -1049,7 +1055,7 @@ body[data-rot="270"] .framed { transform: translate(-50%, -50%) rotate(270deg) s
   /* .story reserves 6.5em so paragraphs arriving in sequence do not shunt the page around.
      There is only ever one line here, and at this size that reservation is half a screen. */
   min-height: 0;
-  max-width: 24ch;
+  max-width: 44ch;
   font-size: clamp(1.4rem, 4.2vw, 3.9rem);
   font-weight: 600;
   line-height: 1.18;
