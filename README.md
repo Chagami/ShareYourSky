@@ -278,6 +278,49 @@ Two things that only bite on a phone or tablet:
 - `facingMode` is requested as `ideal`, not as a bare value. As a hard constraint it fails
   outright on hardware with no front camera.
 
+### How much to ask a camera for
+
+Asking for 4K is deliberate. `ideal` is a preference the browser satisfies as closely as it can,
+and this used to ask for 1280x720 — which every camera worth having can do *exactly*, so every
+camera did and a better sensor bought nothing.
+
+But `ideal` only promises not to fail. It says nothing about **how long** the driver will take to
+negotiate, or whether what comes back is a format the browser can actually decode — and a 4K HDR
+camera can lose on both counts while a 1080p request to the same camera opens instantly. So it is
+a ladder:
+
+```
+4K (3840x2160)  ->  1080p (1920x1080)  ->  whatever it offers
+```
+
+A rung that refuses, times out, **or opens and then sends no picture** is climbed down from
+inside the same attempt. The last of those is the one that has no error attached to it: the
+camera hands over a track that is live, unmuted and enabled, and never sends a frame. From the
+page that is indistinguishable from a dark room until you notice `videoWidth` is still 0, which
+is why `waitForFrames` exists and why it is `videoWidth` that it tests.
+
+The kiosk shortcut can pin the top of the ladder:
+
+```
+?res=1080        never ask this camera for 4K
+?res=any         ask for nothing in particular
+?res=2560x1440   start there instead
+```
+
+**Never two `getUserMedia` calls in flight at once.** This is the rule the whole of `openStream`
+exists to keep. A request that has been given up on is *still open in the driver*, and asking for
+a second stream while the first is being negotiated is how a slow camera becomes a dead one — on
+Windows the late answer arriving and being stopped tears the device down underneath the stream
+that replaced it. So a request that times out is handed on rather than killed: `slowRequest`
+holds it, and the next attempt takes whatever it eventually produced (`claimSlowRequest`). If it
+is *still* negotiating when the next attempt comes round, that attempt throws rather than adding
+another request to the pile, and the page's own retry tries again in fifteen seconds.
+
+Measured against a stubbed camera that takes twenty seconds to answer: one request, and the
+stream it finally produced is the one the exhibit uses. The version before this asked twice,
+settled for a 640x480 fallback at ten seconds, and then stopped the 4K stream when it arrived.
+Against a stubbed camera that opens at 4K and sends nothing: it steps down and opens at 1080p.
+
 ### When the camera will not open
 
 `openCamera()` retries every `cameraRetryAt` (15s) until it succeeds, then clears the error and

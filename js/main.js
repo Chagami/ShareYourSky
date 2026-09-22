@@ -893,7 +893,8 @@ function dropStandIn() {
 
 async function openCamera() {
   try {
-    await startCamera(feed, { want: new URLSearchParams(location.search).get('cam') })
+    const q = new URLSearchParams(location.search)
+    await startCamera(feed, { want: q.get('cam'), res: q.get('res') })
     dropStandIn()
     setAspect(feed.videoWidth, feed.videoHeight)
     $('camError').hidden = true
@@ -933,6 +934,11 @@ function showCameraFault(err) {
     // The one that produced no message at all before there was a timeout to produce it.
     TimeoutError:
       'The camera did not respond. Still trying — if this does not clear, restart the device.',
+    // Opened, handed over a live track, and sent nothing — which on a 4K HDR camera usually
+    // means a format the browser cannot convert. The ladder has already tried asking for less
+    // by the time this is shown, so the next thing to try is pinning it on the shortcut.
+    NoFramesError:
+      'The camera opened but sent no picture. Add ?res=1080 to the address to stop asking it for 4K.',
   }
   box.replaceChildren(
     err instanceof CameraSetupError ? err.message : (SAID[err.name] ?? `No camera: ${err.message}`)
@@ -1202,7 +1208,7 @@ const STORY_AFTER = [
 ]
 
 const ADJUST_STORY = [
-  { text: 'You used the camera to capture real data.' },
+  { text: 'You used the camera to capture real data. That data got sorted into three colors with a filter.' },
   { block: true, text: 'Astrophotographers isolate data using filters to focus on specific objects.' },
 ]
 
@@ -1452,7 +1458,7 @@ const REALITY_LEAD = [
   {
     block: true,
     text:
-      'Everyone was asked if the image taken by the camera was "real" and if the ' +
+      'Everyone was asked if the image they took with the camera was "real" and if the ' +
       'image they edited was "real". Here are the results:',
   },
 ]
