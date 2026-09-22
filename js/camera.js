@@ -116,7 +116,16 @@ const sized = (label, height, width) => ({
   height,
   size: {
     ...(width ? { width: { ideal: width }, height: { ideal: height } } : {}),
-    ...(height >= FPS_FROM ? { frameRate: { ideal: CALM_FPS } } : {}),
+    // `min`, not `ideal`. There is no constraint for "give me MJPG", and on the exhibit's
+    // camera the two formats do not overlap at 4K: uncompressed offers 15fps there and nothing
+    // else, compressed offers 30 and nothing else. `ideal` is only a preference, so 15fps is a
+    // legal answer to it and the browser is free to pick the uncompressed mode — or worse, to
+    // ask that mode for 30fps, a combination the descriptors do not contain, which is the
+    // malformed request that wedges the device until it is re-enumerated. A hard floor at 30
+    // is the only way to say "not that format" in the vocabulary getUserMedia has. A camera
+    // that genuinely cannot make 30 at this size now fails the rung outright and the ladder
+    // climbs down, which is what it is for.
+    ...(height >= FPS_FROM ? { frameRate: { min: CALM_FPS, ideal: CALM_FPS } } : {}),
   },
 })
 
