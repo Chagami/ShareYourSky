@@ -1026,7 +1026,7 @@ async function openCamera() {
     camHandle?.stop()
     camHandle = null
     const q = new URLSearchParams(location.search)
-    camHandle = await startCamera(feed, { want: q.get('cam'), res: wantedRes() })
+    camHandle = await startCamera(feed, { want: q.get('cam'), res: wantedRes(), fps: q.get('fps') })
     dropStandIn()
     setAspect(feed.videoWidth, feed.videoHeight)
     $('camError').hidden = true

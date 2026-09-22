@@ -14,6 +14,7 @@
 //   index.html?res=1080      never ask this camera for 4K
 //   index.html?res=any       ask for nothing in particular
 //   index.html?res=2560x1440 start the ladder there
+//   index.html?fps=15        and a frame rate to go with it
 //
 // `?res=` is the knob for a camera that will not start at 4K, or starts and then sends no
 // picture. See the ladder below.
@@ -94,9 +95,34 @@ const FRAME_TIMEOUT = 5000
  * instantly. So it is a ladder, not a single ask, and a rung that opens but sends no picture is
  * a rung we climb down from.
  */
+// Above this, ask for a frame rate as well as a size.
+//
+// Not asking is not neutral. A USB camera advertises a list of frame intervals per format, and
+// the thing choosing between them — the browser, or guvcview, or anything else — will often
+// carry over the rate that was in use at the last resolution. A module sold as "60fps at 1080p"
+// will happily advertise 4K in its descriptors and then wedge hard when something asks for 4K
+// at the rate it can only manage at 1080p: the stream never starts, and on Linux the device has
+// to be unplugged before it will answer again. Naming a modest rate at the big sizes is the
+// difference between 4K working and the camera needing a replug.
+//
+// 30 rather than 15 because 30 is what nearly every one of these can sustain at 4K over USB 3,
+// and the viewfinder is a mirror a visitor is standing in front of — at 15 they can see
+// themselves lag.
+const CALM_FPS = 30
+const FPS_FROM = 1440
+
+const sized = (label, height, width) => ({
+  label,
+  height,
+  size: {
+    ...(width ? { width: { ideal: width }, height: { ideal: height } } : {}),
+    ...(height >= FPS_FROM ? { frameRate: { ideal: CALM_FPS } } : {}),
+  },
+})
+
 const LADDER = [
-  { label: '4K', height: 2160, size: { width: { ideal: 3840 }, height: { ideal: 2160 } } },
-  { label: '1080p', height: 1080, size: { width: { ideal: 1920 }, height: { ideal: 1080 } } },
+  sized('4K', 2160, 3840),
+  sized('1080p', 1080, 1920),
   { label: 'whatever it offers', height: 0, size: {} },
 ]
 
@@ -104,11 +130,18 @@ const ALIASES = { '4k': 2160, uhd: 2160, fhd: 1080, hd: 1080 }
 
 /** A rung at this size, then every standing rung below it, then the one that asks for nothing. */
 function rungsFrom(height, width = Math.round((height * 16) / 9)) {
-  return [
-    { label: `${width}x${height}`, height, size: { width: { ideal: width }, height: { ideal: height } } },
-    ...LADDER.filter((r) => r.height && r.height < height),
-    LADDER.at(-1),
-  ]
+  return [sized(`${width}x${height}`, height, width), ...LADDER.filter((r) => r.height && r.height < height), LADDER.at(-1)]
+}
+
+/**
+ * Put a frame rate on every rung, whatever its size.
+ *
+ * For the camera that still will not start at a size it claims to support. `?fps=15` is the
+ * next thing to try after `?res=`, and the two together are the whole of what can be said to a
+ * UVC device from a browser.
+ */
+function atFps(rungs, fps) {
+  return rungs.map((r) => ({ ...r, size: { ...r.size, frameRate: { ideal: fps } } }))
 }
 
 /**
@@ -124,18 +157,20 @@ function rungsFrom(height, width = Math.round((height * 16) / 9)) {
  *   4k, hd      the same by name
  *   any         ask for nothing in particular
  */
-export function ladderFor(res) {
+export function ladderFor(res, fps = null) {
+  const rate = Number(fps)
+  const done = (rungs) => (Number.isFinite(rate) && rate > 0 ? atFps(rungs, rate) : rungs)
   const wanted = String(res ?? '').trim().toLowerCase()
-  if (!wanted || wanted === 'ladder') return LADDER
-  if (wanted === 'any' || wanted === 'auto') return LADDER.slice(-1)
+  if (!wanted || wanted === 'ladder') return done(LADDER)
+  if (wanted === 'any' || wanted === 'auto') return done(LADDER.slice(-1))
 
   const exact = wanted.match(/^(\d{3,4})\s*[x\u00d7]\s*(\d{3,4})$/)
-  if (exact) return rungsFrom(Number(exact[2]), Number(exact[1]))
+  if (exact) return done(rungsFrom(Number(exact[2]), Number(exact[1])))
 
   const bare = wanted.match(/^(\d{3,4})p?$/)
-  if (bare) return rungsFrom(Number(bare[1]))
+  if (bare) return done(rungsFrom(Number(bare[1])))
 
-  return wanted in ALIASES ? rungsFrom(ALIASES[wanted]) : LADDER
+  return done(wanted in ALIASES ? rungsFrom(ALIASES[wanted]) : LADDER)
 }
 
 // A request we stopped waiting for. It is still open in the driver, and that is the whole
@@ -231,7 +266,7 @@ function waitForFrames(video, ms = FRAME_TIMEOUT) {
   })
 }
 
-export async function startCamera(video, { want = null, res = null } = {}) {
+export async function startCamera(video, { want = null, res = null, fps = null } = {}) {
   if (!navigator.mediaDevices?.getUserMedia) {
     // Two very different faults land here and the fix for each is nothing like the other,
     // so say which one it is. An insecure origin is by far the more common: the camera API
@@ -244,7 +279,7 @@ export async function startCamera(video, { want = null, res = null } = {}) {
     )
   }
 
-  const rungs = ladderFor(res)
+  const rungs = ladderFor(res, fps)
   setInfo('camera ladder', rungs.map((r) => r.label).join(' then '))
 
   // Resolved once we have a permissioned stream, because labels stay blank until then. Kept
@@ -297,7 +332,11 @@ export async function startCamera(video, { want = null, res = null } = {}) {
 
     if (await waitForFrames(video)) {
       const got = stream.getVideoTracks()[0]?.getSettings()
-      setInfo('camera ladder', `${rung.label} -> ${got?.width}x${got?.height}`)
+      setInfo(
+        'camera ladder',
+        `${rung.label} -> ${got?.width}x${got?.height}` +
+          (got?.frameRate ? ` @${Math.round(got.frameRate)}fps` : '')
+      )
       reportCameras(stream.getVideoTracks()[0])
       return {
         stream,
