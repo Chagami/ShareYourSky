@@ -12,6 +12,7 @@
 import { startCamera, CameraSetupError, reportCameras } from './camera.js'
 import {
   CHANNELS, captureFrame, frameFromImage, downscaleFrame, levelsLut, hueTint, ZERO_LUT,
+  stackFrames, denoiseFrame, levelsGain,
   drawComposite, compositeURL,
 } from './imaging.js'
 import { createLevels } from './levels.js'
@@ -524,6 +525,119 @@ function setGlow(next) {
 // The kept window keeps the frame's shape, so trimming one edge trims the opposite axis to
 // match. That is what any camera does when its output has a fixed shape — and it is what makes
 // the photograph agree with the viewfinder exactly, rather than nearly.
+// ── what to ask the camera for, and what to do about a noisy one ───────────
+//
+// Both live in the debug menu and both are remembered, because both are answers to a question
+// about one particular camera bolted to one particular wall, and the machine gets turned off
+// at night.
+
+// Which rung of the resolution ladder to start on. `ladder` is the default: try 4K, and climb
+// down if it refuses or opens without sending a picture. The rest pin it, for a camera that
+// negotiates 4K slowly enough to be worth skipping, or that has been seen to lie about it.
+const RES_MODES = ['ladder', '4k', '1440', '1080', '720']
+const RES_KEY = 'sharedsky.res'
+let resAt = (() => {
+  try {
+    const found = RES_MODES.indexOf(localStorage.getItem(RES_KEY))
+    return found < 0 ? 0 : found
+  } catch {
+    return 0
+  }
+})()
+
+/** What openCamera should ask for: the debug setting, or the URL when it has not been set. */
+function wantedRes() {
+  return resAt === 0 ? new URLSearchParams(location.search).get('res') : RES_MODES[resAt]
+}
+
+async function setRes(next) {
+  resAt = ((next % RES_MODES.length) + RES_MODES.length) % RES_MODES.length
+  try {
+    localStorage.setItem(RES_KEY, RES_MODES[resAt])
+  } catch {
+    // Not being able to remember it is no reason to refuse to do it.
+  }
+  await openCamera()
+}
+
+// How to deal with the noise a sensor produces. Nothing in this pipeline creates any — the
+// capture resamples with a real filter, every smaller copy is a box average, and both of those
+// reduce it. The one thing that makes it worse is the levels opening on the 0.5th and 99.5th
+// percentile, which multiplies everything inside that range, noise included, by
+// 255 / (white - black); `levels gain` in the overlay is that number for the last capture.
+//
+// So these are about the sensor. Stacking is the astrophotographer's answer and the better one
+// where it can be used; the sigma filter is for a subject that will not hold still.
+// `clean` is in multiples of the frame's own measured noise, not in levels — see denoiseFrame.
+const DENOISE = [
+  { key: 'off', label: 'off', shots: 1, clean: 0 },
+  { key: 'stack4', label: 'stack 4', shots: 4, clean: 0 },
+  { key: 'stack8', label: 'stack 8', shots: 8, clean: 0 },
+  { key: 'smooth', label: 'smooth', shots: 1, clean: 2.5 },
+  { key: 'both', label: 'stack 4 + smooth', shots: 4, clean: 2.5 },
+]
+const DENOISE_KEY = 'sharedsky.denoise'
+let denoiseAt = (() => {
+  try {
+    const found = DENOISE.findIndex((d) => d.key === localStorage.getItem(DENOISE_KEY))
+    return found < 0 ? 0 : found
+  } catch {
+    return 0
+  }
+})()
+
+function setDenoise(next) {
+  denoiseAt = ((next % DENOISE.length) + DENOISE.length) % DENOISE.length
+  try {
+    localStorage.setItem(DENOISE_KEY, DENOISE[denoiseAt].key)
+  } catch {
+    // As above.
+  }
+  setInfo('denoise', DENOISE[denoiseAt].label)
+}
+
+/**
+ * Wait for the camera to deliver a frame that is not the one just taken.
+ *
+ * Stacking the same frame eight times is eight times the work and none of the benefit: the
+ * noise has to be different in each one or there is nothing for the average to cancel.
+ */
+function nextCameraFrame() {
+  return new Promise((resolve) => {
+    if (!feed.requestVideoFrameCallback) return void setTimeout(resolve, 40)
+    let done = false
+    const finish = () => {
+      if (done) return
+      done = true
+      resolve()
+    }
+    feed.requestVideoFrameCallback(finish)
+    // A camera that has stopped sending must not hang the shutter.
+    setTimeout(finish, 150)
+  })
+}
+
+/** One capture, or several averaged into one, depending on what the menu says. */
+async function captureWithDenoise() {
+  const mode = DENOISE[denoiseAt]
+  const shots = []
+  for (let i = 0; i < mode.shots; i++) {
+    const shot = captureFrame(feed, CAPTURE_EDGE, camRot, cropWindow())
+    if (!shot) break
+    shots.push(shot)
+    if (i < mode.shots - 1) await nextCameraFrame()
+  }
+  if (!shots.length) return null
+
+  const started = performance.now()
+  let out = shots.length > 1 ? stackFrames(shots) : shots[0]
+  if (mode.clean) out = denoiseFrame(out, mode.clean)
+  if (mode.shots > 1 || mode.clean) {
+    setInfo('denoise', `${mode.label} - ${shots.length} shot(s), ${Math.round(performance.now() - started)}ms`)
+  }
+  return out
+}
+
 const CROP_KEY = 'sharedsky.crop'
 const CROP_MAX = 40 // per edge, %. Past this there is not enough left to stand in.
 const EDGES = ['top', 'right', 'bottom', 'left']
@@ -645,6 +759,18 @@ function registerDebugActions() {
     hint: 'all four edges back to nothing',
     state: () => (EDGES.some((edge) => cropAt[edge]) ? 'cropped' : 'clear'),
     run: () => clearCrop(),
+  })
+  addDebugAction({
+    label: 'Camera resolution',
+    hint: 'what to ask this camera for — ladder tries 4K and climbs down if it will not send a picture',
+    state: () => RES_MODES[resAt],
+    run: () => setRes(resAt + 1),
+  })
+  addDebugAction({
+    label: 'Denoise',
+    hint: 'stacking averages several frames, which is what an astrophotographer does; smooth is one frame, flat areas only',
+    state: () => DENOISE[denoiseAt].label,
+    run: () => setDenoise(denoiseAt + 1),
   })
   addDebugAction({
     label: 'Ground',
@@ -891,10 +1017,16 @@ function dropStandIn() {
   setInfo('stand-in', null)
 }
 
+// What the running camera is held by. Without this a second open leaves the first one running:
+// assigning a new srcObject does not stop the old tracks, it only stops showing them.
+let camHandle = null
+
 async function openCamera() {
   try {
+    camHandle?.stop()
+    camHandle = null
     const q = new URLSearchParams(location.search)
-    await startCamera(feed, { want: q.get('cam'), res: q.get('res') })
+    camHandle = await startCamera(feed, { want: q.get('cam'), res: wantedRes() })
     dropStandIn()
     setAspect(feed.videoWidth, feed.videoHeight)
     $('camError').hidden = true
@@ -1146,7 +1278,7 @@ async function takePhoto() {
   // of those describe a bracket this picture was never on.
   frame = standingIn
     ? frameFromImage(standIn, CAPTURE_EDGE)
-    : captureFrame(feed, CAPTURE_EDGE, camRot, cropWindow())
+    : await captureWithDenoise()
   // What the camera gave and what was kept of it. The one number that says whether a better
   // camera is actually being used, or whether it is being asked for 720p and obliging.
   if (frame) {
@@ -1155,6 +1287,9 @@ async function takePhoto() {
       `camera ${feed.videoWidth}x${feed.videoHeight} -> kept ${frame.width}x${frame.height}` +
         ` (${((frame.width * frame.height) / 1e6).toFixed(1)} MP)`
     )
+    // What the opening levels are about to multiply the sensor by. The one number that says
+    // whether a grainy picture is the camera or this code stretching it.
+    setInfo('levels gain', levelsGain(frame.rest).map((g) => `${g.toFixed(2)}x`).join('  '))
   }
   if (!frame) {
     shutter.disabled = false

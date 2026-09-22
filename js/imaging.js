@@ -237,6 +237,166 @@ export function downscaleFrame(frame, maxEdge) {
   return { width, height, planes, luma }
 }
 
+/**
+ * Average several captures of the same scene into one.
+ *
+ * The astrophotographer's answer to a noisy sensor, and the reason it is the one offered first:
+ * the noise is different in every frame and the picture is the same in all of them, so adding
+ * them up and dividing leaves the picture alone and divides the noise by the square root of how
+ * many there were. Four frames is half the noise, nine is a third. Every photograph of the kind
+ * this exhibit is about was made this way, out of far more than nine.
+ *
+ * Nothing is lost that a blur would lose — no detail is softened, because no pixel is ever
+ * mixed with its neighbours. What it costs instead is time and stillness: the frames are taken
+ * over a fraction of a second, and anything that moves in that time smears rather than
+ * sharpening. For somebody standing still in front of a camera that is a good trade, which is
+ * not true of every subject.
+ */
+export function stackFrames(shots) {
+  const first = shots[0]
+  if (!first || shots.length === 1) return first ?? null
+
+  const { width, height } = first
+  const n = width * height
+  // 16-bit would overflow at 257 frames and 8-bit at two; this is the cheap safe width.
+  const acc = [new Uint32Array(n), new Uint32Array(n), new Uint32Array(n)]
+  let used = 0
+
+  for (const shot of shots) {
+    // A capture that came back a different size is one taken across a resize. Skipping it is
+    // better than either stretching it or throwing the whole stack away.
+    if (!shot || shot.width !== width || shot.height !== height) continue
+    used++
+    for (let c = 0; c < 3; c++) {
+      const src = shot.planes[c]
+      const dst = acc[c]
+      for (let i = 0; i < n; i++) dst[i] += src[i]
+    }
+  }
+  if (used < 2) return first
+
+  const planes = [new Uint8ClampedArray(n), new Uint8ClampedArray(n), new Uint8ClampedArray(n)]
+  const luma = new Uint8ClampedArray(n)
+  const half = used >> 1 // round rather than floor: over a whole frame the bias is visible
+  for (let i = 0; i < n; i++) {
+    const r = (acc[0][i] + half) / used
+    const g = (acc[1][i] + half) / used
+    const b = (acc[2][i] + half) / used
+    planes[0][i] = r
+    planes[1][i] = g
+    planes[2][i] = b
+    luma[i] = LUMA[0] * r + LUMA[1] * g + LUMA[2] * b
+  }
+  return withStats(width, height, planes, luma)
+}
+
+/**
+ * Smooth the flat parts of a picture and leave the edges alone.
+ *
+ * A sigma filter: each pixel becomes the average of the neighbours that are already close to
+ * it in value, and neighbours further away than `tolerance` are simply not counted. In a flat
+ * area every neighbour qualifies and the result is a nine-pixel average, which is most of the
+ * noise gone. On an edge only the neighbours on the same side of it qualify, so the edge is
+ * averaged along rather than across and stays where it was — which is the whole difference
+ * between this and a blur, and the reason a blur is not offered.
+ *
+ * The tolerance is not a fixed number of levels but a multiple of the frame's own noise,
+ * measured off the frame. A fixed one cannot work: set it below the noise and almost no
+ * neighbour qualifies, so nothing is averaged and the filter does nothing — which is exactly
+ * what 12 levels did against a sensor spreading 15. Set it high enough for that sensor and it
+ * is far too blunt for a clean one. Two and a half sigma takes in nearly every neighbour that
+ * differs only by noise and nearly none that differs because the picture does.
+ *
+ * For a single frame of a subject that will not hold still. Stacking is better where it can be
+ * used, because it invents nothing.
+ */
+export function denoiseFrame(frame, strength = 2.5) {
+  const tolerance = Math.max(3, Math.round(strength * estimateNoise(frame)))
+  const { width, height } = frame
+  const n = width * height
+  const planes = frame.planes.map((src) => {
+    const out = new Uint8ClampedArray(n)
+    for (let y = 0; y < height; y++) {
+      const up = y > 0 ? -width : 0
+      const down = y < height - 1 ? width : 0
+      for (let x = 0; x < width; x++) {
+        const i = y * width + x
+        const mid = src[i]
+        const left = x > 0 ? -1 : 0
+        const right = x < width - 1 ? 1 : 0
+        let sum = 0
+        let count = 0
+        for (const dy of [up, 0, down]) {
+          for (const dx of [left, 0, right]) {
+            const v = src[i + dy + dx]
+            // Within tolerance of the middle: part of the same flat area, so worth averaging
+            // with. Outside it: the other side of an edge, and averaging across that is what
+            // turns a photograph into a smear.
+            if (v - mid <= tolerance && mid - v <= tolerance) {
+              sum += v
+              count++
+            }
+          }
+        }
+        out[i] = sum / count
+      }
+    }
+    return out
+  })
+
+  const luma = new Uint8ClampedArray(n)
+  for (let i = 0; i < n; i++) {
+    luma[i] = LUMA[0] * planes[0][i] + LUMA[1] * planes[1][i] + LUMA[2] * planes[2][i]
+  }
+  return withStats(width, height, planes, luma)
+}
+
+/**
+ * Roughly how much noise is on this frame, in levels.
+ *
+ * The spread of the difference between neighbouring pixels, taken as a median rather than a
+ * mean so that the edges in the picture — which are large and rare — do not drag it upwards the
+ * way they would an average. 1.4826 turns a median absolute deviation into the equivalent
+ * standard deviation, and the root two undoes the fact that a difference of two noisy pixels is
+ * noisier than either of them.
+ */
+export function estimateNoise(frame) {
+  const { width, height, luma } = frame
+  const diffs = []
+  // A sample, not a sweep: five thousand differences settle the median and cost nothing.
+  const stepY = Math.max(1, Math.floor(height / 70))
+  const stepX = Math.max(1, Math.floor(width / 70))
+  for (let y = 0; y < height; y += stepY) {
+    const row = y * width
+    for (let x = 0; x + 1 < width; x += stepX) {
+      diffs.push(Math.abs(luma[row + x + 1] - luma[row + x]))
+    }
+  }
+  if (!diffs.length) return 0
+  diffs.sort((a, b) => a - b)
+  const median = diffs[diffs.length >> 1]
+  return (1.4826 * median) / Math.SQRT2
+}
+
+/** A frame is its pixels plus what they add up to; anything that rewrites the one redoes the other. */
+function withStats(width, height, planes, luma) {
+  const histograms = planes.map(histogram)
+  return { width, height, planes, luma, histograms, rest: histograms.map(restingLevels) }
+}
+
+/**
+ * How much the opening levels multiply what the sensor gave.
+ *
+ * Nothing in this pipeline creates noise — the capture resamples with a real filter and every
+ * smaller copy is a box average, and both of those *reduce* it. This is the one place it gets
+ * worse: the handles open on the 0.5th and 99.5th percentile, and stretching that range to fill
+ * 0–255 multiplies everything inside it, noise included, by 255 / (white - black). The dimmer
+ * the room the narrower the range the camera actually used, and the bigger this number.
+ */
+export function levelsGain(rest) {
+  return rest.map((r) => 255 / Math.max(1, r.white - r.black))
+}
+
 /** How many pixels sit at each value — the shape the levels chart draws. */
 export function histogram(plane) {
   const bins = new Uint32Array(256)

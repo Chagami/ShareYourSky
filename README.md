@@ -321,6 +321,63 @@ stream it finally produced is the one the exhibit uses. The version before this 
 settled for a 640x480 fallback at ten seconds, and then stopped the 4K stream when it arrived.
 Against a stubbed camera that opens at 4K and sends nothing: it steps down and opens at 1080p.
 
+### Noise, and what this code does about it
+
+**Nothing here creates any.** The capture resamples with the browser's own filter rather than
+nearest neighbour, and every smaller copy is a box average — both of those *reduce* noise. The
+one place it gets worse is the levels: the handles open on the 0.5th and 99.5th percentile of
+each channel, and stretching that range to fill 0–255 multiplies everything inside it, noise
+included, by **255 / (white − black)**. The dimmer the room, the narrower the range the sensor
+actually used, and the bigger that number. The overlay reports it per channel as `levels gain`
+on every capture, so a grainy picture can be settled either way by reading it: on the bench card
+it is 1.14× and the noise measured 14.9 against a source of 12, which is the gain and nothing
+else.
+
+So the rest is the sensor, and the **Denoise** button in the debug menu offers two ways at it.
+
+**Stacking** takes several frames and averages them. The noise is different in every frame and
+the picture is the same in all of them, so the noise divides by the square root of how many
+there were and the picture is untouched — no detail is softened, because no pixel is ever mixed
+with its neighbours. It is what every photograph of the kind this exhibit is about was made
+from. The cost is that the subject has to hold still for a fraction of a second, which is what a
+countdown already asks of them.
+
+**Smooth** is a sigma filter: each pixel becomes the average of the neighbours already close to
+it in value, and anything further away than the tolerance is not counted. In a flat area that is
+a nine-pixel average; on an edge, only the neighbours on the same side of it qualify, so the
+edge is averaged along rather than across and stays put. That is the difference between this and
+a blur, and the reason a blur is not offered. For one frame of a subject that will not hold
+still.
+
+**The tolerance is a multiple of the frame's own measured noise, not a number of levels.** A
+fixed one cannot work: the first attempt used 12 levels against a sensor spreading 15, so almost
+no neighbour qualified and the filter did nothing — it took the noise from 14.9 to 13.3. At two
+and a half times the noise the frame actually has, the same filter takes it to 6.8.
+`estimateNoise` measures that from the median difference between neighbouring pixels, a median
+rather than a mean so the picture's own edges do not drag it up.
+
+Measured against a test card that is half flat grey and half checkerboard, with fresh noise on
+every frame (σ 12), reading the spread of the flat half off the finished composite:
+
+| Denoise | noise left | sharpest edge | cost at 3.8 MP |
+| --- | --- | --- | --- |
+| off | 14.9 | 255 | — |
+| stack 4 | 7.5 | 245 | 66ms + 4 frames |
+| stack 8 | 5.5 | 252 | ~130ms + 8 frames |
+| smooth | 6.8 | 250 | 846ms |
+| stack 4 + smooth | **3.2** | 255 | ~0.9s + 4 frames |
+
+The edge column is the point of it: a blur would have collapsed that number, and none of these
+do. `smooth` is the expensive one — 846ms at a 4K capture capped to 2600px, against 226ms at
+1080p — and it is spent once, at the shutter, behind the flash.
+
+**Camera resolution** is the other new button, next to it: `ladder` (try 4K, climb down),
+`4k`, `1440`, `1080`, `720`. It writes the same values `?res=` takes and is remembered across a
+restart, so a camera that has to be told once can be told from the screen rather than by editing
+the kiosk shortcut. Changing it stops the running camera before opening the next one — assigning
+a new `srcObject` does not stop the old tracks, it only stops showing them, and the exhibit was
+previously relying on nothing ever reopening.
+
 ### When the camera will not open
 
 `openCamera()` retries every `cameraRetryAt` (15s) until it succeeds, then clears the error and

@@ -95,35 +95,47 @@ const FRAME_TIMEOUT = 5000
  * a rung we climb down from.
  */
 const LADDER = [
-  { label: '4K', size: { width: { ideal: 3840 }, height: { ideal: 2160 } } },
-  { label: '1080p', size: { width: { ideal: 1920 }, height: { ideal: 1080 } } },
-  { label: 'whatever it offers', size: {} },
+  { label: '4K', height: 2160, size: { width: { ideal: 3840 }, height: { ideal: 2160 } } },
+  { label: '1080p', height: 1080, size: { width: { ideal: 1920 }, height: { ideal: 1080 } } },
+  { label: 'whatever it offers', height: 0, size: {} },
 ]
 
+const ALIASES = { '4k': 2160, uhd: 2160, fhd: 1080, hd: 1080 }
+
+/** A rung at this size, then every standing rung below it, then the one that asks for nothing. */
+function rungsFrom(height, width = Math.round((height * 16) / 9)) {
+  return [
+    { label: `${width}x${height}`, height, size: { width: { ideal: width }, height: { ideal: height } } },
+    ...LADDER.filter((r) => r.height && r.height < height),
+    LADDER.at(-1),
+  ]
+}
+
 /**
- * The ladder, or the part of it `?res=` asks for.
+ * The ladder, or the part of it that has been asked for.
  *
- *   ?res=1080   skip 4K entirely — for a camera that will not start at 4K, or starts and sends
- *               nothing, which is the one knob worth having on a kiosk shortcut
- *   ?res=any    ask for nothing in particular
- *   ?res=2560x1440   start there instead
+ * Taken from `?res=` on the kiosk shortcut, or from the debug menu, which writes the same
+ * values. The point of both is a camera that will not start at 4K, or starts and then sends no
+ * picture: `?res=1080` stops it being asked.
+ *
+ *   (nothing)   the whole ladder, 4K first
+ *   1080, 720   a bare height, 16:9, and the rungs below it
+ *   2560x1440   that exactly, and the rungs below it
+ *   4k, hd      the same by name
+ *   any         ask for nothing in particular
  */
 export function ladderFor(res) {
   const wanted = String(res ?? '').trim().toLowerCase()
-  if (!wanted) return LADDER
+  if (!wanted || wanted === 'ladder') return LADDER
   if (wanted === 'any' || wanted === 'auto') return LADDER.slice(-1)
 
   const exact = wanted.match(/^(\d{3,4})\s*[x\u00d7]\s*(\d{3,4})$/)
-  if (exact) {
-    const [, w, h] = exact
-    return [
-      { label: `${w}x${h}`, size: { width: { ideal: +w }, height: { ideal: +h } } },
-      ...LADDER.slice(1),
-    ]
-  }
+  if (exact) return rungsFrom(Number(exact[2]), Number(exact[1]))
 
-  const named = { '4k': 0, '2160': 0, '2160p': 0, uhd: 0, '1080': 1, '1080p': 1, hd: 1, fhd: 1 }
-  return wanted in named ? LADDER.slice(named[wanted]) : LADDER
+  const bare = wanted.match(/^(\d{3,4})p?$/)
+  if (bare) return rungsFrom(Number(bare[1]))
+
+  return wanted in ALIASES ? rungsFrom(ALIASES[wanted]) : LADDER
 }
 
 // A request we stopped waiting for. It is still open in the driver, and that is the whole
