@@ -223,15 +223,13 @@
   <div class="scale" tabindex="0" role="slider" aria-label="Is this image real?"
        aria-valuemin="0" aria-valuemax="1" aria-valuenow="0.5">
     <div class="scale-track">
-      <!-- A bathroom-sign figure: a round head, a rounded bar for a body, and four limbs of one
-           thickness with round ends. Short and big-headed on purpose. All of it is one colour,
-           taken from the bar it is standing on. -->
-      <span class="scale-figure">
-        <svg viewBox="0 0 64 62" aria-hidden="true">
-          <circle cx="32" cy="12" r="10.5" />
-          <path class="torso" d="M32 31L32 39" />
-          <path class="limbs" d="M32 32L12.5 43M32 32L51.5 43M28.5 41L23.5 57M35.5 41L40.5 57" />
-        </svg>
+      <!-- Somebody walking the scale. Two poses, both in the page from the start so the first
+           step never waits on an image, and only one of them visible at a time. They are used
+           as masks rather than drawn, so the figure is filled with the colour of the bar under
+           its feet exactly as the drawn one was. -->
+      <span class="scale-figure" aria-hidden="true">
+        <i class="walker walk-stride"></i>
+        <i class="walker walk-pass"></i>
       </span>
     </div>
     <div class="scale-ends"><span>No</span><span>Yes</span></div>

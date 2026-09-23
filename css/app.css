@@ -680,7 +680,11 @@ body[data-rot="270"] .framed { transform: translate(-50%, -50%) rotate(270deg) s
   /* Standing on the bar, not in it: the feet end at the very bottom of the drawing, so the box
      sitting exactly on the bar's top edge is what puts them on it. */
   bottom: 100%;
-  width: clamp(76px, 9.4vh, 156px);
+  /* Sized by height now, not width: the two poses are different widths — that is what walking
+     is — and it is the height that has to stay put between them. The box takes the wider of
+     the two so neither is ever clipped. */
+  height: clamp(74px, 9.2vh, 152px);
+  aspect-ratio: 1400 / 2208;
   transform: translateX(-50%);
   color: var(--at, #3aa0ff);
   /* Only while it is being put somewhere by something other than a finger. A transition here
@@ -689,24 +693,36 @@ body[data-rot="270"] .framed { transform: translate(-50%, -50%) rotate(270deg) s
 }
 .scale.dragging .scale-figure { transition: color 90ms linear; }
 
-/* One colour throughout, and nothing outlining it. A dark edge round the head was what made it
-   read as a head sitting next to a body rather than on one. */
-.scale-figure svg {
-  display: block;
-  width: 100%;
-  height: auto;
-  fill: currentColor;
+/* Each pose is a mask over a block of the scale's colour, so the figure is painted in whatever
+   the bar says at its feet — the same treatment the drawn one had, by the same means.
+
+   Scaled to the box's height and anchored to its bottom edge, which is what keeps the two poses
+   the same person: they are 2208 and 2161 pixels tall, so matching heights matches the figure,
+   and matching bottoms keeps the feet on the bar. Centred horizontally rather than aligned on
+   the head — measured, the heads land within 0.015 of the figure's height of each other that
+   way, about two pixels at the size this is drawn, and two pixels of sway is what walking
+   looks like. */
+.walker {
+  position: absolute;
+  inset: 0;
+  background-color: currentColor;
+  mask-image: var(--pose);
+  mask-repeat: no-repeat;
+  mask-position: center bottom;
+  mask-size: auto 100%;
+  /* The art faces right. Walking the other way is the same drawing, mirrored — about the middle
+     of the box and its bottom edge, so the figure turns on the spot rather than sliding. */
+  transform: scaleX(var(--face, 1));
+  transform-origin: center bottom;
 }
-/* The body is a stroke too, just a fatter one: round caps give the shoulders and the hips their
-   shape for free, and the arms and legs are one thickness between them. */
-.scale-figure .torso,
-.scale-figure .limbs {
-  fill: none;
-  stroke: currentColor;
-  stroke-linecap: round;
+.walk-stride { --pose: url(../img/animation/Frame1.png); }
+.walk-pass {
+  --pose: url(../img/animation/Frame2.png);
+  visibility: hidden;
 }
-.scale-figure .torso { stroke-width: 16; }
-.scale-figure .limbs { stroke-width: 9.5; }
+/* One stride's worth of travel swaps them; js/main.js counts the distance. */
+.scale-figure.mid .walk-stride { visibility: hidden; }
+.scale-figure.mid .walk-pass { visibility: visible; }
 
 .scale-ends {
   display: flex;

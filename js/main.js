@@ -2350,11 +2350,16 @@ function makeVerdict(stage, block, onTouch) {
   block.append(scaleTpl.content.cloneNode(true))
   const scale = block.querySelector('.scale')
   const bar = block.querySelector('.scale-track')
+  const figure = block.querySelector('.scale-figure')
 
   let at = 0.5
   let touched = false
   let sent = false
   let drag = null
+  // How far the figure has walked since it last changed feet. A walk cycle belongs to distance
+  // covered, not to a clock: a figure that keeps stepping while standing still is jogging on
+  // the spot, and one that glides across the bar without stepping is on wheels.
+  let walked = 0
 
   function draw() {
     scale.style.setProperty('--p', at.toFixed(4))
@@ -2362,8 +2367,26 @@ function makeVerdict(stage, block, onTouch) {
     scale.setAttribute('aria-valuenow', at.toFixed(2))
   }
 
+  // A stride, as a fraction of the whole bar. About forty pixels of travel at the size the bar
+  // is drawn on the kiosk, against a figure some ninety wide — roughly a step per step.
+  const STRIDE = 0.045
+
   function set(p) {
-    at = Math.min(1, Math.max(0, p))
+    const to = Math.min(1, Math.max(0, p))
+    const moved = to - at
+    at = to
+    if (moved) {
+      // Facing is the way it last went, and it keeps facing that way once it stops. A figure
+      // that snaps back to facing right the moment it is let go reads as a sprite, not a person.
+      figure?.style.setProperty('--face', moved < 0 ? '-1' : '1')
+      // `while`, not `if`: one drag event can cover several strides, and a walk that can only
+      // take one step per event stops stepping exactly when the finger moves fastest.
+      walked += Math.abs(moved)
+      while (walked >= STRIDE) {
+        walked -= STRIDE
+        figure?.classList.toggle('mid')
+      }
+    }
     draw()
     if (touched) return
     touched = true
@@ -2437,6 +2460,9 @@ function makeVerdict(stage, block, onTouch) {
       touched = false
       sent = false
       drag = null
+      walked = 0
+      figure?.classList.remove('mid')
+      figure?.style.setProperty('--face', '1')
       scale.classList.remove('dragging')
       block.classList.remove('in')
       ask.replaceChildren()

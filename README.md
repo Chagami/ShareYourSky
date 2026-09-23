@@ -695,14 +695,37 @@ question a visitor is invited to skip; this one is the screen's whole business. 
 brings up the spectra on step 3 is *not* gated, because that screen's question has not been asked
 yet at that point.)
 
-Under each is the answer: **a figure the visitor drags between No and Yes**, standing on a bar
-that runs red through blue to green. It is drawn the way a bathroom sign is — a round head, a fat
-rounded stroke for a body, and four limbs of one thickness with round ends, all of it one colour.
-Short and big-headed on purpose. It takes the colour of the bar under its feet — measured at five
-positions, the pixels the browser actually painted match the computed colour exactly, from
-`rgb(247,63,56)` at one end to `rgb(34,196,97)` at the other. No is on the left because the
-colours are red for no and green for yes, and left-to-right agreement is the way every other
-scale a visitor has ever filled in runs.
+Under each is the answer: **a figure the visitor walks between No and Yes**, along a bar that
+runs red through blue to green. It takes the colour of the bar under its feet — measured, the
+pixels the browser paints match the computed colour, `rgb(38,191,120)` asked for and
+`rgb(38,191,120)` drawn at the Yes end. No is on the left because the colours are red for no and
+green for yes, and left-to-right agreement is the way every other scale a visitor has ever
+filled in runs.
+
+**It is two drawings, and it walks.** `img/animation/Frame1.png` is mid-stride and `Frame2.png`
+is the passing pose. They are used as **masks over a block of the scale's colour**, not drawn as
+images — which is what lets a photograph of a person be painted in the bar's colour the same way
+the vector drawing before them was. Both are in the page from the moment the question is asked,
+one hidden, so the first step never waits on a download.
+
+Three things make two stills read as walking:
+
+- **The step belongs to distance, not to a clock.** `js/main.js` accumulates how far the figure
+  has travelled and changes feet every `STRIDE` (0.045 of the bar, about forty pixels against a
+  figure ninety wide). A cycle on a timer would jog on the spot while the visitor holds still,
+  and a figure that glides the whole bar without stepping is on wheels. The swap is a `while`,
+  not an `if`: one drag event can cover several strides, and a walk that can only take one step
+  per event stops stepping exactly when the hand moves fastest.
+- **It faces the way it went, and stays facing that way.** The art faces right; left is the same
+  drawing mirrored about its own centre and bottom edge, so it turns on the spot rather than
+  sliding sideways. Snapping back to facing right when the finger lifts would read as a sprite
+  rather than a person.
+- **Height is what is held constant between the poses, not width.** The two are 2208 and 2161
+  pixels tall and very different widths — being different widths *is* the walk. Both are scaled
+  to the box's height and anchored to its bottom, so the figure stays one size and its feet stay
+  on the bar. Centred horizontally rather than aligned on the head: measured, the heads land
+  within 0.015 of the figure's height of each other that way, about two pixels at this size, and
+  two pixels of sway is what walking looks like.
 
 The whole block is the handle, not just the figure: a person standing on a bar is a small target
 and the bar is the obvious thing to reach for. Arrow keys work too, which is the only way anyone
