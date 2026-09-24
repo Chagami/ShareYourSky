@@ -243,18 +243,39 @@ function buildMenu() {
     background: rgba(6, 8, 12, .93); color: #dfe6f2;
     border: 1px solid rgba(255, 255, 255, .22);
     font: 12px/1.45 ui-monospace, "SF Mono", Menlo, Consolas, monospace;
-    box-shadow: 0 18px 50px rgba(0, 0, 0, .6);`
+    box-shadow: 0 18px 50px rgba(0, 0, 0, .6);
+    /* It grows a row every time something is added to it, and the screen it opens on is not
+       always the tall one. */
+    max-height: calc(100dvh - 20px); overflow-y: auto;`
 
   const head = document.createElement('div')
-  head.textContent = 'debug'
   head.style.cssText =
-    'letter-spacing:.18em;text-transform:uppercase;opacity:.55;margin-bottom:9px'
+    'display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:9px'
+
+  const title = document.createElement('span')
+  title.textContent = 'debug'
+  title.style.cssText = 'letter-spacing:.18em;text-transform:uppercase;opacity:.55'
+
+  // The only way out of here used to be a keyboard, on a machine whose whole point is that it
+  // has no keyboard. Forty pixels because that is the smallest thing a finger reliably hits.
+  const close = document.createElement('button')
+  close.type = 'button'
+  close.textContent = '\u00d7'
+  close.title = 'Close'
+  close.setAttribute('aria-label', 'Close the debug menu')
+  close.style.cssText = `
+    flex: none; width: 40px; height: 40px; margin: -9px -6px -9px 0; padding: 0;
+    border: 1px solid rgba(255, 255, 255, .22); border-radius: 9px;
+    background: rgba(255, 255, 255, .06); color: inherit;
+    font: 20px/1 ui-monospace, Menlo, Consolas, monospace; cursor: pointer;`
+  close.addEventListener('click', () => toggleDebug(false))
+  head.append(title, close)
 
   rows = document.createElement('div')
   rows.style.cssText = 'display:flex;flex-direction:column;gap:6px'
 
   const foot = document.createElement('div')
-  foot.textContent = 'esc, or ctrl+shift+D, to close'
+  foot.textContent = 'the \u00d7, esc, or ctrl+shift+D, to close'
   foot.style.cssText = 'margin-top:10px;opacity:.45'
 
   menu.append(head, rows, foot)

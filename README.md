@@ -1190,11 +1190,32 @@ The overlay above is a readout. The menu is the half that can be clicked:
 | `?debug=1` | on from the URL |
 | <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>D</kbd> | on a machine with a keyboard |
 | tap **1. Photo** five times, then **2. Adjust** | on the kiosk, with nothing plugged in |
-| <kbd>Esc</kbd> | closes it |
+| the **×** in its corner, <kbd>Esc</kbd>, or the same chord | closes it |
 
 A modifier rather than a bare key, because unlike the readout these buttons *do* things. It
-holds **Rotate camera**, **Background glow**, **Perf overlay** and **Restart**, each showing its
-current state beside the label.
+holds **Rotate camera**, the four **Crop** sliders, the four **Pad** sliders, **Camera
+resolution**, **Denoise**, **Ground**, **Background glow**, **Perf overlay** and **Restart**,
+each showing its current state beside the label.
+
+**The × exists because the rest of that row is a keyboard.** Every other way out of this menu
+wants keys, on a machine whose entire premise is that it has no keyboard — so on the kiosk the
+only way to close it was to knock it open again. It is 40px, which is the smallest thing a
+finger reliably hits, and the menu scrolls now as well, because it grows a row every time
+something is added to it and the screen it opens on is not always the tall one.
+
+**Pad** takes room off the edges of the whole page — the bar, the screen and the button
+together — to fit the piece inside whatever it has been built into. Four separate edges rather
+than one inset, because a housing's aperture is as often off-centre as it is small: two of them
+shift the picture and the other two shrink it. Horizontal in `vw` and vertical in `vh`, so a
+panel swapped for a different one keeps the same fit, and remembered like the crop, because the
+aperture is a fact about one installation that nothing in the design can know. Measured at
+6vh/4vw/3vh/2vw on a 2160×3840 screen: `230.4px 86.4px 115.2px 43.2px`, the bar and the screen
+both 2030 wide instead of 2160, and the dock's foot at 3725 instead of 3840.
+
+It lands on `body`, which is the grid that holds all three rows, and `box-sizing: border-box`
+with `height: 100dvh` is what makes that take room away from the rows rather than pushing the
+dock off the bottom of the screen. The menu itself is `position: fixed` and so is unaffected by
+it — which it has to be, or the control would walk away from the finger adjusting it.
 
 The tap sequence uses the progress bar's own station marks. They have no behaviour of their own,
 so a tap on one is already a no-op — which is what makes them safe to overload without taking a

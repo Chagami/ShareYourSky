@@ -638,9 +638,72 @@ async function captureWithDenoise() {
   return out
 }
 
+// Shared by the two controls below that work an edge at a time. Declared here rather than with
+// either of them: whichever came second would be reading it before it existed.
+const EDGES = ['top', 'right', 'bottom', 'left']
+
+// ── fitting the piece to the thing it is built into ───────────────────────
+//
+// A kiosk goes inside a housing, and the housing's aperture is never quite the panel. These
+// four take room off the edges of the whole page — the bar, the screen and the dock together —
+// so the piece can be walked into position on the day without touching a stylesheet. In vw and
+// vh rather than pixels, so a panel swapped for a different one keeps the same fit.
+const PAD_KEY = 'sharedsky.pad'
+const PAD_MAX = 12
+
+let padAt = (() => {
+  const none = { top: 0, right: 0, bottom: 0, left: 0 }
+  try {
+    const saved = JSON.parse(localStorage.getItem(PAD_KEY) ?? 'null')
+    if (!saved) return none
+    for (const edge of EDGES) {
+      const n = Number(saved[edge])
+      none[edge] = Number.isFinite(n) ? Math.min(PAD_MAX, Math.max(0, n)) : 0
+    }
+    return none
+  } catch {
+    // Storage disabled, or somebody put something else under that key.
+    return none
+  }
+})()
+
+function applyPad() {
+  const root = document.documentElement.style
+  // Horizontal against the width and vertical against the height: an edge of a landscape panel
+  // and an edge of a portrait one are not the same distance, and a single unit for both makes
+  // one pair of these useless on whichever way round the screen is.
+  root.setProperty('--pad-l', `${padAt.left}vw`)
+  root.setProperty('--pad-r', `${padAt.right}vw`)
+  root.setProperty('--pad-t', `${padAt.top}vh`)
+  root.setProperty('--pad-b', `${padAt.bottom}vh`)
+  setInfo(
+    'padding',
+    EDGES.some((edge) => padAt[edge])
+      ? EDGES.map((edge) => `${edge[0]}${padAt[edge]}`).join(' ')
+      : null
+  )
+}
+
+function setPad(edge, value) {
+  padAt[edge] = Math.min(PAD_MAX, Math.max(0, Number(value) || 0))
+  try {
+    localStorage.setItem(PAD_KEY, JSON.stringify(padAt))
+  } catch {
+    // Not being able to remember it is no reason to refuse to do it.
+  }
+  applyPad()
+}
+
+function clearPad() {
+  for (const edge of EDGES) padAt[edge] = 0
+  try {
+    localStorage.setItem(PAD_KEY, JSON.stringify(padAt))
+  } catch {}
+  applyPad()
+}
+
 const CROP_KEY = 'sharedsky.crop'
 const CROP_MAX = 40 // per edge, %. Past this there is not enough left to stand in.
-const EDGES = ['top', 'right', 'bottom', 'left']
 
 let cropAt = (() => {
   const none = { top: 0, right: 0, bottom: 0, left: 0 }
@@ -754,6 +817,26 @@ function registerDebugActions() {
       format: (value) => `${value}%`,
     })
   }
+  for (const edge of EDGES) {
+    addDebugSlider({
+      label: `Pad ${edge}`,
+      hint: edge === 'top'
+        ? 'takes room off the edge of the whole page — the bar, the screen and the button together — to fit the piece inside its housing'
+        : undefined,
+      min: 0,
+      max: PAD_MAX,
+      step: 0.25,
+      get: () => padAt[edge],
+      set: (value) => setPad(edge, value),
+      format: (value) => `${value}${edge === 'top' || edge === 'bottom' ? 'vh' : 'vw'}`,
+    })
+  }
+  addDebugAction({
+    label: 'Clear the padding',
+    hint: 'all four edges back to nothing',
+    state: () => (EDGES.some((edge) => padAt[edge]) ? 'fitted' : 'flush'),
+    run: () => clearPad(),
+  })
   addDebugAction({
     label: 'Clear the crop',
     hint: 'all four edges back to nothing',
@@ -900,6 +983,7 @@ async function boot() {
   registerDebugActions()
   wireDebugKnock()
   applyRotation()
+  applyPad()
   applyCrop()
   applyGround()
   applyGlow()
@@ -937,6 +1021,11 @@ async function boot() {
   const jump = new URLSearchParams(location.search).get('step')
   if (jump && STEP_IDS.includes(jump)) {
     setInfo('step jump', jump)
+    // Show the camera first, whatever was asked for. Every jump starts here — the later steps
+    // need a photograph and this one *is* the camera — and without it `?step=camera` returned
+    // below without ever opening a step, which is a blank screen with a working camera behind
+    // it. The other jumps only gain the viewfinder they were always standing in front of.
+    goToStep('camera', { animate: false })
     // It still needs a picture to work on, so take one as soon as the camera is ready.
     openCamera().then(async () => {
       if (jump === 'camera') return

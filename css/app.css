@@ -101,6 +101,13 @@ body {
   grid-template-rows: auto 1fr auto;
   height: 100dvh;
   overflow: hidden;
+  /* Room to fit the piece inside whatever it has been built into. Set from the debug menu and
+     remembered, because a housing's aperture is a fact about one installation and nothing in
+     the design can know it. Four separate edges rather than one inset: a cutout is as often
+     off-centre as it is small, and two of these shift the picture while the other two shrink
+     it. `box-sizing: border-box` and `height: 100dvh` together mean this takes room away from
+     the three rows rather than pushing the dock off the bottom. */
+  padding: var(--pad-t, 0px) var(--pad-r, 0px) var(--pad-b, 0px) var(--pad-l, 0px);
 }
 
 .steps { position: relative; min-height: 0; }
