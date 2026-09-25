@@ -396,6 +396,9 @@ function drawMenu() {
 
 export function toggleDebug(next = !menuOn) {
   menuOn = next
+  // The page's service notes (a camera fault's cause, its retry count) show only while this is
+  // open. Everything on screen without it is for visitors.
+  document.documentElement.classList.toggle('debug-open', menuOn)
   if (menuOn) {
     if (!menu) buildMenu()
     menu.style.display = 'block'

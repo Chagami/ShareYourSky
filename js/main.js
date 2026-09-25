@@ -1093,6 +1093,8 @@ async function useStandIn({ fresh = false } = {}) {
     (standIn.naturalWidth / standIn.naturalHeight).toFixed(4)
   )
   shutter.disabled = false
+  const example = $('camErrExample')
+  if (example) example.hidden = false
   setInfo('stand-in', `${pick.file} (no camera)`)
   return true
 }
@@ -1161,21 +1163,33 @@ function showCameraFault(err) {
     NoFramesError:
       'The camera opened but sent no picture. Add ?res=1080 to the address to stop asking it for 4K.',
   }
-  box.replaceChildren(
+  // What a visitor reads. The second sentence waits for the stand-in to actually load, because
+  // offering an example photograph that is not on screen is worse than saying nothing.
+  const said = document.createElement('span')
+  said.className = 'err-public'
+  said.textContent = 'Camera is undergoing maintenance.'
+  const example = document.createElement('span')
+  example.id = 'camErrExample'
+  example.textContent = ' Try sharing your sky with this example astrophotograph!'
+  example.hidden = !standingIn
+  said.append(example)
+
+  // Everything below is for whoever is fixing it, and shows only while the debug menu is open.
+  // Each cause has a completely different fix, so the cause is spelled out — and on the
+  // screen, not only in the overlay, because the person fixing a kiosk is usually holding
+  // nothing but a phone to photograph it with.
+  const service = document.createElement('span')
+  service.className = 'err-debug'
+  service.append(
     err instanceof CameraSetupError ? err.message : (SAID[err.name] ?? `No camera: ${err.message}`)
   )
+  box.replaceChildren(said, service)
 
-  // Said plainly, because the screen is about to show a photograph that is not of the visitor
-  // and the difference matters in a piece whose subject is what a picture is.
   const borrowed = document.createElement('small')
   borrowed.className = 'err-standin'
   borrowed.textContent = 'Showing a picture from the gallery instead, so you can still try it.'
-  box.append(borrowed)
+  service.append(borrowed)
 
-  // And the technical detail right underneath it, on the screen, not only in the overlay.
-  // Whoever is standing in front of a kiosk that will not start has no debugger and often no
-  // second machine; a photograph of the screen should be enough to diagnose it. Small and
-  // muted, so it reads as a service note rather than as part of the piece.
   const detail = document.createElement('small')
   detail.className = 'err-detail'
   detail.textContent =
@@ -1184,7 +1198,7 @@ function showCameraFault(err) {
     ` · ${location.protocol}//${location.host}` +
     ` · secure ${window.isSecureContext}` +
     ` · ${navigator.userAgent.includes('Firefox') ? 'firefox' : 'chromium'}`
-  box.append(detail)
+  service.append(detail)
 
   // The visitor-facing line is deliberately gentle. The overlay gets the raw fault, because
   // "no camera" covers a dozen different causes with completely different fixes.

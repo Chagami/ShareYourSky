@@ -142,12 +142,16 @@ body {
 }
 .hint {
   margin: 0;
-  max-width: 30ch;
-  font-size: clamp(0.9rem, 2vw, 1.5rem);
-  line-height: 1.4;
-  color: var(--muted);
+  /* The one instruction on the first screen, so it is set to be read from where a visitor
+     stands rather than as a caption: larger, and in the ink colour, not the muted one. */
+  max-width: 34ch;
+  font-size: clamp(1.3rem, 3.2vw, 2.5rem);
+  line-height: 1.35;
+  color: var(--ink);
   text-wrap: balance;
 }
+/* With no camera there is nothing to frame; the maintenance line says what to do instead. */
+.step[data-step="camera"]:has(#camError:not([hidden])) .hint { display: none; }
 
 /* ─── 1. camera ─── */
 
@@ -261,7 +265,9 @@ body[data-rot="270"] .framed { transform: translate(-50%, -50%) rotate(270deg) s
 }
 
 .err {
-  max-width: 34ch;
+  /* Each line inside sets its own measure, at its own size. */
+  max-width: min(100%, 60ch);
+  text-align: center;
   margin: 0;
   color: #ff8f8f;
   font-size: clamp(0.9rem, 1.9vw, 1.3rem);
@@ -269,12 +275,25 @@ body[data-rot="270"] .framed { transform: translate(-50%, -50%) rotate(270deg) s
 }
 .err[hidden] { display: none; }
 
-/* The service note under a camera failure. Deliberately quiet — it is for whoever is fixing
-   the exhibit, not for a visitor, but it has to be on the screen because the person fixing it
-   is usually holding nothing but a phone to photograph it with. */
-/* The visitor's half of a camera fault: the fault itself is in red above, and this says what
-   the exhibit is going to do about it. Not muted like the technical line under it, because it
-   is the part a visitor is meant to read. */
+/* What a visitor sees when the camera is out: a notice, not an error, so in the ink colour and
+   at the size of the instruction it replaces. */
+.err-public {
+  max-width: 34ch;
+  margin-inline: auto;
+  display: block;
+  color: var(--ink);
+  font-size: clamp(1.3rem, 3.2vw, 2.5rem);
+  line-height: 1.35;
+  text-wrap: balance;
+}
+.err-public [hidden] { display: none; }
+
+/* The cause and the retry count, for whoever is fixing it. Only while the debug menu is open:
+   nothing on screen without it is anything but public-facing. */
+.err-debug { display: none; max-width: 34ch; margin: 0.8em auto 0; }
+:root.debug-open .err-debug { display: block; }
+
+/* Inside .err-debug, so only with the debug menu open: what the exhibit did about the fault. */
 .err-standin {
   display: block;
   margin-top: 0.5em;

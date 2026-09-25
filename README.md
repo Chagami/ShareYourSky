@@ -414,9 +414,11 @@ the generation counter `reset()` bumps: recovery has to outlive a visitor's turn
 **It borrows a picture and carries on.** A camera that will not open used to end the piece: the
 message went up, the shutter stayed dead, and nobody could see what the exhibit was *for*. It
 now takes a random picture from `img/sky/` — the same set the gallery wall shows — puts it in
-the viewfinder, and runs the whole interaction on that. The fault stays on screen throughout,
-with a line under it saying so in as many words, because the piece is about what a photograph
-is and a visitor should not be left thinking that one is theirs. A different picture is borrowed
+the viewfinder, and runs the whole interaction on that. A visitor sees one line in place of the
+framing instruction: *"Camera is undergoing maintenance. Try sharing your sky with this example
+astrophotograph!"* The second sentence waits until the borrowed picture has actually loaded,
+because the piece is about what a photograph is and a visitor should not be left thinking that
+one is theirs. A different picture is borrowed
 for each visitor, so a camera broken all day does not become the same photograph forty times.
 
 The borrowed picture sits *outside* the crop wrapper and takes none of the rotation: both of
@@ -428,10 +430,13 @@ countdown returned immediately unless `feed.videoWidth` was non-zero, and every 
 `showCameraFault`, which disables the shutter — so on a camera-less machine the shutter looked
 alive and did nothing, then died again fifteen seconds later.
 
-Under the visitor-facing message is a **small service note** giving the fault name, the origin,
-the secure-context state, the browser engine and the retry count. Whoever is standing in front
-of a kiosk that will not start has no debugger and usually no second machine, so a photograph of
-the screen has to be enough to work from.
+**Everything else about the fault shows only while the debug menu is open.** That covers the
+cause in plain words ("Another app may be using it"), the stand-in notice, and a service note
+with the fault name, origin, secure-context state, browser engine and retry count. With the menu
+closed, everything on screen is public-facing. `toggleDebug` puts `debug-open` on the root
+element, and `.err-debug` is shown only under it. Whoever is fixing a kiosk that will not start
+has no debugger and usually no second machine, so opening the menu and photographing the screen
+has to be enough to work from.
 
 **A hung `getUserMedia` is worse than a failed one.** On a wedged Android camera service the
 call does not reject — it never settles at all. That produces no stream, no exception, no
