@@ -13,6 +13,30 @@ out of the camera's original, and share it to a gallery wall.
 Deliberately chrome-free. No nav bar, no menus, no settings. Everything on screen is either part
 of the interaction or a description of it.
 
+## Where it stands
+
+As of September 2026, the whole visitor path runs end to end on the exhibit machine:
+
+- **Photo.** A countdown takes the picture. The camera is asked for 4K first and steps down to
+  1080p, then to whatever it offers, if a size doesn't open or sends no frames.
+- **Adjust.** The picture is built up one colour at a time, and then comes the first question:
+  *is this image real?* The visitor answers by walking a figure along a No-to-Yes scale.
+- **Colours.** A filter wheel on the right of the picture (Red, Green, Blue, and the camera's own
+  RGB) turns with a swipe. The black and white points can be dragged for each channel, and then
+  the question is asked again of the edited picture.
+- **Share.** The picture goes to the gallery wall.
+- **Reality.** Everybody's answers so far, before editing against after, with the visitor's own
+  two answers marked.
+
+Both answers are logged to `data/answers.csv` on the serving machine. The admin page can
+download that file or clear it.
+
+On the kiosk, the debug menu opens with five taps on **1. Photo** and then one on **2. Adjust**.
+It closes with the **×**. From it you can rotate, crop and pad the picture to fit the housing,
+choose the camera resolution, and choose a denoise mode.
+
+Open items, all on the hardware side, are under [Still to do](#still-to-do).
+
 ## Run
 
 ```bash
@@ -910,7 +934,7 @@ where it stands.
 ### The bar and the dock
 
 They are at opposite ends of the screen, and deliberately. The **bar across the top** says where
-the visitor is: four numbered stations — `1. Photo`, `2. Adjust`, `3. Share`, `4. Channels` —
+the visitor is: four numbered stations — `1. Photo`, `2. Adjust`, `3. Share`, `4. Reality` —
 with a rule running between them and everything behind the current one greyed. It is context,
 not a control, and nothing on it is pressable. The **one thing that is** sits alone at the foot,
 where a hand already is; which button shows is derived from `STEPS[i].action`.
@@ -1091,7 +1115,7 @@ that a better camera bought nothing at all.
 | what the camera is asked for | `1280x720` → **`3840x2160`** | `ideal`, so a 720p camera still returns 720p — it never fails, it only settles |
 | `CAPTURE_EDGE` | 1400 wide → **2600 longest edge** | what is kept of the stream; the source for everything below |
 | `VIEW_EDGE` | 1000 wide → **1600 longest edge** | what every slider redraw works on, so the one number with a per-frame cost |
-| `PILLARS_EDGE` | 900 → **1400** | the nebula is 1280x1335, so all of it now |
+| `PILLARS_EDGE` | 900 → 1400 → **removed** | went with the Pillars screen when step 4 became Reality |
 
 **The camera request was the whole of the "every camera looks the same" problem.** `ideal` is a
 preference the browser satisfies as closely as it can, and every camera worth buying does 720p
@@ -1636,6 +1660,20 @@ and those need completely different fixes.
 Hand a visitor a QR code for their own picture; put the wall behind a real host name so the
 tablet's kiosk shortcut does not carry an IP address; put a door on `admin.html` if the exhibit
 ever shares a network with the public; let a visitor put a name to their picture.
+
+On the exhibit camera (Arducam B0589, `04b4:0822`):
+
+- **4K in the browser.** The browser still needs confirming. At the kernel level it works:
+  `v4l2-ctl` streams 3840x2160 MJPG at 30fps cleanly. Set **Camera resolution → 4k** and check
+  that the overlay reads `3840x2160 @30fps`. If it still steps down, the next thing to try is
+  `frameRate: { exact: 30 }` in `js/camera.js`.
+- **HDR.** Needs the output of `v4l2-ctl -d /dev/video0 --list-ctrls-menus` to find which
+  control switches it on, and then a udev rule to set that control on every plug-in.
+- **Dropouts.** Not explained yet. The link is USB3 (5000M) and the stream is MJPG, so neither
+  bandwidth nor format is the cause. Run `sudo fuser -v /dev/video*` with the exhibit closed to
+  look for a second program holding the device.
+- **Exposure, gain, brightness and contrast in the debug menu.** Not built yet. It needs the
+  output of `getVideoTracks()[0].getCapabilities()` from the kiosk.
 
 ## Lineage
 
