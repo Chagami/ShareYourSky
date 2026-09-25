@@ -16,6 +16,7 @@ import {
   drawComposite, compositeURL,
 } from './imaging.js'
 import { createLevels } from './levels.js'
+import { createFrameGuard } from './frameguard.js'
 import {
   initPerf,
   measure,
@@ -617,16 +618,62 @@ function nextCameraFrame() {
   })
 }
 
+// ── torn frames ─────────────────────────────────────────────────────────────
+//
+// At 4K in Firefox the bottom of the viewfinder now and then flashes with a frame that arrived
+// half garbage. See js/frameguard.js for how one is told from a real change. `both` keeps them
+// off the screen and out of the photograph; `capture` only out of the photograph, for a machine
+// that cannot spare the few milliseconds a frame the viewfinder costs; `off` is as it was.
+const GUARD_MODES = [
+  { key: 'both', label: 'viewfinder + photo' },
+  { key: 'capture', label: 'photo only' },
+  { key: 'off', label: 'off' },
+]
+const GUARD_KEY = 'sharedsky.guard'
+let guardAt = (() => {
+  try {
+    const found = GUARD_MODES.findIndex((g) => g.key === localStorage.getItem(GUARD_KEY))
+    return found < 0 ? 0 : found
+  } catch {
+    return 0
+  }
+})()
+
+const guard = createFrameGuard(feed, {
+  host: liveCrop,
+  // The crop enlarges the wrapper, so the viewfinder shows fewer camera pixels over the same
+  // screen — the canvases are drawn big enough for that, or a crop would soften the picture.
+  zoom: () => cropWindow().zoom,
+  onReport: (s) =>
+    setInfo(
+      'frame guard',
+      s.mode === 'off'
+        ? 'off'
+        : `${GUARD_MODES.find((g) => g.key === s.mode).label} · caught ${s.preview} on screen, ${s.capture} in photos` +
+            (s.mode === 'both' ? ` · ${s.cost.toFixed(1)}ms a frame` : '') +
+            (s.last ? `\nlast: ${s.last}` : '')
+    ),
+})
+
+function setGuard(next) {
+  guardAt = ((next % GUARD_MODES.length) + GUARD_MODES.length) % GUARD_MODES.length
+  try {
+    localStorage.setItem(GUARD_KEY, GUARD_MODES[guardAt].key)
+  } catch {
+    // As above.
+  }
+  guard.setMode(GUARD_MODES[guardAt].key)
+}
+
 /** One capture, or several averaged into one, depending on what the menu says. */
 async function captureWithDenoise() {
   const mode = DENOISE[denoiseAt]
   const shots = []
-  for (let i = 0; i < mode.shots; i++) {
-    const shot = captureFrame(feed, CAPTURE_EDGE, camRot, cropWindow())
-    if (!shot) break
-    shots.push(shot)
-    if (i < mode.shots - 1) await nextCameraFrame()
-  }
+  // Every one of them checked, so a stack of eight cannot average a torn frame into the photo.
+  await guard.eachClean(mode.shots, nextCameraFrame, (source) => {
+    const shot = captureFrame(source, CAPTURE_EDGE, camRot, cropWindow())
+    if (shot) shots.push(shot)
+  })
   if (!shots.length) return null
 
   const started = performance.now()
@@ -850,6 +897,12 @@ function registerDebugActions() {
     run: () => setRes(resAt + 1),
   })
   addDebugAction({
+    label: 'Frame guard',
+    hint: 'drops frames that arrive torn — the flashing at the bottom of the picture at 4K; the overlay counts what it catches',
+    state: () => GUARD_MODES[guardAt].label,
+    run: () => setGuard(guardAt + 1),
+  })
+  addDebugAction({
     label: 'Denoise',
     hint: 'stacking averages several frames, which is what an astrophotographer does; smooth is one frame, flat areas only',
     state: () => DENOISE[denoiseAt].label,
@@ -985,6 +1038,7 @@ async function boot() {
   applyRotation()
   applyPad()
   applyCrop()
+  guard.setMode(GUARD_MODES[guardAt].key)
   applyGround()
   applyGlow()
 

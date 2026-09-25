@@ -25,8 +25,10 @@ const clamp255 = (v) => (v < 0 ? 0 : v > 255 ? 255 : v)
  * Everything downstream needs is computed once, here.
  */
 export function captureFrame(video, maxEdge = 2600, rotate = 0, crop = null) {
-  const vw = video.videoWidth
-  const vh = video.videoHeight
+  // A video, or a canvas holding one of its frames — which is how the frame guard hands over
+  // the frame it actually checked, rather than whatever the video has moved on to since.
+  const vw = video.videoWidth || video.width
+  const vh = video.videoHeight || video.height
   if (!vw || !vh) return null
 
   // A camera mounted sideways delivers a sideways stream, and the live view is corrected with

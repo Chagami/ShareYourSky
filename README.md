@@ -402,6 +402,79 @@ the kiosk shortcut. Changing it stops the running camera before opening the next
 a new `srcObject` does not stop the old tracks, it only stops showing them, and the exhibit was
 previously relying on nothing ever reopening.
 
+### 4K in Firefox on Linux
+
+**By default, Firefox on Linux cannot offer a page anything above 1920x1080, from any camera.**
+Its camera code (libwebrtc's `device_info_v4l2.cc`) does not ask the device what it supports.
+It tries a fixed list of 13 sizes, and the largest is 1920x1080. So on the exhibit machine both
+`ladder` and `4k` settled on 1080p, while `v4l2-ctl` streamed the same camera at 3840x2160 MJPG
+at 30.7fps with no complaint. Chromium-based browsers don't use that list.
+
+Firefox's other camera path, through PipeWire, reads the real modes from the device, MJPG
+included. To switch to it, set `media.webrtc.camera.allow-pipewire` to `true` in
+`about:config`, then restart Firefox. The camera permission then comes from Ubuntu in a system
+dialog, not from Firefox. Check that it survives a reboot before relying on it in kiosk mode.
+This is what got the Arducam B0589 to 4K30 in Firefox.
+
+### Torn frames
+
+At 4K in Firefox, the bottom of the viewfinder flashed now and then with a frame whose lower
+part was garbage. **The camera wasn't sending them.** ffmpeg decoded 534 frames of the same
+stream without a single warning. They go wrong inside the browser, most likely because it is
+short of CPU: ffmpeg itself could only decode that stream at `speed=0.937x` on this machine.
+So nothing upstream can switch them off. `uvcvideo nodrop=0` only drops frames the *driver*
+knows are incomplete, and there are none. `?fx=lite` didn't help either.
+
+`js/frameguard.js` catches them in the page. **Frame guard** in the debug menu sets how much it
+covers:
+
+| mode | what it protects | cost |
+| --- | --- | --- |
+| `viewfinder + photo` (default) | the screen and the photograph | a few ms a frame, shown in the overlay |
+| `photo only` | the photograph | about 70ms on the shutter, nothing otherwise |
+| `off` | nothing | none |
+
+**How a torn frame is told from a real change: it is an outlier in time.** Real motion carries
+on into the next frame, so the frames either side of it differ from each other at least as much
+as either differs from it. A torn frame doesn't: the frame before and the frame after agree
+with each other, and it agrees with neither. Each frame is shrunk to 160 pixels wide and
+compared in 16 bands. Each band is split into 8 cells, and a band counts as torn only when at
+least 6 of its cells are. A tear runs the full width of the picture; a hand moving through the
+bottom of it doesn't. A band only counts if it touches the bottom edge, or joins it through
+other torn bands.
+
+**The viewfinder becomes three canvases in rotation.** The video goes on playing underneath,
+invisible. One canvas shows the frame on screen, one holds the frame waiting to be judged, and
+one holds the frame that just arrived, which the waiting one is judged against. A torn frame
+is simply never shown. Each frame is drawn once, at the size the viewfinder shows it, never
+larger than the camera sends. The cost is being one frame behind, 33ms at 30fps. If frames
+stop arriving while the video is still playing, a watchdog gives the screen back to the video
+within a second, so the viewfinder can't be left frozen.
+
+**Each frame of the photograph is checked the same way,** on a copy of the frame, so the frame
+checked is the frame used. That includes every frame of a denoise stack, so a stack of eight
+can't average a torn frame into the picture. The shutter gets twice as many tries as frames
+wanted, plus four. If none of those pass, it uses the last one anyway: a stream torn on every
+frame is a camera problem, and a photograph of it is still better than none.
+
+The overlay line **frame guard** counts what it catches, on screen and in photos, shows the
+cost per frame, and describes the last catch (how much of the bottom was bad, and by how much).
+Tested against a synthetic camera with a hand sweeping across the bottom of the picture:
+
+| | frames torn | caught |
+| --- | --- | --- |
+| motion only, 8s | 0 | 0 false alarms |
+| bottom 11–39% filled flat green | 27 | all |
+| bottom 11–39% filled with random noise | 28 | 20–23 |
+| every other frame torn, while taking an 8-frame stack | about half | all 6–7 the stack came across; 8 clean shots used |
+
+Random noise is the hard case, and probably a worse case than the real one: shrunk to 160
+wide, it averages to mid-grey, which on a mid-toned picture hardly looks different. Whatever
+it misses shows the same way it did before, for one frame.
+
+On a still picture, what the guard shows is identical to the video: the mean difference
+measured 0.00.
+
 ### When the camera will not open
 
 `openCamera()` retries every `cameraRetryAt` (15s) until it succeeds, then clears the error and
@@ -1223,7 +1296,7 @@ The overlay above is a readout. The menu is the half that can be clicked:
 
 A modifier rather than a bare key, because unlike the readout these buttons *do* things. It
 holds **Rotate camera**, the four **Crop** sliders, the four **Pad** sliders, **Camera
-resolution**, **Denoise**, **Ground**, **Background glow**, **Perf overlay** and **Restart**,
+resolution**, **Frame guard**, **Denoise**, **Ground**, **Background glow**, **Perf overlay** and **Restart**,
 each showing its current state beside the label.
 
 **The × exists because the rest of that row is a keyboard.** Every other way out of this menu

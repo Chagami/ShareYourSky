@@ -239,6 +239,13 @@ body[data-rot="270"] .framed {
 body[data-rot="90"] .framed { transform: translate(-50%, -50%) rotate(90deg) scaleX(-1); }
 body[data-rot="270"] .framed { transform: translate(-50%, -50%) rotate(270deg) scaleX(-1); }
 
+/* The frame guard's viewfinder: canvases with the video's class, so every rule above — the
+   mirror, the quarter turns, the cover fit — lands on them exactly as it does on the video.
+   Once one of them is showing a checked frame the video underneath stops being painted. It
+   keeps playing; it is only the thing being drawn from. */
+.guard-view[hidden] { display: none; }
+.crop.guarded > video { opacity: 0; }
+
 .reticle { position: absolute; inset: 3%; pointer-events: none; }
 .reticle i {
   position: absolute;
