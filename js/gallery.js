@@ -5,9 +5,8 @@
 // The grids underneath stay and show at their edges, so the wall reads as an evening's worth of
 // pictures accumulating rather than a slideshow rotating through them.
 //
-// The rows design is still at gallery2.html for comparison. What the two share — joining the
-// wall and holding pictures nobody else has — is in js/wallscreen.js, because that half is the
-// server's protocol rather than a design choice.
+// Joining the wall and holding pictures nobody else has is in js/wallscreen.js, apart from the
+// layout, because that half is the server's protocol rather than a design choice.
 
 import { CHANNELS } from './imaging.js'
 import { list, subscribe } from './store.js'

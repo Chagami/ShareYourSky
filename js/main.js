@@ -12,7 +12,7 @@
 import { startCamera, CameraSetupError, reportCameras } from './camera.js'
 import {
   CHANNELS, captureFrame, frameFromImage, downscaleFrame, levelsLut, hueTint, ZERO_LUT,
-  stackFrames, denoiseFrame, levelsGain,
+  stackFrames, denoiseFrame, ensureStats, levelsGain,
   drawComposite, compositeURL,
 } from './imaging.js'
 import { createLevels } from './levels.js'
@@ -69,14 +69,12 @@ const TIMELINE = {
   reelZoom: 950, // and both strips away to the right
 
   // Step 3, which asks its question and then hands back the controls.
-  lineGap: 520, // between the two sentences of the question
   phaseSwap: 720, // the picture moving aside to make room for the charts
 
   // Step 4, which opens on an empty screen.
   realityHold: 1200, // the line about the room, read before its answers arrive
   chartIn: 420, // between one chart arriving and the next, on either screen that has them
 
-  handlePulseAt: 260, // the handles start asking to be touched, once they have settled
 
   cameraRetryAt: 15000, // a camera that will not open is retried until it does
 }
@@ -200,7 +198,7 @@ let gen = 0
 let anims = []
 let timers = []
 
-let frame = null // { width, height, planes, luma, histograms, rest } — written once, read-only after
+let frame = null // { width, height, planes, histograms, rest } — written once, read-only after
 let viewFrame = null // the same photo, small enough to redraw on every pointermove
 let thumbFrame = null // ...and smaller still, for the three channel layers on step 2
 let levels = null // [{black, white} x3] — the only thing the visitor changes
@@ -670,14 +668,16 @@ async function captureWithDenoise() {
   const mode = DENOISE[denoiseAt]
   const shots = []
   // Every one of them checked, so a stack of eight cannot average a torn frame into the photo.
+  // A frame headed for a stack skips its histograms; the stack counts its own from the result.
+  const stats = mode.shots === 1
   await guard.eachClean(mode.shots, nextCameraFrame, (source) => {
-    const shot = captureFrame(source, CAPTURE_EDGE, camRot, cropWindow())
+    const shot = captureFrame(source, CAPTURE_EDGE, camRot, cropWindow(), { stats })
     if (shot) shots.push(shot)
   })
   if (!shots.length) return null
 
   const started = performance.now()
-  let out = shots.length > 1 ? stackFrames(shots) : shots[0]
+  let out = shots.length > 1 ? stackFrames(shots) : ensureStats(shots[0])
   if (mode.clean) out = denoiseFrame(out, mode.clean)
   if (mode.shots > 1 || mode.clean) {
     setInfo('denoise', `${mode.label} - ${shots.length} shot(s), ${Math.round(performance.now() - started)}ms`)

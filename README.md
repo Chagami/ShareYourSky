@@ -47,7 +47,6 @@ npm run dev
 
 - Interaction screen → `https://localhost:5173/`
 - Gallery wall → `https://localhost:5173/gallery.html` (one per monitor; open it four times)
-- The earlier rows design → `https://localhost:5173/gallery2.html`
 - Photos (view and delete) → `https://localhost:5173/admin.html`
 
 **Both screens must be served by the same machine.** One computer runs this; the tablet opens the
@@ -156,7 +155,7 @@ exists in a secure context, and plain `http` is not one unless the host is liter
 
 | page | camera | works over plain http? |
 | --- | --- | --- |
-| `gallery.html`, `gallery2.html` | no | yes |
+| `gallery.html` | no | yes |
 | `admin.html` | no | yes |
 | the visitor interaction | **yes** | **no — `navigator.mediaDevices` is undefined** |
 
@@ -176,8 +175,18 @@ Three ways round it, in the order I would try them:
    `mkcert sharedsky sharedsky.cssc.org`. Its root then has to be installed on every client,
    and the Android tablet is the fiddly one.
 
-Also allow the port inbound on the exhibit machine's firewall — `sudo ufw allow 80/tcp`, or
-whatever that box uses.
+Also allow the port inbound on the exhibit machine's firewall. **That machine runs firewalld**,
+not ufw: ufw is installed but inactive, so `ufw status` says nothing useful while firewalld
+quietly rejects everything on the Wi-Fi except SSH. That looks exactly like a network problem,
+and it is not.
+
+```bash
+sudo firewall-cmd --get-active-zones                     # the zone the network adapter is in
+sudo firewall-cmd --zone=public --add-service=http --permanent
+sudo firewall-cmd --reload
+```
+
+A second adapter, Ethernet added later say, can land in a different zone and needs the same.
 
 ### The screens
 
@@ -978,8 +987,8 @@ have just been asked the same question twice and been shown that their two answe
 different, and this is the room answering it the same way.
 
 *(Step 4 used to be the Pillars of Creation in step 2's arrangement, with the same three charts
-over it. It was removed in favour of this; `git log -- img/pillars.jpg` finds it if it is ever
-wanted back. `img/pillars.jpg` is still in the repo.)*
+over it. It was removed in favour of this; `git log -- img/pillars.jpg` finds the picture if
+it is ever wanted back.)*
 
 Three things are worth knowing before changing any of it:
 
@@ -1172,7 +1181,7 @@ state** (`get`/`set` closures into one `levels` array), so they can never disagr
 
 ## Image pipeline
 
-`js/imaging.js`. The capture is split into its real R, G and B planes once, plus a luma plane.
+`js/imaging.js`. The capture is split into its real R, G and B planes once.
 Everything after that is a per-channel levels curve applied as a 256-entry lookup table:
 
 ```
@@ -1275,7 +1284,7 @@ levels redraw, and the current stage. Three ways in:
 | --- | --- |
 | `?perf=1` | on from the URL, for a bench session |
 | `?fx=lite` | no blur, no blend modes, no idle animations |
-| `?fx=off` | as above, and the light shafts removed entirely |
+| `?fx=off` | as above, and no glow on the channel names |
 | press <kbd>P</kbd> | on a machine with a keyboard |
 | hold the top-left corner for 1.5s | for a touchscreen on the floor |
 
@@ -1327,7 +1336,8 @@ exhibit armed for whoever touches it next.
 
 The two overlays are deliberately separate objects. The readout must never be able to eat a
 visitor's touch, so it stays `pointer-events: none` forever; the menu is interactive, which is
-only safe because there is no way to open it by touching the screen. Nothing is built until
+safe because nobody opens it by accident — the only way in from the screen is the tap run
+above, on marks that do nothing else. Nothing is built until
 something asks for it, and the actions are registered by `js/main.js`, which owns the state they
 change — `perf.js` has no idea what a camera rotation is.
 
@@ -1463,16 +1473,14 @@ to move to a WebGL shader if a weaker machine needs it.
 
 ## The gallery wall
 
-Two designs, both live, so they can be compared on a real wall rather than in the abstract.
+`gallery.html`, the **stacking** design: prints are laid down and never taken away, and when a
+grid fills a new one begins over it. (An earlier *rows* design — justified rows, one tile
+crossfading every half minute — was kept alongside it for comparison and then removed;
+`git log -- gallery2.html` has it.)
 
-| | |
-| --- | --- |
-| `gallery.html` | **stacking.** Prints are laid down and never taken away; when a grid fills, a new one begins over it |
-| `gallery2.html` | **rows.** Justified rows, one tile crossfading to something new every half minute |
-
-What they share — joining the wall and holding pictures nobody else has — is `js/wallscreen.js`,
-because that half is the server's protocol and not a design choice. Two copies of it would drift
-out of step with `server/gallery.js` one at a time and only fail with four screens running.
+Joining the wall and holding pictures nobody else has is `js/wallscreen.js`, apart from the
+layout, because that half is the server's protocol and not a design choice. It has to change in
+step with `server/gallery.js`, and fails only with four screens running if it does not.
 
 ### The stacking wall
 
@@ -1649,14 +1657,8 @@ things a rotation has to bring in, so the wall cycles the same pair every half m
 that does not visibly repeat itself, the folder wants to be about twice what is on it: **sixty or
 more**. Verified: four screens take 28 distinct pictures out of 28, with nothing left over.
 
-```bash
-npm run sky        # optional: top up from NASA's image library
-```
-
-That never touches what is already there. Two things before running it: the search is
-indiscriminate — artists' impressions and diagrams come back alongside photographs — and NASA
-imagery being "generally public domain" is a general statement, not a licence. Both want a human
-pass. It writes `CREDITS-nasa.txt`, which covers only what it fetched.
+Add pictures by dropping them into `img/sky/`. On the exhibit machine, the gitignored
+`img/sky-old-test/` holds an older set of NASA pictures that can be moved in to pad it out.
 
 **Attribution is not handled.** The wall shows no captions by design, and the pictures now in
 `img/sky/` are individual photographers' work with their names in the filenames. If the exhibit

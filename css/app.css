@@ -395,17 +395,6 @@ body[data-rot="270"] .framed { transform: translate(-50%, -50%) rotate(270deg) s
    what to try next — and running them together reads as one long one. */
 .story-line { display: block; margin-top: 0.75em; }
 
-.caret {
-  display: inline-block;
-  width: 0.075em;
-  height: 1em;
-  margin-left: 0.06em;
-  vertical-align: -0.12em;
-  background: currentColor;
-  animation: caret 1s steps(2, start) infinite;
-}
-@keyframes caret { 50% { opacity: 0; } }
-
 /* A channel's name inside the sentence: white while it is being typed, and then it takes the
    channel's own colour at the moment its beam leaves — the word turning into the light. */
 .w-ch {
@@ -1675,18 +1664,16 @@ body[data-rot="270"] .framed { transform: translate(-50%, -50%) rotate(270deg) s
    out whether the GPU is what is wrong: load with ?fx=lite and see if it stops. */
 body[data-fx="lite"] .shutter { backdrop-filter: none; }
 body[data-fx="lite"] .levels.pulsing .levels-handle { animation: none; }
-body[data-fx="lite"] .caret { animation: none; }
 body[data-fx="lite"] .spectrum.asking .spectrum-pick { animation: none; }
 body[data-fx="off"] .spectrum.asking .spectrum-pick { animation: none; }
 
-/* ?fx=off drops the light shafts entirely — the last resort that still leaves a working piece. */
+/* ?fx=off is all of the above and the glow on the channel names too — the last resort that
+   still leaves a working piece. The beam still travels, because it is the point of the beat,
+   but nothing glows or moves on its own. */
 body[data-fx="off"] .shutter { backdrop-filter: none; }
-/* The beam still travels — it is the point of the beat — but nothing glows or blinks. */
-body[data-fx="off"] .caret { animation: none; }
 body[data-fx="off"] .w-ch.lit { text-shadow: none; }
-body[data-fx="off"] .levels.pulsing .levels-handle::after { animation: none; opacity: 0.55; }
+body[data-fx="off"] .levels.pulsing .levels-handle { animation: none; }
 
 @media (prefers-reduced-motion: reduce) {
-  .caret, .levels.pulsing .levels-handle::after { animation: none; }
   .channel { transition-duration: 200ms; }
 }

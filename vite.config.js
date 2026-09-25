@@ -107,9 +107,6 @@ export default defineConfig({
       input: {
         main: 'index.html',
         gallery: 'gallery.html',
-        // The rows design, kept alongside the stacking one so the two can be compared on a
-        // real wall rather than in the abstract.
-        gallery2: 'gallery2.html',
         // Linked from neither of the others. It is the page for whoever runs the exhibit.
         admin: 'admin.html',
       },

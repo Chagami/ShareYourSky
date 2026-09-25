@@ -196,11 +196,13 @@ export const showing = () => on
 //
 // The HUD above is a readout, and stays pointer-events:none because an overlay that can eat a
 // visitor's touch is a fault however useful it is. This is the other half: a panel that exists
-// to be clicked. Being interactive is safe here precisely because it cannot be opened by
-// touching the screen — it takes a keyboard, or a query string typed into the address bar.
+// to be clicked. Being interactive is safe because nobody opens it by accident: the one way in
+// from the screen is a deliberate run of taps on marks that do nothing else, which a pause of
+// a couple of seconds throws away (see wireDebugKnock in main.js).
 //
-//   ?debug=1             on from the URL
-//   ctrl + shift + D     on a machine with a keyboard
+//   ?debug=1                          on from the URL
+//   ctrl + shift + D                  on a machine with a keyboard
+//   1. Photo five times, 2. Adjust    on the kiosk; the × in its corner closes it
 //
 // Actions register themselves from wherever the state they change lives, rather than being
 // listed here, so this file never has to know what a camera rotation is.
@@ -413,11 +415,11 @@ export function initPerf() {
   const q = new URLSearchParams(location.search)
   setInfo('build', typeof __BUILD__ === 'string' ? __BUILD__ : 'dev')
 
-  // ?fx=lite strips the blur, blend and idle animations; ?fx=off also drops the light shafts.
+  // ?fx=lite strips the blur and the idle animations; ?fx=off also takes the glow off.
   const fx = q.get('fx')
   if (fx === 'lite' || fx === 'off') {
     document.body.dataset.fx = fx
-    setInfo('fx', fx === 'off' ? 'off - no shafts, no blur, no blend' : 'lite - no blur, no blend, no idle animation')
+    setInfo('fx', fx === 'off' ? 'off - no blur, no idle animation, no glow' : 'lite - no blur, no idle animation')
   }
 
   if (q.get('perf') === '1') toggle(true)

@@ -69,10 +69,16 @@ export function wallStore({ dir = 'wall' } = {}) {
    * recorded. The gallery lays out at each picture's true shape and crops nothing, so a picture
    * that arrives without a shape is one the wall has to guess at and then correct — visibly.
    */
+  // Read once per picture: without this, every screen asking for the wall re-read the file of
+  // every picture that was shared before sizes were written into the index.
+  const measured = new Map()
+
   const forClient = (entry) => {
-    let size = entry.w && entry.h ? { w: entry.w, h: entry.h } : null
+    let size = entry.w && entry.h ? { w: entry.w, h: entry.h } : measured.get(entry.id)
     if (!size) {
-      size = imageSizeOf(paths().img(entry.id)) ?? { w: 3, h: 4 }
+      size = imageSizeOf(paths().img(entry.id))
+      if (size) measured.set(entry.id, size)
+      else size = { w: 3, h: 4 }
     }
     return {
       id: entry.id,

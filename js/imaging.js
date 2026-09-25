@@ -9,22 +9,25 @@ export const CHANNELS = [
   // `hue` is where this channel's light actually sits on the spectrum, which is not quite
   // where `accent` sits — the accents are softened for a dark screen, and a marker claiming to
   // show "the colour this light really is" has to point at the real thing.
-  { key: 'R', label: 'Red', accent: '#ff5252', rgb: [255, 82, 82], hue: 0 },
-  { key: 'G', label: 'Green', accent: '#3ddc6b', rgb: [61, 220, 107], hue: 120 },
-  { key: 'B', label: 'Blue', accent: '#4d94ff', rgb: [77, 148, 255], hue: 240 },
+  { key: 'R', label: 'Red', accent: '#ff5252', hue: 0 },
+  { key: 'G', label: 'Green', accent: '#3ddc6b', hue: 120 },
+  { key: 'B', label: 'Blue', accent: '#4d94ff', hue: 240 },
 ]
 
-// Rec. 709 luma, matching CSS `filter: grayscale()` so a CSS-desaturated preview and the
-// greyscale we compute here are the same image.
+// Rec. 709 luma, matching CSS `filter: grayscale()`. Only the noise estimate needs brightness,
+// and it works it out at the few thousand points it samples rather than keeping a whole plane.
 const LUMA = [0.2126, 0.7152, 0.0722]
 
 const clamp255 = (v) => (v < 0 ? 0 : v > 255 ? 255 : v)
 
 /**
- * Take the exposure: grab the frame mirrored, then split it into planes plus a luma plane.
- * Everything downstream needs is computed once, here.
+ * Take the exposure: grab the frame mirrored, then split it into its three planes.
+ *
+ * `stats: false` skips the histograms, for a frame that is about to be averaged into a stack:
+ * the stack works its own out from the result, so a stack of eight would otherwise count
+ * twenty-four full frames of histogram only to throw them away.
  */
-export function captureFrame(video, maxEdge = 2600, rotate = 0, crop = null) {
+export function captureFrame(video, maxEdge = 2600, rotate = 0, crop = null, { stats = true } = {}) {
   // A video, or a canvas holding one of its frames — which is how the frame guard hands over
   // the frame it actually checked, rather than whatever the video has moved on to since.
   const vw = video.videoWidth || video.width
@@ -82,7 +85,7 @@ export function captureFrame(video, maxEdge = 2600, rotate = 0, crop = null) {
   ctx.drawImage(video, (-vw * scale) / 2, (-vh * scale) / 2, vw * scale, vh * scale)
   ctx.setTransform(1, 0, 0, 1, 0, 0)
 
-  return framePixels(ctx, outW, outH)
+  return framePixels(ctx, outW, outH, stats)
 }
 
 /**
@@ -121,24 +124,19 @@ export function frameFromImage(img, maxEdge = 1400) {
  * lookup per plane rather than a stride-4 walk of RGBA, and a histogram is a count over a flat
  * array. `rest` is where each channel's light actually sits, which is where its handles open.
  */
-function framePixels(ctx, width, height) {
+function framePixels(ctx, width, height, stats = true) {
   const data = ctx.getImageData(0, 0, width, height).data
   const n = width * height
   const planes = [new Uint8ClampedArray(n), new Uint8ClampedArray(n), new Uint8ClampedArray(n)]
-  const luma = new Uint8ClampedArray(n)
 
   for (let p = 0, i = 0; p < n; p++, i += 4) {
-    const r = data[i]
-    const g = data[i + 1]
-    const b = data[i + 2]
-    planes[0][p] = r
-    planes[1][p] = g
-    planes[2][p] = b
-    luma[p] = LUMA[0] * r + LUMA[1] * g + LUMA[2] * b
+    planes[0][p] = data[i]
+    planes[1][p] = data[i + 1]
+    planes[2][p] = data[i + 2]
   }
 
-  const histograms = planes.map(histogram)
-  return { width, height, planes, luma, histograms, rest: histograms.map(restingLevels) }
+  const frame = { width, height, planes }
+  return stats ? withStats(frame) : frame
 }
 
 /* Never let a resting handle sit flush with the end of the track: there it reads as part of
@@ -179,14 +177,9 @@ export function restingLevels(bins) {
 }
 
 /**
- * A smaller copy of a frame, for the thumbnails and the preview.
- *
- * Every one of those redraws on every drag, and at capture resolution that is four full-frame
- * passes per pointermove. Nearest-neighbour off the planes is cheap, runs once, and nothing
- * downstream can tell the difference at the size these are shown.
- */
-/**
- * A smaller copy of a frame, bounded on its longest edge.
+ * A smaller copy of a frame, bounded on its longest edge, for the preview and the thumbnails —
+ * every one of those redraws on every drag, and at capture resolution that would be several
+ * full-frame passes per pointermove.
  *
  * Every output pixel is the average of the source pixels it covers, rather than whichever one
  * happened to land under a rounded coordinate. Nearest neighbour is what this did before, and
@@ -202,9 +195,7 @@ export function downscaleFrame(frame, maxEdge) {
   const height = Math.max(1, Math.round(frame.height * scale))
   const n = width * height
   const planes = [new Uint8ClampedArray(n), new Uint8ClampedArray(n), new Uint8ClampedArray(n)]
-  const luma = new Uint8ClampedArray(n)
   const [s0, s1, s2] = frame.planes
-  const sl = frame.luma
 
   for (let y = 0; y < height; y++) {
     const y0 = Math.floor((y * frame.height) / height)
@@ -216,7 +207,6 @@ export function downscaleFrame(frame, maxEdge) {
       let a = 0
       let b = 0
       let c = 0
-      let l = 0
       let count = 0
       for (let sy = y0; sy < y1; sy++) {
         const row = sy * frame.width
@@ -225,7 +215,6 @@ export function downscaleFrame(frame, maxEdge) {
           a += s0[si]
           b += s1[si]
           c += s2[si]
-          l += sl[si]
           count++
         }
       }
@@ -233,10 +222,9 @@ export function downscaleFrame(frame, maxEdge) {
       planes[0][di] = a / count
       planes[1][di] = b / count
       planes[2][di] = c / count
-      luma[di] = l / count
     }
   }
-  return { width, height, planes, luma }
+  return { width, height, planes }
 }
 
 /**
@@ -256,7 +244,8 @@ export function downscaleFrame(frame, maxEdge) {
  */
 export function stackFrames(shots) {
   const first = shots[0]
-  if (!first || shots.length === 1) return first ?? null
+  if (!first) return null
+  if (shots.length === 1) return ensureStats(first)
 
   const { width, height } = first
   const n = width * height
@@ -275,21 +264,16 @@ export function stackFrames(shots) {
       for (let i = 0; i < n; i++) dst[i] += src[i]
     }
   }
-  if (used < 2) return first
+  if (used < 2) return ensureStats(first)
 
   const planes = [new Uint8ClampedArray(n), new Uint8ClampedArray(n), new Uint8ClampedArray(n)]
-  const luma = new Uint8ClampedArray(n)
   const half = used >> 1 // round rather than floor: over a whole frame the bias is visible
-  for (let i = 0; i < n; i++) {
-    const r = (acc[0][i] + half) / used
-    const g = (acc[1][i] + half) / used
-    const b = (acc[2][i] + half) / used
-    planes[0][i] = r
-    planes[1][i] = g
-    planes[2][i] = b
-    luma[i] = LUMA[0] * r + LUMA[1] * g + LUMA[2] * b
+  for (let c = 0; c < 3; c++) {
+    const src = acc[c]
+    const dst = planes[c]
+    for (let i = 0; i < n; i++) dst[i] = (src[i] + half) / used
   }
-  return withStats(width, height, planes, luma)
+  return withStats({ width, height, planes })
 }
 
 /**
@@ -345,12 +329,7 @@ export function denoiseFrame(frame, strength = 2.5) {
     }
     return out
   })
-
-  const luma = new Uint8ClampedArray(n)
-  for (let i = 0; i < n; i++) {
-    luma[i] = LUMA[0] * planes[0][i] + LUMA[1] * planes[1][i] + LUMA[2] * planes[2][i]
-  }
-  return withStats(width, height, planes, luma)
+  return withStats({ width, height, planes })
 }
 
 /**
@@ -363,7 +342,12 @@ export function denoiseFrame(frame, strength = 2.5) {
  * noisier than either of them.
  */
 export function estimateNoise(frame) {
-  const { width, height, luma } = frame
+  const { width, height } = frame
+  const [r, g, b] = frame.planes
+  // Brightness at just the points sampled, rounded to whole levels through a clamped array
+  // exactly as a stored plane would have been — so the tolerance, and the picture, come out
+  // the same as they did when every frame carried a brightness plane for this alone.
+  const pair = new Uint8ClampedArray(2)
   const diffs = []
   // A sample, not a sweep: five thousand differences settle the median and cost nothing.
   const stepY = Math.max(1, Math.floor(height / 70))
@@ -371,7 +355,10 @@ export function estimateNoise(frame) {
   for (let y = 0; y < height; y += stepY) {
     const row = y * width
     for (let x = 0; x + 1 < width; x += stepX) {
-      diffs.push(Math.abs(luma[row + x + 1] - luma[row + x]))
+      const i = row + x
+      pair[0] = LUMA[0] * r[i] + LUMA[1] * g[i] + LUMA[2] * b[i]
+      pair[1] = LUMA[0] * r[i + 1] + LUMA[1] * g[i + 1] + LUMA[2] * b[i + 1]
+      diffs.push(Math.abs(pair[1] - pair[0]))
     }
   }
   if (!diffs.length) return 0
@@ -381,9 +368,14 @@ export function estimateNoise(frame) {
 }
 
 /** A frame is its pixels plus what they add up to; anything that rewrites the one redoes the other. */
-function withStats(width, height, planes, luma) {
-  const histograms = planes.map(histogram)
-  return { width, height, planes, luma, histograms, rest: histograms.map(restingLevels) }
+function withStats(frame) {
+  const histograms = frame.planes.map(histogram)
+  return { ...frame, histograms, rest: histograms.map(restingLevels) }
+}
+
+/** The frame with its histograms, working them out only if it was captured without them. */
+export function ensureStats(frame) {
+  return frame.histograms ? frame : withStats(frame)
 }
 
 /**
@@ -420,8 +412,6 @@ export function levelsLut(black, white) {
   return lut
 }
 
-export const IDENTITY_LUT = levelsLut(0, 255)
-
 /** A channel switched off. Step 2 builds a picture up out of these, one colour at a time. */
 export const ZERO_LUT = new Uint8ClampedArray(256)
 
@@ -445,7 +435,6 @@ function bufferFor(canvas, ctx, w, h) {
   return buf
 }
 
-/** All three planes through their own levels curve, recombined. */
 /**
  * The colour a hue is, as weights on the three outputs.
  *
@@ -515,39 +504,6 @@ export function drawComposite(canvas, frame, luts, tints = RGB_TINTS) {
   ctx.putImageData(out, 0, 0)
 }
 
-/** One channel on its own, tinted — so adjusting red actually shows you red. */
-export function drawChannel(canvas, frame, channelIndex, lut) {
-  const ctx = fit(canvas, frame)
-  const out = bufferFor(canvas, ctx, frame.width, frame.height)
-  const d = out.data
-  const plane = frame.planes[channelIndex]
-  const [cr, cg, cb] = CHANNELS[channelIndex].rgb
-
-  for (let p = 0, i = 0; p < plane.length; p++, i += 4) {
-    const v = lut[plane[p]] / 255
-    d[i] = clamp255(cr * v)
-    d[i + 1] = clamp255(cg * v)
-    d[i + 2] = clamp255(cb * v)
-    d[i + 3] = 255
-  }
-  ctx.putImageData(out, 0, 0)
-}
-
-/** Brightness only — what the sensor measured before any colour was assigned. */
-export function drawGrey(canvas, frame) {
-  const ctx = fit(canvas, frame)
-  const out = bufferFor(canvas, ctx, frame.width, frame.height)
-  const d = out.data
-  const { luma } = frame
-
-  for (let p = 0, i = 0; p < luma.length; p++, i += 4) {
-    d[i] = d[i + 1] = d[i + 2] = luma[p]
-    d[i + 3] = 255
-  }
-  ctx.putImageData(out, 0, 0)
-}
-
-/** The finished image, for the gallery wall. */
 /**
  * The picture as a file, for the wall.
  *
