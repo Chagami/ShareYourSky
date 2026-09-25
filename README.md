@@ -404,12 +404,47 @@ The edge column is the point of it: a blur would have collapsed that number, and
 do. `smooth` is the expensive one — 846ms at a 4K capture capped to 2600px, against 226ms at
 1080p — and it is spent once, at the shutter, behind the flash.
 
-**Camera resolution** is the other new button, next to it: `ladder` (try 4K, climb down),
-`4k`, `1440`, `1080`, `720`. It writes the same values `?res=` takes and is remembered across a
-restart, so a camera that has to be told once can be told from the screen rather than by editing
-the kiosk shortcut. Changing it stops the running camera before opening the next one — assigning
-a new `srcObject` does not stop the old tracks, it only stops showing them, and the exhibit was
-previously relying on nothing ever reopening.
+**Camera resolution** is the other new button, next to it. The choices are `split` (the
+default, below), `ladder` (4K throughout, climbing down if it has to), `4k`, `1440`, `1080` and
+`720`. Apart from `split`, these are the same values `?res=` takes. The choice is remembered
+across a restart, so a camera that has to be told once can be told from the screen rather than
+by editing the kiosk shortcut. A `?res=` on the shortcut still wins over `split`. Changing the
+setting stops the running camera before opening the next one: assigning a new `srcObject` does
+not stop the old tracks, it only stops showing them.
+
+### A small live picture, a big photograph
+
+At 4K the exhibit machine spent more than a whole CPU core in Firefox, all day, just decoding
+the camera, and a browser with no time to spare is what tears frames. The viewfinder doesn't
+need 4K: it's shown about 2000 pixels across, and nobody can tell while it moves. Only the
+photograph does.
+
+So in **`split`** the camera runs at **1080p**. That's roughly half the decoding: 1080p at 60fps
+is 124 million pixels a second, against 249 million for 4K at 30. When the countdown starts,
+the camera switches to **4K**, which gives the switch the whole 4.5 seconds of countdown to
+happen in. It drops back to 1080p as soon as the picture is taken, or if the piece restarts
+mid-countdown.
+
+- **The switch retunes the running track first** (`applyConstraints`): it never lets go of the
+  camera, and took about 0.4s in testing. If the browser refuses, or says yes and nothing
+  changes within 3s, the camera is reopened at the new size instead, which took about 0.8s.
+- **The photograph waits for the switch** if it hasn't finished, so it's never taken at the
+  wrong size by accident. If 4K won't come at all, it's taken at whatever is running: a visitor
+  must never lose the picture over a resolution.
+- **Every switch goes through one queue** (`queueCamera`), so two changes are never in flight
+  on the same camera at once. That's the rule `camera.js` is built around.
+- The overlay's **camera switch** line says what the last switch did and how long it took, for
+  example `4k: retuned in 432ms`.
+
+What it's worth on the exhibit machine is still to be measured. Compare Firefox's CPU in `top`
+between `split` and `ladder`.
+
+**A fault this turned up, fixed at the same time.** `openStream` gives `getUserMedia` 16 seconds
+before treating it as a slow request, and it never cancelled that timer when the camera
+answered. So 16 seconds after every successful open, the timer filed the live stream away as a
+request still in the air. The next open, a resolution change for instance, then adopted that
+stream, which by then had been stopped, and showed nothing. That was "switching to 4k shows no
+video".
 
 ### 4K in Firefox on Linux
 

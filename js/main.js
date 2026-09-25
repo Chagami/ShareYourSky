@@ -9,7 +9,7 @@
 // animations and leaving pending waits unresolved, so an abandoned turn cannot bleed into the
 // next visitor's.
 
-import { startCamera, CameraSetupError, reportCameras } from './camera.js'
+import { startCamera, CameraSetupError, reportCameras, sizeFor } from './camera.js'
 import {
   CHANNELS, captureFrame, frameFromImage, downscaleFrame, levelsLut, hueTint, ZERO_LUT,
   stackFrames, denoiseFrame, ensureStats, levelsGain,
@@ -530,10 +530,11 @@ function setGlow(next) {
 // about one particular camera bolted to one particular wall, and the machine gets turned off
 // at night.
 
-// Which rung of the resolution ladder to start on. `ladder` is the default: try 4K, and climb
-// down if it refuses or opens without sending a picture. The rest pin it, for a camera that
-// negotiates 4K slowly enough to be worth skipping, or that has been seen to lie about it.
-const RES_MODES = ['ladder', '4k', '1440', '1080', '720']
+// What to ask the camera for. `split` is the default: the viewfinder at 1080p, and 4K only for
+// the photograph (see "a small live picture, a big photograph" below). `ladder` is 4K all the
+// time, climbing down if it refuses or opens without sending a picture. The rest pin one size,
+// for a camera that negotiates 4K slowly enough to be worth skipping, or has been seen to lie.
+const RES_MODES = ['split', 'ladder', '4k', '1440', '1080', '720']
 const RES_KEY = 'sharedsky.res'
 let resAt = (() => {
   try {
@@ -544,9 +545,32 @@ let resAt = (() => {
   }
 })()
 
+// ── a small live picture, a big photograph ──────────────────────────────────
+//
+// At 4K the exhibit machine spends about a whole core decoding the camera, all day, whether
+// anybody is standing there or not — and a browser with no time to spare is what tears frames.
+// The viewfinder does not need 4K: it is shown at about 2000 pixels across and nobody can tell
+// the difference while it moves. Only the photograph does. So in `split` the camera runs at
+// 1080p, which is about half the decoding (1080p at 60 frames a second against 4K at 30), and
+// is switched up to 4K when the countdown starts — which gives the switch the whole countdown
+// to happen in — then back down once the picture is taken.
+//
+// The switch retunes the running track first, which is quick and never lets go of the camera.
+// If the browser will not do that, it reopens at 4K, and if 4K will not come the photograph is
+// taken at whatever is running: a visitor must never lose the picture to a resolution.
+
+/** What to show, and what to take the photograph at — null when that is the same thing. */
+function camPlan() {
+  const key = RES_MODES[resAt]
+  // A `?res=` on the kiosk shortcut still wins over the default, as it always has.
+  const url = new URLSearchParams(location.search).get('res')
+  if (key === 'split') return url ? { preview: url, photo: null } : { preview: '1080', photo: '4k' }
+  return { preview: key, photo: null }
+}
+
 /** What openCamera should ask for: the debug setting, or the URL when it has not been set. */
 function wantedRes() {
-  return resAt === 0 ? new URLSearchParams(location.search).get('res') : RES_MODES[resAt]
+  return camPlan().preview
 }
 
 async function setRes(next) {
@@ -556,7 +580,98 @@ async function setRes(next) {
   } catch {
     // Not being able to remember it is no reason to refuse to do it.
   }
-  await openCamera()
+  await queueCamera(openCamera)
+}
+
+// Every change to the camera goes through here, one at a time. Two requests in flight on one
+// USB camera is how a slow camera becomes a dead one — see camera.js.
+let camQueue = Promise.resolve()
+function queueCamera(job) {
+  const run = camQueue.then(job, job)
+  camQueue = run.catch(() => {})
+  return run
+}
+
+// The switch up for the photograph in hand, started with the countdown.
+let photoSize = null
+
+const after = (ms) => new Promise((done) => setTimeout(done, ms))
+
+/**
+ * How tall the camera's frames are now. The track's own word while the viewfinder is paused —
+ * it is, straight after every photograph, and a paused element never learns the new size.
+ */
+function heightNow(track) {
+  return feed.paused ? track?.getSettings?.().height : feed.videoHeight
+}
+
+/** Resolves true once the camera is sending frames `height` tall, false at the deadline. */
+function framesAt(track, height, ms) {
+  return new Promise((done) => {
+    const deadline = performance.now() + ms
+    const look = () => {
+      if (heightNow(track) === height) return done(true)
+      if (performance.now() > deadline) return done(false)
+      setTimeout(look, 50)
+    }
+    look()
+  })
+}
+
+/**
+ * Put the camera at this size. True if it got there; false if the picture is running at some
+ * other size, which is still a picture.
+ */
+async function resizeCamera(res) {
+  const want = sizeFor(res)
+  const height = want.height?.ideal
+  const track = feed.srcObject?.getVideoTracks?.()[0]
+  if (!height || !track || track.readyState !== 'live') return false
+  if (heightNow(track) === height) return true
+
+  const started = performance.now()
+  const took = () => `${Math.round(performance.now() - started)}ms`
+  try {
+    await Promise.race([track.applyConstraints(want), after(4000).then(() => Promise.reject(new Error('timeout')))])
+    if (await framesAt(track, height, 3000)) {
+      setInfo('camera switch', `${res}: retuned in ${took()}`)
+      return true
+    }
+  } catch (err) {
+    setInfo('camera switch', `${res}: retune ${err.name === 'Error' ? err.message : err.name} - reopening`)
+  }
+
+  // The browser would not change the running stream, or said it had and did not. Let go of it
+  // and open at the new size; startCamera climbs down on its own if this size will not come.
+  try {
+    camHandle?.stop()
+    camHandle = null
+    const q = new URLSearchParams(location.search)
+    camHandle = await startCamera(feed, { want: q.get('cam'), res, fps: q.get('fps') })
+    const got = camHandle.stream.getVideoTracks()[0]
+    setInfo('camera switch', `${res}: reopened in ${took()} at ${got?.getSettings?.().width}x${heightNow(got)}`)
+    return heightNow(got) === height
+  } catch (err) {
+    setInfo('camera switch', `${res}: ${err.name} - back to the viewfinder size`)
+    await openCamera()
+    return false
+  }
+}
+
+/** Start the switch up to the photograph's size, if this plan has one. Safe to call twice. */
+function primePhotoSize() {
+  const { photo } = camPlan()
+  if (!photo || standingIn) return null
+  photoSize ??= queueCamera(() => resizeCamera(photo))
+  return photoSize
+}
+
+/** Back to the viewfinder's size, after a photograph or a countdown nobody finished. */
+function restorePreviewSize() {
+  photoSize = null
+  const { photo, preview } = camPlan()
+  if (!photo || standingIn) return
+  queueCamera(() => resizeCamera(preview))
 }
 
 // How to deal with the noise a sensor produces. Nothing in this pipeline creates any — the
@@ -892,7 +1007,7 @@ function registerDebugActions() {
   })
   addDebugAction({
     label: 'Camera resolution',
-    hint: 'what to ask this camera for — ladder tries 4K and climbs down if it will not send a picture',
+    hint: 'split shows 1080p and takes the photo at 4K; ladder is 4K throughout, climbing down if it will not send a picture',
     state: () => RES_MODES[resAt],
     run: () => setRes(resAt + 1),
   })
@@ -1416,6 +1531,8 @@ async function runCountdown() {
   // shutter on a camera-less machine looked alive and did nothing at all.
   if ((!feed.videoWidth && !standingIn) || step() !== 'camera') return
   shutter.disabled = true
+  // Up to 4K now, so the switch happens while the visitor is still counting, not after.
+  primePhotoSize()
 
   for (let n = TIMELINE.countdownFrom; n > 0; n--) {
     countdownEl.textContent = String(n)
@@ -1427,6 +1544,10 @@ async function runCountdown() {
 }
 
 async function takePhoto() {
+  // The photograph waits for the switch up to its size, if it has not finished — usually it
+  // has, a countdown being long enough to reopen a camera in.
+  if (!standingIn) await primePhotoSize()
+
   flash.classList.remove('go')
   void flash.offsetWidth
   flash.classList.add('go')
@@ -1449,6 +1570,7 @@ async function takePhoto() {
     setInfo('levels gain', levelsGain(frame.rest).map((g) => `${g.toFixed(2)}x`).join('  '))
   }
   if (!frame) {
+    restorePreviewSize()
     shutter.disabled = false
     return
   }
@@ -1456,6 +1578,8 @@ async function takePhoto() {
   // Freeze the viewfinder while the photo is handed on; a live frame still moving under a
   // still picture reads as a fault.
   feed.pause()
+  // The picture is taken; nothing needs 4K until the next one.
+  restorePreviewSize()
 
   // Where each channel's light actually sits. Step 2 has no handles to walk in from the ends of
   // a track any more, so the picture opens on its own range and step 3 takes it from there.
@@ -2844,6 +2968,8 @@ async function showAnswers() {
 
 function reset() {
   cancelAll()
+  // A countdown nobody finished leaves the camera at the photograph's size.
+  restorePreviewSize()
 
   frame = null
   answered.unedited = null

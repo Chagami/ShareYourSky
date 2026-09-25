@@ -182,6 +182,14 @@ export function ladderFor(res, fps = null) {
   return done(wanted in ALIASES ? rungsFrom(ALIASES[wanted]) : LADDER)
 }
 
+/**
+ * What to ask a running track for, to change it to this size: the top rung's constraints, frame
+ * rate floor and all, so a retune to 4K asks for exactly what opening at 4K would have.
+ */
+export function sizeFor(res) {
+  return ladderFor(res)[0].size
+}
+
 // A request we stopped waiting for. It is still open in the driver, and that is the whole
 // reason this exists: asking for a second stream while the first is still being negotiated is
 // how a slow camera becomes a dead one. Nothing here ever issues a request while this is set.
@@ -234,17 +242,22 @@ async function claimSlowRequest() {
  */
 function openStream(constraints, ms = OPEN_TIMEOUT) {
   const real = navigator.mediaDevices.getUserMedia(constraints)
+  let timer
   return Promise.race([
-    real,
-    new Promise((_, reject) =>
-      setTimeout(() => {
+    // The timer has to die with the answer. Left running, it fired sixteen seconds after every
+    // camera that opened perfectly well and filed that stream away as a request still in the
+    // air — so the next open, a resolution change say, "adopted" a stream that had since been
+    // stopped, and showed nothing at all. That was the switch to 4K going black.
+    real.finally(() => clearTimeout(timer)),
+    new Promise((_, reject) => {
+      timer = setTimeout(() => {
         // Handed on rather than killed. Whoever asks next gets it.
         slowRequest = real
         const err = new Error(`the camera did not answer within ${ms / 1000}s`)
         err.name = 'TimeoutError'
         reject(err)
       }, ms)
-    ),
+    }),
   ])
 }
 
