@@ -85,9 +85,6 @@ const TIMELINE = {
 // a visitor shares — and beyond this it becomes a pause they can see.
 const CAPTURE_EDGE = 2600
 
-// What every redraw during a drag actually works on. Full capture resolution is 2.6 million
-// pixels a frame and the photo is never shown wider than about a thousand of them — three
-// times the work for a difference nobody can see, on the device least able to afford it.
 // What every redraw works on while the sliders move, so this is the one number here with a
 // per-frame cost. 1600 on the longest edge is 1200 across for an upright photo, which covers
 // the ~1100px the picture is actually shown at on the kiosk — under that it was being upscaled
@@ -96,8 +93,12 @@ const VIEW_EDGE = 1600
 // The three channel layers beside it are a fifth of the width and never redraw, so they can be
 // a fifth of the pixels.
 const THUMB_EDGE = 340
-// The famous photo is 1280x1335, so this keeps all of it. It was 900, which threw away a third
-// of a picture the piece then invites the visitor to look at closely.
+// What a visitor's picture is kept at once it is shared — on the wall and in the archive. The
+// wall draws a print at most about 800 pixels across on a 1080p screen (the biggest in a grid is
+// 1.75 times a slot), so 1200 is that with room to spare. The screens are Raspberry Pis, and the
+// whole 2600-pixel capture cost each of them some 15MB of decoded picture, for detail nobody can
+// see from across a room. Shrunk as planes, the same box average every smaller copy uses.
+const WALL_EDGE = 1200
 
 // A sideways-mounted camera. Which way it is turned is a property of the bracket it is screwed
 // to and not of the exhibit, so it is set on the machine rather than in the code — on the kiosk
@@ -2822,7 +2823,7 @@ async function onYes() {
   noBtn.disabled = true
 
   publishToWall({
-    image: compositeURL(frame, lutsNow(), tints()),
+    image: compositeURL(downscaleFrame(frame, WALL_EDGE), lutsNow(), tints()),
     levels: levels.map((l) => ({ ...l })),
     shownHue: [...shownHue],
   }).then(

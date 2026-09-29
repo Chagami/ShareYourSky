@@ -1237,6 +1237,7 @@ that a better camera bought nothing at all.
 | what the camera is asked for | `1280x720` → **`3840x2160`** | `ideal`, so a 720p camera still returns 720p — it never fails, it only settles |
 | `CAPTURE_EDGE` | 1400 wide → **2600 longest edge** | what is kept of the stream; the source for everything below |
 | `VIEW_EDGE` | 1000 wide → **1600 longest edge** | what every slider redraw works on, so the one number with a per-frame cost |
+| `WALL_EDGE` | 2600 → **1200 longest edge** | what a shared picture is kept at, on the wall and in the archive |
 | `PILLARS_EDGE` | 900 → 1400 → **removed** | went with the Pillars screen when step 4 became Reality |
 
 **The camera request was the whole of the "every camera looks the same" problem.** `ideal` is a
@@ -1265,7 +1266,24 @@ None of it is free, but the cost lands where there is room for it. For a rotated
 editing copy      45 ms  ┐ at the shutter, inside the 420 ms freeze the flash already holds for
 thumbnail         21 ms  │
 resting levels     0 ms  ┘
-shared jpeg       87 ms    once, when a visitor presses Yes — 1.05 MB
+shared jpeg       87 ms    once, when a visitor presses Yes — 1.05 MB (before WALL_EDGE)
+```
+
+**The shared picture is 1200 pixels on its longest edge**, not the full 2600. The wall screens
+are Raspberry Pis, and the wall never draws a print more than about 800 pixels across on a
+1080p screen. The biggest print in a grid is 1.75 times a slot, and a slot is about 456×328 on
+1920×1080. At full size, every visitor's picture cost each Pi about 15 MB of decoded image for
+detail nobody sees from across a room. It's shrunk with `downscaleFrame` before the JPEG is
+made, the same box average every other smaller copy uses. A test capture at 3840x2160 was
+shared at 675x1200 (upright), 39 KB. The archive keeps this size too: the full capture is not
+stored anywhere.
+
+The same reasoning applies to the curated set in `img/sky/`. Those files are served exactly as
+they are, so shrink them before adding them: **1200 pixels on the longest edge**, or 1600 if a
+Pi drives a 4K signal, sRGB, JPEG quality around 85:
+
+```bash
+magick mogrify -path resized -auto-orient -colorspace sRGB -resize "1200x1200>" -quality 85 -strip originals/*.jpg
 ```
 
 The sliders are unaffected by any of it: every interactive redraw works on `viewFrame`, never on
