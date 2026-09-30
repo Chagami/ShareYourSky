@@ -216,7 +216,7 @@ The visitors' own pictures are handled separately and are *meant* to repeat: eve
 new arrivals, because a picture that appeared on only one of four monitors would be missed by
 the person who just made it.
 
-One limit worth knowing before opening night: `img/sky/` holds **30** curated pictures, and the
+One limit worth knowing before opening night: `img/sky/` holds **90** curated pictures, and the
 stacking wall lays a new one down every 30 seconds per screen. Four screens exhaust that pool
 within minutes and begin repeating. It wants a few hundred.
 
@@ -1719,9 +1719,10 @@ more**. Verified: four screens take 28 distinct pictures out of 28, with nothing
 Add pictures by dropping them into `img/sky/`. On the exhibit machine, the gitignored
 `img/sky-old-test/` holds an older set of NASA pictures that can be moved in to pad it out.
 
-**Attribution is not handled.** The wall shows no captions by design, and the pictures now in
-`img/sky/` are individual photographers' work with their names in the filenames. If the exhibit
-needs to credit them on screen, that is a change to make — the names are already there to read.
+**Attribution is not handled.** The wall shows no captions by design. The pictures now in
+`img/sky/` are numbered (`01-GalleryPhotos2026.jpg` …) and carry no photographers' names, unlike
+the set before them. If the exhibit needs to credit anyone on screen, the names have to come from
+somewhere else first.
 
 ## Where the visitors' pictures live
 
