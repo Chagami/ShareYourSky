@@ -18,8 +18,12 @@ const WALL = {
   /** Prints in one grid. When it is full, a new grid starts on top of it. */
   tiles: 10,
 
-  /** How many grids to keep. Below that they are entirely covered anyway, and dropped. */
-  layers: 4,
+  /**
+   * How many grids to keep. Two: the one being filled, and the one showing at its edges under
+   * it. It was four, but the bottom two were all but covered — and every print in them still
+   * held its whole decoded picture, which on a Pi 3 with a gigabyte is most of what there is.
+   */
+  layers: 2,
 
   /** How far each grid leans from the one under it, as a fraction of the smaller screen edge. */
   offset: 0.03,
@@ -467,5 +471,39 @@ function say(message) {
   )
 }
 
-subscribe(onPublished)
+// ── an hour at a time ───────────────────────────────────────────────────────
+//
+// A browser left running for days creeps up in memory however tidy the page is, and on a Pi
+// with a gigabyte the creep ends in a stall. So each screen starts afresh every hour; the first
+// grid goes down again at once and the pile rebuilds from there. Leaving hands its pictures
+// back to the server (see wallscreen.js), so nothing is stranded.
+//
+// Three things it will not do:
+// - Reload into an error page. A reload that cannot reach the server is a browser error page,
+//   and that never retries — a dark screen until somebody walks over. So it checks the page can
+//   be fetched first, and if not, tries again in a minute.
+// - Wipe a picture somebody has just made. A visitor who has just shared is walking over to find
+//   it, so it waits until the newest one has been up for a few minutes.
+// - Go dark on all four screens at once. Each waits a different few minutes past the hour.
+const RELOAD_EVERY = 60 * 60 * 1000
+const RELOAD_SPREAD = 5 * 60 * 1000
+const RELOAD_QUIET = 3 * 60 * 1000
+let lastArrival = 0
+
+async function freshStart() {
+  if (Date.now() - lastArrival < RELOAD_QUIET) return setTimeout(freshStart, 60 * 1000)
+  try {
+    const res = await fetch(location.href, { cache: 'no-store' })
+    if (!res.ok) throw new Error(`${res.status}`)
+  } catch {
+    return setTimeout(freshStart, 60 * 1000)
+  }
+  location.reload()
+}
+setTimeout(freshStart, RELOAD_EVERY + Math.random() * RELOAD_SPREAD)
+
+subscribe((items) => {
+  if (items[0]?.id && !shown.has(items[0].id)) lastArrival = Date.now()
+  onPublished(items)
+})
 start()

@@ -1539,7 +1539,36 @@ step with `server/gallery.js`, and fails only with four screens running if it do
 
 Every picture arrives turning, into a place in the top grid. When that grid is full a new one
 starts over it, leaning a little further forward, and the ones underneath stay and show at their
-edges. Nothing fades and nothing is removed until it has been pushed four grids back.
+edges. Nothing fades and nothing is removed until it has been pushed two grids back.
+
+### Light enough for a Raspberry Pi 3
+
+The wall screens are Pi 3B+s with 1 GB of memory, shared between the system, the browser and
+the graphics chip. On a page like this, nearly all of that goes on pictures: the browser holds
+every picture on the wall fully decoded, at the size of the file rather than the size it's
+drawn. So the wall is built to hold as few as it can while still looking like a pile:
+
+- **Two grids, not four.** The bottom two of four were almost entirely covered, and still held
+  their decoded pictures. The most on the wall at once is now 20, down from 40.
+- **No blurred drop shadows.** A print has its black mount and a 1px hairline. The 34px blurred
+  shadow it used to have had to be redrawn under every print that spun in over it, and needed a
+  band of extra graphics memory round every print.
+- **Its own stylesheet.** `gallery.html` used to load the exhibit's 22 KB stylesheet for three
+  colours and a background. `css/gallery.css` now carries those itself, and the full-screen
+  gradient background is gone: one less screen-sized surface.
+- **A fresh start every hour.** A browser left running for days creeps up in memory, and on a
+  1 GB machine that ends in a stall. Each screen reloads 60 to 65 minutes after it started, a
+  different few minutes each, so the four never go dark together. It won't reload within three
+  minutes of a visitor's picture arriving, since they're walking over to find it. It won't
+  reload unless the page can actually be fetched, because a reload that can't reach the server
+  is a browser error page that never retries. If either condition fails, it tries again a
+  minute later. Leaving hands the screen's pictures back to the server, so nothing is stranded.
+- **Pictures at the size they're shown.** Visitors' pictures are kept at 1200 pixels (see
+  `WALL_EDGE`), and the curated set wants the same or less: 800 pixels on the long edge is
+  enough on a Pi 3, which can't drive 4K anyway.
+
+Checked on a 1920×1080 page with the clock run forward: 2 grids and 12 prints after 30 minutes,
+2 grids and 17 prints after 70, exactly one reload in those 70 minutes, and no page errors.
 
 **A grid's places are all decided the moment it is made, and then filled in a shuffled order** —
 so pictures appear about the grid rather than marching along it. A wall filling left to right
@@ -1553,7 +1582,7 @@ before and after.
 
 ```js
 tiles: 10,          // prints in one grid
-layers: 4,          // grids kept; below that they are covered anyway
+layers: 2,          // grids kept; below that they are covered anyway
 offset: 0.03,       // how far each grid leans from the one under it
 addEvery: 30000,    // a picture is laid down this often
 communityShare: 0.25,
@@ -1616,14 +1645,13 @@ Measured, one visitor at a time — which is what an exhibit actually does:
 | 4 | 16 | 4 | **25%** |
 
 A *rush* is different. Twelve submissions inside two seconds takes the wall to about 43%, and it
-cannot come straight back down: the wall holds forty prints, so twelve of theirs is thirty
-percent of it whatever else goes up. It settles as the pile rolls over. That is honest behaviour
+cannot come straight back down: the wall holds twenty prints, so twelve of theirs is a large
+part of it whatever else goes up. It settles as the pile rolls over. That is honest behaviour
 for a participatory wall and worth knowing rather than fixing.
 
 ### This design eats pictures
 
-The rows wall holds seven curated pictures per screen and changes one every half minute. The
-stacking wall lays down a new one every half minute and keeps forty. Four screens running for an
+The wall lays down a new picture every half minute and keeps twenty. Four screens running for an
 hour want a couple of hundred distinct pictures to never repeat; the folder has thirty, so it
 repeats heavily. **If the stacking design is the one that ships, `img/sky/` needs to be several
 times larger** — see below.

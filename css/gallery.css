@@ -1,13 +1,31 @@
 /* The gallery wall, stacking design. One screen of four, edge to edge: no header, no captions,
-   no scrollbar. Loads app.css first for the palette and the ambient background. */
+   no scrollbar.
 
-html:has(body.wall), body.wall {
+   Self-contained. It used to load the exhibit's whole stylesheet first, for three colours and a
+   background — 22KB of rules for screens this page never shows, parsed on a Raspberry Pi 3 with
+   a gigabyte to share between everything. The background it borrowed was a full-screen gradient,
+   which is one more screen-sized surface to keep in graphics memory; the wall is flat black now,
+   which is what it looks like anyway once the prints are down. */
+
+:root {
+  --bg: #040408; /* the exhibit's own black — see app.css for why exactly this one */
+  --ink: #f4f5f7;
+  --muted: #949aa6;
+}
+
+* { box-sizing: border-box; }
+
+html, body {
   height: 100%;
+  margin: 0;
   overflow: hidden;
 }
-body.wall {
-  display: block; /* app.css makes the exhibit body a two-row grid; this page is one surface */
-  padding: 0;
+body {
+  background: var(--bg);
+  color: var(--ink);
+  font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+  -webkit-font-smoothing: antialiased;
+  user-select: none;
 }
 
 .stack {
@@ -32,11 +50,14 @@ body.wall {
   margin: 0;
   transform-origin: 50% 50%;
   /* The black mount. On a near-black wall it does almost nothing on its own — what it is for is
-     the moment two prints overlap, where it is the edge that says which is on top. The shadow
-     does the rest of that work. */
+     the moment two prints overlap, where it is the edge that says which is on top. A hairline
+     round it finishes the job. There used to be a 34px blurred drop shadow as well: on a Pi it
+     had to be redrawn under every print that spun in over it, and it needed an extra band of
+     graphics memory round every print on the wall. The hairline has no blur, so it costs
+     neither. */
   border: var(--border, 9px) solid #000;
   background: #000;
-  box-shadow: 0 10px 34px rgba(0, 0, 0, 0.75), 0 0 0 1px rgba(255, 255, 255, 0.07);
+  box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.09);
   transition: transform 600ms cubic-bezier(0.2, 0.84, 0.25, 1);
 }
 
@@ -52,13 +73,13 @@ body.wall {
 
 /* A visitor's own. Warm hairline inside the mount, so it is findable among the curated ones
    without a caption saying so. */
-.print-community { box-shadow: 0 10px 34px rgba(0, 0, 0, 0.75), inset 0 0 0 2px rgba(255, 138, 43, 0.55); }
+.print-community { box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.09), inset 0 0 0 2px rgba(255, 138, 43, 0.55); }
 
 /* The newest one. Half again the size, and it turns further coming in — js/gallery.js does both,
    because the size is part of the same transform that positions it. */
 .print.newest {
   z-index: 20;
-  box-shadow: 0 18px 60px rgba(0, 0, 0, 0.85), inset 0 0 0 3px #ff8a2b;
+  box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.09), inset 0 0 0 3px #ff8a2b;
 }
 
 /* The two things worth keeping about a visitor's picture: the colours they gave each channel,
