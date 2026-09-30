@@ -1270,9 +1270,8 @@ shared jpeg       87 ms    once, when a visitor presses Yes — 1.05 MB (before 
 ```
 
 **The shared picture is 1200 pixels on its longest edge**, not the full 2600. The wall screens
-are Raspberry Pis, and the wall never draws a print more than about 800 pixels across on a
-1080p screen. The biggest print in a grid is 1.75 times a slot, and a slot is about 456×328 on
-1920×1080. At full size, every visitor's picture cost each Pi about 15 MB of decoded image for
+are Raspberry Pis, and the wall never draws a print more than about 900 pixels across on a
+1080p screen: it's fitted into 46% of the screen's width. At full size, every visitor's picture cost each Pi about 15 MB of decoded image for
 detail nobody sees from across a room. It's shrunk with `downscaleFrame` before the JPEG is
 made, the same box average every other smaller copy uses. A test capture at 3840x2160 was
 shared at 675x1200 (upright), 39 KB. The archive keeps this size too: the full capture is not
@@ -1526,30 +1525,69 @@ to move to a WebGL shader if a weaker machine needs it.
 
 ## The gallery wall
 
-`gallery.html`, the **stacking** design: prints are laid down and never taken away, and when a
-grid fills a new one begins over it. (An earlier *rows* design — justified rows, one tile
-crossfading every half minute — was kept alongside it for comparison and then removed;
-`git log -- gallery2.html` has it.)
+`gallery.html`, the **anchored pile**: large prints, landing over one another on six places,
+three down the left half of the screen and three down the right. (It replaced a *stacking grid*,
+grids of ten laid over one another, which in turn replaced a *rows* design. `git log --
+js/gallery.js` has both.)
 
 Joining the wall and holding pictures nobody else has is `js/wallscreen.js`, apart from the
 layout, because that half is the server's protocol and not a design choice. It has to change in
 step with `server/gallery.js`, and fails only with four screens running if it does not.
 
-### The stacking wall
+### The anchored pile
 
-Every picture arrives turning, into a place in the top grid. When that grid is full a new one
-starts over it, leaning a little further forward, and the ones underneath stay and show at their
-edges. Nothing fades and nothing is removed until it has been pushed two grids back.
+Every picture arrives turning, onto one of the six places, and lands over whatever is already
+there. The rules:
+
+- **Sides alternate,** so the two newest pictures are always one on the left and one on the
+  right.
+- **A side never uses the same place twice running.** Each side draws its three places from a
+  shuffled bag, and all three come up before any comes up again. A refilled bag is also kept
+  from starting with the place the last one ended on, which a plain shuffle would do one time in
+  three. So each picture overlaps the ones under it instead of exactly hiding the last one, and
+  that overlap is the pile.
+- **Each print is fitted, at its own shape, into a box 46% of the screen wide and 66% high,**
+  centred on its place. It gets a nudge of up to 3% of the screen and a tilt of up to 3°, so the
+  pile doesn't look ruled, and it's kept on screen even when a tall one sits at a top or bottom
+  place.
+- **Six prints are kept.** When a new one lands, the oldest is taken off, and a curated picture
+  goes back to the server for another screen to use.
+- **A visitor's new picture stays on top for five minutes.** Curated pictures keep landing, just
+  under it. With only six on the wall it would otherwise be half buried within a couple of
+  minutes, before its owner has walked over to find it. After five minutes it takes its place in
+  the pile like any other. It also turns a full revolution coming in, where an ordinary print
+  turns about fifteen degrees.
+
+Each print carries `data-place` (for example `left 2`), which the inspector shows, for checking
+where things landed.
+
+```js
+anchors: { left: [3 places], right: [3 places] },  // centres, as fractions of the screen
+size: { w: 0.46, h: 0.66 },  // the box a print is fitted into
+jitter: 0.03,                // how far off its place a print may land
+tilt: 3,                     // degrees, either way
+keep: 6,                     // prints on the wall
+addEvery: 30000,             // a picture is laid down this often
+communityShare: 0.25,        // the visitors' share of what is on the wall
+pinFor: 5 * 60 * 1000,       // how long a visitor's new picture stays on top
+border: 9,                   // the black mount around every print
+```
+
+Checked on a 1920×1080 page with the clock run forward: 6 prints at every check, none off
+screen; a visitor's picture on top on arrival and 3 minutes later, and off the top by 6. Over
+10,000 draws per side, no place came up twice running, every run of three used all three places,
+and each place got 33.3%.
 
 ### Light enough for a Raspberry Pi 3
 
 The wall screens are Pi 3B+s with 1 GB of memory, shared between the system, the browser and
 the graphics chip. On a page like this, nearly all of that goes on pictures: the browser holds
 every picture on the wall fully decoded, at the size of the file rather than the size it's
-drawn. So the wall is built to hold as few as it can while still looking like a pile:
+drawn, whether or not anything is covering it. So the wall holds as few as it can while still
+looking like a pile:
 
-- **Two grids, not four.** The bottom two of four were almost entirely covered, and still held
-  their decoded pictures. The most on the wall at once is now 20, down from 40.
+- **Six prints.** The stacking grid held forty, then twenty. These are drawn much larger, but
+  the memory depends on the files, not on the size they're drawn.
 - **No blurred drop shadows.** A print has its black mount and a 1px hairline. The 34px blurred
   shadow it used to have had to be redrawn under every print that spun in over it, and needed a
   band of extra graphics memory round every print.
@@ -1563,98 +1601,32 @@ drawn. So the wall is built to hold as few as it can while still looking like a 
   reload unless the page can actually be fetched, because a reload that can't reach the server
   is a browser error page that never retries. If either condition fails, it tries again a
   minute later. Leaving hands the screen's pictures back to the server, so nothing is stranded.
-- **Pictures at the size they're shown.** Visitors' pictures are kept at 1200 pixels (see
-  `WALL_EDGE`), and the curated set wants the same or less: 800 pixels on the long edge is
-  enough on a Pi 3, which can't drive 4K anyway.
+- **Pictures at the size they're shown.** A print here is drawn up to about 900 pixels wide on a
+  1080p screen, so 1200 on the long edge is right for both the visitors' pictures (`WALL_EDGE`)
+  and the curated set.
 
-Checked on a 1920×1080 page with the clock run forward: 2 grids and 12 prints after 30 minutes,
-2 grids and 17 prints after 70, exactly one reload in those 70 minutes, and no page errors.
+The reload was checked on the production build: none in 20 minutes, exactly one in 70.
+**Test the gallery on the production build, not the dev server,** when the clock is being run
+forward. The dev server's live-reload client reloads the page when it thinks the server has
+gone, which fast-forwarded time makes it think. That reload looks exactly like the wall's own.
 
-**A grid's places are all decided the moment it is made, and then filled in a shuffled order** —
-so pictures appear about the grid rather than marching along it. A wall filling left to right
-reads as a progress bar; one filling at random reads as a wall. Measured over four fresh layouts:
-every one a different order, all ten places used exactly once, none of them in reading order.
+### Keeping the visitors' share
 
-Each print remembers *which place* it took rather than the order it was hung, which is what keeps
-it there when the stack re-leans or the window changes size. Matching prints to places by
-position would have dealt everybody a different spot on every resize — verified: same places
-before and after.
+Every submission goes up the moment it is made. That is the promise the exhibit makes to the
+person who just pressed the button, and it isn't negotiable against a ratio. The share is
+counted over what is on the wall now, since prints are taken off and the counts with them, and
+it's pulled back by the timer: while the visitors' share is over a quarter, the next picture is
+a curated one.
 
-```js
-tiles: 10,          // prints in one grid
-layers: 2,          // grids kept; below that they are covered anyway
-offset: 0.03,       // how far each grid leans from the one under it
-addEvery: 30000,    // a picture is laid down this often
-communityShare: 0.25,
-border: 9,          // the black mount around every print
-sizeRange: 2,       // the largest print in a grid, against the smallest
-freshScale: 1.5,    // the newest visitor's picture, against the largest of the others
-```
-
-### Sizes
-
-Prints are not all one size. Every grid deals its places sizes spanning exactly `sizeRange` —
-**pinned, not sampled**, because drawing ten numbers out of a range gives whatever spread it
-happens to give, and the wall came out looking uniform. One place is dealt the floor and another
-the ceiling and the rest fall between, all drawn again for every grid, so **the biggest picture
-is never in the same corner twice**. Measured over four thousand grids: largest ÷ smallest is
-2.0000 every time, and which place gets it lands evenly across all ten (10% each).
-
-The sizes are normalised on **area**, not on width, so a grid of mixed sizes covers about as much
-wall as a grid of equal ones — normalising on width would have grown the total by half. Measured:
-mean area 1.0000 against uniform. On screen that is prints from about 270px to 650px wide.
-
-The newest visitor's picture is `freshScale` times **the largest of the other visitors'
-pictures**, not times its own place. The places are different sizes now, and landing in a small
-one must not make the newest picture on the wall smaller than one somebody left twenty minutes
-ago. Measured after a share: 1.50× the biggest other.
-
-One consequence worth seeing before it ships: the larger prints overlap their neighbours rather
-than sitting inside their own cell. On a wall of stacked, black-mounted prints that reads as a
-pile — which is the point — but it is a real change from the tidy grid, and `sizeRange: 1` turns
-it off entirely.
-
-Every print gets a **black mount**. On a near-black wall it does almost nothing on its own —
-what it is for is the moment two prints overlap, where it is the edge that says which is on top.
-
-The **newest visitor's picture** is half again the size of the other visitors' pictures and turns
-a full revolution coming in, where an ordinary print turns about fifteen degrees. Larger by
-transform rather than by taking a bigger slot, so the grid underneath is untouched and it simply
-overlaps its neighbours — which on a wall of stacked prints is what being on top of the pile
-looks like anyway. Position and size are the same transform, so neither costs a reflow.
-
-Nothing is cropped here either: `object-fit: contain` inside a uniform cell, and the column count
-is chosen to bring a cell's shape near the pictures' own, because a landscape photograph in a
-tall cell is mostly black mount.
-
-### Keeping the visitors' share on a wall that only grows
-
-Every submission goes up the moment it is made — that is the promise the exhibit makes to the
-person who just pressed the button, and it is not negotiable against a ratio. So the ratio is
-kept from the other side: a quarter share means three curated pictures for each one of theirs,
-laid down around it. A busy evening simply fills the wall faster.
-
-Measured, one visitor at a time — which is what an exhibit actually does:
-
-| shared | prints | visitors' | share |
-| --- | --- | --- | --- |
-| 0 | 10 | 0 | 0% |
-| 1 | 11 | 1 | 9% |
-| 2 | 12 | 2 | 17% |
-| 3 | 13 | 3 | 23% |
-| 4 | 16 | 4 | **25%** |
-
-A *rush* is different. Twelve submissions inside two seconds takes the wall to about 43%, and it
-cannot come straight back down: the wall holds twenty prints, so twelve of theirs is a large
-part of it whatever else goes up. It settles as the pile rolls over. That is honest behaviour
-for a participatory wall and worth knowing rather than fixing.
+The stacking grid used to rebalance straight away, laying several curated pictures down right
+after a visitor's. On a wall of six that would bury the very picture it was for, so it's gone:
+the pile rolls over at one picture every half minute, and a rush settles within a few minutes.
 
 ### This design eats pictures
 
-The wall lays down a new picture every half minute and keeps twenty. Four screens running for an
-hour want a couple of hundred distinct pictures to never repeat; the folder has thirty, so it
-repeats heavily. **If the stacking design is the one that ships, `img/sky/` needs to be several
-times larger** — see below.
+The wall lays down a new picture every half minute. Four screens running for an hour lay down
+about 480, so the curated folder wants to be large for the wall not to repeat visibly: **sixty
+or more**. See below.
 
 ### Four screens that do not repeat each other
 

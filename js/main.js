@@ -94,8 +94,8 @@ const VIEW_EDGE = 1600
 // a fifth of the pixels.
 const THUMB_EDGE = 340
 // What a visitor's picture is kept at once it is shared — on the wall and in the archive. The
-// wall draws a print at most about 800 pixels across on a 1080p screen (the biggest in a grid is
-// 1.75 times a slot), so 1200 is that with room to spare. The screens are Raspberry Pis, and the
+// wall draws a print at most about 900 pixels across on a 1080p screen (fitted into 46% of its
+// width), so 1200 is that with room to spare. The screens are Raspberry Pis, and the
 // whole 2600-pixel capture cost each of them some 15MB of decoded picture, for detail nobody can
 // see from across a room. Shrunk as planes, the same box average every smaller copy uses.
 const WALL_EDGE = 1200

@@ -34,15 +34,8 @@ body {
   height: 100dvh;
 }
 
-/* One grid of prints. Stacked by z-index, each leaning a little further forward than the last,
-   so the ones underneath show at their edges. */
-.layer {
-  position: absolute;
-  inset: 0;
-}
-
-/* A print. Position and size are one transform so neither costs a reflow — there can be forty
-   of these on the wall and a resize must not relayout them one at a time. */
+/* A print. Position, tilt and size are one transform so none of them costs a reflow. Which is
+   on top is its z-index, set by js/gallery.js: every print lands above everything before it. */
 .print {
   position: absolute;
   top: 0;
@@ -75,10 +68,9 @@ body {
    without a caption saying so. */
 .print-community { box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.09), inset 0 0 0 2px rgba(255, 138, 43, 0.55); }
 
-/* The newest one. Half again the size, and it turns further coming in — js/gallery.js does both,
-   because the size is part of the same transform that positions it. */
+/* A visitor's new picture, kept on top for a few minutes — js/gallery.js does that, and turns it
+   further coming in. */
 .print.newest {
-  z-index: 20;
   box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.09), inset 0 0 0 3px #ff8a2b;
 }
 

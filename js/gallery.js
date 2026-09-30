@@ -1,9 +1,14 @@
-// The gallery wall — one screen of four. The stacking design.
+// The gallery wall — one screen of four. The anchored pile.
 //
-// Nothing ever leaves. Pictures are laid down one at a time into a grid of black-bordered
-// prints; when that grid is full a new one begins, shifted a little, and the pile grows over it.
-// The grids underneath stay and show at their edges, so the wall reads as an evening's worth of
-// pictures accumulating rather than a slideshow rotating through them.
+// Pictures are large, and each one lands on one of six places: three down the left half of the
+// screen and three down the right. They alternate sides, so the two newest are always one on
+// each side, and they land over whatever is already there, so the wall reads as a pile of prints
+// building up rather than a slideshow. A side never uses the same place twice running: all three
+// are used before any comes round again, so each picture overlaps the ones under it instead of
+// hiding the last one exactly. A small nudge and tilt keep the pile from looking ruled.
+//
+// Only a handful are kept. The wall screens are Raspberry Pi 3s with a gigabyte, and every print
+// on the wall holds its whole decoded picture, covered or not.
 //
 // Joining the wall and holding pictures nobody else has is in js/wallscreen.js, apart from the
 // layout, because that half is the server's protocol rather than a design choice.
@@ -15,18 +20,32 @@ import { joinWall } from './wallscreen.js'
 // ── the knobs ───────────────────────────────────────────────────────────────
 
 const WALL = {
-  /** Prints in one grid. When it is full, a new grid starts on top of it. */
-  tiles: 10,
-
   /**
-   * How many grids to keep. Two: the one being filled, and the one showing at its edges under
-   * it. It was four, but the bottom two were all but covered — and every print in them still
-   * held its whole decoded picture, which on a Pi 3 with a gigabyte is most of what there is.
+   * Where a print lands: its centre, as fractions of the screen. Three down each half. The
+   * columns sit in from the middle of each half so a large print still mostly fits on screen.
    */
-  layers: 2,
+  anchors: {
+    left: [
+      { x: 0.27, y: 0.27 },
+      { x: 0.27, y: 0.5 },
+      { x: 0.27, y: 0.73 },
+    ],
+    right: [
+      { x: 0.73, y: 0.27 },
+      { x: 0.73, y: 0.5 },
+      { x: 0.73, y: 0.73 },
+    ],
+  },
 
-  /** How far each grid leans from the one under it, as a fraction of the smaller screen edge. */
-  offset: 0.03,
+  /** The box a print is fitted into, at its own proportions, as fractions of the screen. */
+  size: { w: 0.46, h: 0.66 },
+
+  /** How far a print may land off its anchor, as a fraction of the screen, and how far it tilts. */
+  jitter: 0.03,
+  tilt: 3,
+
+  /** Prints kept on the wall. The oldest goes when a new one would make one more than this. */
+  keep: 6,
 
   /** A picture is laid down this often. */
   addEvery: 30000,
@@ -34,18 +53,14 @@ const WALL = {
   /** ...and this fraction of everything on the wall should be visitors' own. */
   communityShare: 0.25,
 
+  /**
+   * How long a visitor's new picture stays on top. With only six on the wall, it would otherwise
+   * be half buried within a couple of minutes — before its owner has walked over to find it.
+   */
+  pinFor: 5 * 60 * 1000,
+
   /** The black mount around every print, in pixels. */
   border: 9,
-
-  /**
-   * How much larger the biggest print in a grid is than the smallest. Exactly this, every grid —
-   * not an average of it — and which place gets which size is drawn afresh each time, so the
-   * biggest picture on the wall keeps moving.
-   */
-  sizeRange: 2,
-
-  /** The newest visitor's picture, against the largest of the other visitors' pictures. */
-  freshScale: 1.5,
 
   /** How long a print takes to turn into place. */
   spin: 1000,
@@ -59,42 +74,17 @@ const screen = joinWall({
   onTrouble: (err) => say(`no allocator (${err.message}) — this screen may repeat its neighbours`),
 })
 
-let layers = [] // { el, slots, next } — oldest first, newest last and on top
+let prints = [] // { print, item, kind, side, anchor, nudge, tilt, z } — oldest first
 let pool = [] // curated pictures this screen holds and has not laid down yet
 let community = [] // the visitors' pictures, newest first
 let shown = new Set() // ids of visitors' pictures already on this wall
-let laid = { total: 0, community: 0 } // what has actually gone up, for keeping the share
-let newest = null // the print wearing the extra size
+let laid = { total: 0, community: 0 } // what is on the wall now, for keeping the share
+let pinned = null // the visitor's picture being kept on top, and until when
+let nextSide = Math.random() < 0.5 ? 'left' : 'right'
+let stacking = 0 // the z-order: every print lands above everything before it
+const PIN_Z = 1e6
 
-// ── the grid a layer is laid out on ─────────────────────────────────────────
-
-const lean = () => WALL.offset * Math.min(window.innerWidth, window.innerHeight)
-
-/**
- * A size for every place in a grid.
- *
- * The largest is exactly `sizeRange` times the smallest — pinned, not sampled, because drawing
- * `n` numbers out of a range gives a spread of whatever it happens to give and the wall came out
- * looking uniform. One place is dealt the floor and another the ceiling, and the rest fall
- * between; both are drawn again for every grid, so the biggest picture is never in the same
- * corner twice.
- *
- * Then normalised on *area* rather than on width, so a grid of mixed sizes covers about as much
- * wall as a grid of equal ones. Normalising on width would have grown the total by half.
- */
-function spreadSizes(n) {
-  const raw = Array.from({ length: n }, () => 1 + Math.random() * (WALL.sizeRange - 1))
-  if (n > 1) {
-    const small = Math.floor(Math.random() * n)
-    let large = Math.floor(Math.random() * (n - 1))
-    if (large >= small) large++
-    raw[small] = 1
-    raw[large] = WALL.sizeRange
-  }
-  const meanArea = raw.reduce((sum, v) => sum + v * v, 0) / n
-  const k = 1 / Math.sqrt(meanArea)
-  return raw.map((v) => v * k)
-}
+// ── where the next one lands ────────────────────────────────────────────────
 
 /** The numbers 0..n-1, in some order. */
 function shuffled(n) {
@@ -106,117 +96,56 @@ function shuffled(n) {
   return out
 }
 
-/**
- * Slot rectangles for the grid at a given depth.
- *
- * Cells are uniform and every print sits inside one at its own proportions, so nothing is
- * cropped and the grid still reads as a grid. The column count is chosen to bring a cell's shape
- * near the pictures' own — a landscape photograph in a tall cell is mostly black mount.
- */
-function slotsFor(depth) {
-  const room = lean() * (WALL.layers - 1)
-  const boxW = window.innerWidth - room
-  const boxH = window.innerHeight - room
+// A bag of places per side, drawn without replacement and refilled when empty. That is what
+// keeps a side off the place it just used: all three come up before any comes up again. The
+// refill is also kept from starting with the place the last bag ended on, which a plain shuffle
+// would do one time in three.
+const bags = { left: [], right: [] }
+const lastOf = { left: -1, right: -1 }
 
-  let best = null
-  for (let cols = 1; cols <= WALL.tiles; cols++) {
-    const rows = Math.ceil(WALL.tiles / cols)
-    const cell = boxW / cols / (boxH / rows)
-    // Near the shape of the pictures, and not wasting many cells on a ragged last row.
-    const score = Math.abs(Math.log(cell / 1.4)) + (cols * rows - WALL.tiles) * 0.12
-    if (!best || score < best.score) best = { cols, rows, score }
+function drawAnchor(side) {
+  if (!bags[side].length) {
+    let order = shuffled(WALL.anchors[side].length)
+    if (order.length > 1 && order[0] === lastOf[side]) order = [...order.slice(1), order[0]]
+    bags[side] = order
   }
-
-  const cw = boxW / best.cols
-  const ch = boxH / best.rows
-  const shift = depth * lean()
-  return Array.from({ length: WALL.tiles }, (_, i) => ({
-    x: shift + (i % best.cols) * cw,
-    y: shift + Math.floor(i / best.cols) * ch,
-    w: cw,
-    h: ch,
-  }))
+  const at = bags[side].shift()
+  lastOf[side] = at
+  return at
 }
 
-/**
- * Start a new grid over the last one, and drop any that have fallen off the back.
- *
- * The grid's places are all decided the moment it is made — but the order they get filled in is
- * shuffled, so pictures appear about the grid rather than marching along it. A wall filling left
- * to right reads as a progress bar; one filling at random reads as a wall.
- */
-function newLayer() {
-  const el = document.createElement('div')
-  el.className = 'layer'
-  wall.append(el)
-  layers.push({
-    el,
-    slots: [],
-    order: shuffled(WALL.tiles),
-    sizes: spreadSizes(WALL.tiles),
-    next: 0,
-    prints: [],
-  })
-
-  // A wall that runs for twelve hours would otherwise be holding a thousand pictures, all but
-  // forty of them completely covered.
-  while (layers.length > WALL.layers) {
-    const gone = layers.shift()
-    gone.el.remove()
-    // Take its prints off the count as well. The share is a fact about what is on the wall, and
-    // counting pictures that have been dropped made a wall that had run its ratio up unable to
-    // pull it back down — every curated picture it added was cancelled out by a ghost.
-    const handBack = []
-    for (const entry of gone.prints) {
-      laid.total--
-      if (entry.kind === 'community') laid.community--
-      else if (entry.item?.file) handBack.push(entry.item.file)
-      if (entry === newest) newest = null
-    }
-    screen.release(handBack)
-  }
-
-  // Re-lean everything, so the stack always runs from the back of the screen to the front.
-  relean()
-  return layers[layers.length - 1]
-}
-
-function relean() {
-  layers.forEach((layer, depth) => {
-    layer.slots = slotsFor(depth)
-    layer.el.style.zIndex = String(depth)
-    // By the place each print took, not by the order it was hung. They are no longer the same
-    // thing — the grid fills at random — and matching them up by position would deal every
-    // picture a different spot every time the stack re-leans or the window changes size.
-    layer.prints.forEach((entry) => {
-      const rect = layer.slots[entry.slotIndex]
-      if (!rect) return
-      entry.rect = rect
-      settle(entry)
-    })
-  })
+/** A print's box on screen: fitted into the size box at its own shape, centred on its anchor. */
+function placeOf(entry) {
+  const W = window.innerWidth
+  const H = window.innerHeight
+  const ar = entry.item.ar || (entry.item.w && entry.item.h ? entry.item.w / entry.item.h : 4 / 3)
+  const boxW = W * WALL.size.w
+  const boxH = H * WALL.size.h
+  const w = Math.min(boxW, boxH * ar)
+  const h = w / ar
+  const a = WALL.anchors[entry.side][entry.anchor]
+  const cx = a.x * W + entry.nudge.x * W
+  const cy = a.y * H + entry.nudge.y * H
+  // Kept on screen. A print hanging off the edge is a print half of which nobody sees, and the
+  // anchors near the top and bottom would otherwise push the tall ones out.
+  const x = Math.min(Math.max(cx - w / 2, 0), W - w)
+  const y = Math.min(Math.max(cy - h / 2, 0), H - h)
+  return { x, y, w, h }
 }
 
 // ── laying a picture down ───────────────────────────────────────────────────
 
 /**
- * Put one picture on the wall, turning as it lands.
- *
- * Into the top grid's next free slot; when that grid is full a new one starts over it. Nothing
- * is taken away to make room — the whole point of this design is that the evening accumulates.
+ * Put one picture on the wall, turning as it lands, on the next side and a fresh place on it.
+ * The oldest print goes once there are more than `keep`.
  */
 function lay(item, kind) {
   if (!item) return null
-  let layer = layers[layers.length - 1]
-  if (!layer || layer.next >= WALL.tiles) layer = newLayer()
+  const side = nextSide
+  nextSide = side === 'left' ? 'right' : 'left'
 
-  // Which place in the grid this one takes. The places were fixed when the grid was made; the
-  // order they are handed out in was shuffled with it.
-  const slotIndex = layer.order[layer.next++]
-  const rect = layer.slots[slotIndex]
   const print = document.createElement('figure')
   print.className = `print print-${kind}`
-
   const img = document.createElement('img')
   img.alt = ''
   img.decoding = 'async'
@@ -224,9 +153,21 @@ function lay(item, kind) {
   print.append(img)
   if (kind === 'community') print.append(caption(item))
 
-  const entry = { print, item, kind, rect, slotIndex, scale: layer.sizes[slotIndex], big: false }
-  layer.el.append(print)
-  layer.prints.push(entry)
+  const rand = () => (Math.random() * 2 - 1)
+  const entry = {
+    print,
+    item,
+    kind,
+    side,
+    anchor: drawAnchor(side),
+    nudge: { x: rand() * WALL.jitter, y: rand() * WALL.jitter },
+    tilt: rand() * WALL.tilt,
+    z: ++stacking,
+  }
+  // Readable in the inspector: which side and which of its places, e.g. "left 2".
+  print.dataset.place = `${side} ${entry.anchor}`
+  wall.append(print)
+  prints.push(entry)
   settle(entry)
 
   laid.total++
@@ -236,35 +177,52 @@ function lay(item, kind) {
   }
   empty.hidden = true
 
-  spin(entry, { from: -14, scale: entry.scale * 0.72 })
+  spin(entry, { from: entry.tilt - 14, scale: 0.72 })
+  trim()
   return entry
 }
 
-/** Where a print sits and how large. Position and size are one transform, so neither reflows. */
-/** How large this print is drawn: its own size, unless it is the newest. */
-const sizeOf = (entry) => (entry.big ? entry.crownScale : entry.scale)
+/** Take the oldest prints off, never the one being kept on top. */
+function trim() {
+  const handBack = []
+  while (prints.length > WALL.keep) {
+    const i = prints.findIndex((e) => e !== pinned?.entry)
+    if (i < 0) break
+    const [gone] = prints.splice(i, 1)
+    gone.spinning?.cancel()
+    gone.print.remove()
+    laid.total--
+    if (gone.kind === 'community') laid.community--
+    else if (gone.item?.file) handBack.push(gone.item.file)
+  }
+  // Scrolled off; somebody else may as well have them.
+  screen.release(handBack)
+}
 
+/** Where a print sits, how large and which way up. One transform, so nothing reflows. */
 function settle(entry) {
-  const { print, rect } = entry
-  print.style.width = `${rect.w}px`
-  print.style.height = `${rect.h}px`
-  print.style.transform = `translate(${rect.x}px, ${rect.y}px) scale(${sizeOf(entry)})`
+  const { print } = entry
+  const r = placeOf(entry)
+  entry.rect = r
+  print.style.width = `${r.w}px`
+  print.style.height = `${r.h}px`
+  print.style.zIndex = String(entry === pinned?.entry ? PIN_Z : entry.z)
+  print.style.transform = `translate(${r.x}px, ${r.y}px) rotate(${entry.tilt}deg)`
 }
 
 /** The one gesture the wall has: a print turns into place. */
 function spin(entry, { from, scale }) {
-  const { rect } = entry
-  const to = sizeOf(entry)
+  const { rect, tilt } = entry
   const put = (deg, s) => `translate(${rect.x}px, ${rect.y}px) rotate(${deg}deg) scale(${s})`
   entry.spinning?.cancel()
   const anim = entry.print.animate(
     [
       { transform: put(from, scale), opacity: 0 },
-      { transform: put(from * -0.12, to * 1.05), opacity: 1, offset: 0.74 },
-      { transform: put(0, to), opacity: 1 },
+      { transform: put(tilt + (tilt - from) * 0.12, 1.04), opacity: 1, offset: 0.74 },
+      { transform: put(tilt, 1), opacity: 1 },
     ],
     {
-      duration: entry.big ? WALL.spin * 1.5 : WALL.spin,
+      duration: entry === pinned?.entry ? WALL.spin * 1.5 : WALL.spin,
       easing: 'cubic-bezier(.2, .84, .25, 1)',
       fill: 'both',
     }
@@ -273,9 +231,8 @@ function spin(entry, { from, scale }) {
 
   // Let go once it has landed. A finished animation with fill:both keeps painting its last
   // keyframe, and an animation effect outranks inline style — so a print that had spun in
-  // simply ignored being re-leaned, and the stack stopped stepping back to front. `settle()`
-  // has already written the same resting transform inline, so cancelling changes nothing on
-  // screen; it only hands control back.
+  // would ignore a resize. `settle()` has already written the same resting transform inline,
+  // so cancelling changes nothing on screen; it only hands control back.
   anim.finished.then(
     () => {
       if (entry.spinning === anim) {
@@ -306,32 +263,29 @@ function caption(item) {
 // ── the newest visitor's picture ────────────────────────────────────────────
 
 /**
- * Half again as large as the other visitors' pictures, and it turns further coming in.
+ * Keep a visitor's new picture on top for a while, and bring it in with a bigger turn.
  *
- * Larger by transform rather than by taking a bigger slot, so the grid underneath is untouched
- * and it simply overlaps its neighbours — which, on a wall of stacked prints, is what being on
- * top of the pile looks like anyway.
+ * Kept on top by stacking order alone: the curated pictures that follow still land, just under
+ * it. When its time is up it takes its place in the pile like any other and gets covered.
  */
 function crown(entry) {
-  if (!entry || entry === newest) return
-  if (newest) {
-    newest.big = false
-    newest.print.classList.remove('newest')
-    settle(newest)
-  }
-  newest = entry
-  entry.big = true
-  // Half again the largest of the other visitors' pictures, not half again its own place — the
-  // places are different sizes now, and landing in a small one must not make the newest picture
-  // on the wall smaller than one somebody left twenty minutes ago.
-  const others = layers
-    .flatMap((l) => l.prints)
-    .filter((e) => e.kind === 'community' && e !== entry)
-    .map((e) => e.scale)
-  entry.crownScale = WALL.freshScale * Math.max(entry.scale, ...others, 0)
+  if (!entry) return
+  const was = pinned?.entry
+  if (was && was !== entry) was.print.classList.remove('newest')
+  pinned = { entry, until: Date.now() + WALL.pinFor }
   entry.print.classList.add('newest')
+  if (was && was !== entry) settle(was)
   settle(entry)
-  spin(entry, { from: -380, scale: entry.crownScale * 0.4 })
+  spin(entry, { from: entry.tilt - 380, scale: 0.4 })
+}
+
+function unpinIfDue() {
+  if (!pinned || Date.now() < pinned.until) return
+  const { entry } = pinned
+  pinned = null
+  entry.print.classList.remove('newest')
+  settle(entry)
+  trim()
 }
 
 // ── what goes up next ───────────────────────────────────────────────────────
@@ -339,8 +293,8 @@ function crown(entry) {
 /**
  * A visitor's picture if the wall owes them one, otherwise a curated one.
  *
- * The share is counted over everything ever laid down, which on this wall is the same as
- * everything on it: nothing is removed, so the running ratio *is* the ratio on screen.
+ * The share is counted over what is on the wall now: prints are taken off, and the counts with
+ * them, so the ratio is the ratio on screen.
  */
 function nextUp() {
   const unseen = () => community.find((c) => !shown.has(c.id))
@@ -351,67 +305,33 @@ function nextUp() {
   }
   const curated = pool.shift()
   if (curated) return { item: curated, kind: 'archive' }
-  // Nothing curated in hand. Only fall back to a visitor's picture if the share can afford it —
-  // otherwise a wall that has run hot keeps laying down the very thing it is trying to dilute.
   return owed ? { item: unseen(), kind: 'community' } : null
 }
 
 async function tick() {
+  unpinIfDue()
   const up = nextUp()
   if (up) lay(up.item, up.kind)
   // Keep a few in hand, so the timer never waits on the network.
-  if (pool.length < 3) pool.push(...(await screen.claim(WALL.tiles)))
-  // And keep pulling the ratio back, so a rush that ran the share up recovers over the next
-  // few minutes rather than leaving the wall lopsided until it is switched off.
-  balance()
+  if (pool.length < 3) pool.push(...(await screen.claim(WALL.keep)))
   setTimeout(tick, WALL.addEvery)
 }
 
 // ── a visitor shares something ──────────────────────────────────────────────
 
+/**
+ * Straight onto the wall, ahead of the timer, and kept on top: the person who made it is walking
+ * over to look.
+ *
+ * The share is not rebalanced here the way the grid wall did it, by laying curated pictures down
+ * straight after to dilute it. With six on the wall that buried the very picture it was for.
+ * The timer pulls the share back one picture at a time instead.
+ */
 function onPublished(items) {
   const was = community[0]?.id
   community = items
   if (!community.length || community[0]?.id === was) return
-  // Straight onto the wall, ahead of the timer: the person who made it is walking over to look.
   crown(lay(community[0], 'community'))
-  balance()
-}
-
-/**
- * Put curated pictures up until the visitors' share is back where it should be.
- *
- * Every submission goes on the wall the moment it is made — that is the promise the exhibit
- * makes to the person who just pressed the button, and it is not negotiable against a ratio. So
- * the ratio is kept from the other side: a quarter share means three curated pictures for each
- * one of theirs, and a busy evening simply fills the wall faster.
- *
- * Without this a rush of visitors took the wall to two thirds theirs inside a minute.
- */
-let balancing = false
-
-async function balance() {
-  // One at a time. A rush of visitors calls this once each, and four overlapping runs would
-  // race each other through the same pool and lay down far more than the ratio asked for.
-  if (balancing) return
-  balancing = true
-  try {
-    let added = 0
-    while (added < 8 && laid.total > 0 && laid.community / laid.total > WALL.communityShare) {
-      if (!pool.length) {
-        pool = await screen.claim(WALL.tiles)
-        // Nothing to be had — an empty folder, or the allocator is down. Stop rather than spin.
-        if (!pool.length) break
-      }
-      lay(pool.shift(), 'archive')
-      added++
-      // Staggered, so it reads as the wall filling in around the new picture rather than
-      // several things appearing in the same frame.
-      await new Promise((done) => setTimeout(done, 260))
-    }
-  } finally {
-    balancing = false
-  }
 }
 
 // ── waking up ───────────────────────────────────────────────────────────────
@@ -419,16 +339,17 @@ async function balance() {
 async function start() {
   wall.style.setProperty('--border', `${WALL.border}px`)
   community = await list()
-  pool = await screen.claim(WALL.tiles)
+  pool = await screen.claim(WALL.keep)
 
-  // A wall should look like a wall the moment it is switched on, not fill up over five minutes,
-  // so the first grid goes down at once and the timer takes it from there.
+  // A wall should look like a wall the moment it is switched on, not fill up over three
+  // minutes: the first few go down at once, a beat apart so they read as landing, not appearing.
   let last = null
-  for (let i = 0; i < WALL.tiles; i++) {
+  for (let i = 0; i < WALL.keep; i++) {
     const up = nextUp()
     if (!up) break
     const entry = lay(up.item, up.kind)
     if (entry?.kind === 'community') last = entry
+    await new Promise((done) => setTimeout(done, 260))
   }
   if (last) crown(last)
   if (!laid.total) say('nothing to show yet')
@@ -436,12 +357,12 @@ async function start() {
   setTimeout(tick, WALL.addEvery)
 }
 
-// Everything here is measured in pixels, so a resize needs new slots. What is on the wall keeps
-// its picture and its order; only where it sits changes.
+// Everything is measured in pixels, so a resize needs new boxes. Each print keeps its side, its
+// place and its nudge; only the pixels change.
 let refit = 0
 addEventListener('resize', () => {
   clearTimeout(refit)
-  refit = setTimeout(relean, 250)
+  refit = setTimeout(() => prints.forEach(settle), 250)
 })
 
 // Timestamps age on a wall that sits untouched for hours.
@@ -475,8 +396,8 @@ function say(message) {
 //
 // A browser left running for days creeps up in memory however tidy the page is, and on a Pi
 // with a gigabyte the creep ends in a stall. So each screen starts afresh every hour; the first
-// grid goes down again at once and the pile rebuilds from there. Leaving hands its pictures
-// back to the server (see wallscreen.js), so nothing is stranded.
+// few go down again at once and the pile rebuilds from there. Leaving hands its pictures back
+// to the server (see wallscreen.js), so nothing is stranded.
 //
 // Three things it will not do:
 // - Reload into an error page. A reload that cannot reach the server is a browser error page,
