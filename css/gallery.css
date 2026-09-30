@@ -68,8 +68,8 @@ body {
    without a caption saying so. */
 .print-community { box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.09), inset 0 0 0 2px rgba(255, 138, 43, 0.55); }
 
-/* A visitor's new picture, kept on top for a few minutes — js/gallery.js does that, and turns it
-   further coming in. */
+/* The latest visitor's picture. It lands on top like every print, and turns further coming in
+   — js/gallery.js does that. */
 .print.newest {
   box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.09), inset 0 0 0 3px #ff8a2b;
 }

@@ -13,9 +13,10 @@ const BEAT = 12000
 /**
  * Join the wall.
  *
- * `onLost` is called if the server forgets us — it restarted, or we were away long enough to be
- * declared gone and have our pictures handed to somebody else. Reloading is the honest response:
- * whatever is on screen is no longer ours to show.
+ * If the server forgets us — it restarted, or we were away long enough to be declared gone and
+ * have our pictures handed to somebody else — we sign in again on the next claim, and `onLost`
+ * (if given) is told. The gallery gives none: what is on screen stays up and rolls over as usual,
+ * which costs nothing, where a reload would rebuild the whole page.
  */
 export function joinWall({ onLost, onTrouble } = {}) {
   let me = null
@@ -69,7 +70,11 @@ export function joinWall({ onLost, onTrouble } = {}) {
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify({ id: me.id, retire, ar }),
       })
-      if (res.status === 404) return onLost?.() ?? null
+      if (res.status === 404) {
+        me = null
+        onLost?.()
+        return null
+      }
       return (await res.json()).image ?? null
     } catch {
       return null
@@ -84,7 +89,10 @@ export function joinWall({ onLost, onTrouble } = {}) {
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify({ id: me.id }),
       })
-      if (res.status === 404) onLost?.()
+      if (res.status === 404) {
+        me = null // signed in again by the next claim
+        onLost?.()
+      }
     } catch {
       /* the wall keeps showing what it has */
     }

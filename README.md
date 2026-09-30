@@ -1552,11 +1552,13 @@ there. The rules:
   place.
 - **Six prints are kept.** When a new one lands, the oldest is taken off, and a curated picture
   goes back to the server for another screen to use.
-- **A visitor's new picture stays on top for five minutes.** Curated pictures keep landing, just
-  under it. With only six on the wall it would otherwise be half buried within a couple of
-  minutes, before its owner has walked over to find it. After five minutes it takes its place in
-  the pile like any other. It also turns a full revolution coming in, where an ordinary print
-  turns about fifteen degrees.
+- **Every print lands on top of everything before it,** a visitor's included. A visitor's new
+  picture goes up the moment it is shared, wears an orange outline until the next visitor's
+  arrives, and turns a full revolution coming in, where an ordinary print turns about fifteen
+  degrees. It used to be held on top for five minutes, but that made every picture laid in that
+  time slide in *under* it. And after a reload, an old visitor's picture was the one held there,
+  so for five minutes an hour the whole wall landed underneath somebody's photo from the day
+  before.
 
 Each print carries `data-place` (for example `left 2`), which the inspector shows, for checking
 where things landed.
@@ -1569,12 +1571,11 @@ tilt: 3,                     // degrees, either way
 keep: 6,                     // prints on the wall
 addEvery: 30000,             // a picture is laid down this often
 communityShare: 0.25,        // the visitors' share of what is on the wall
-pinFor: 5 * 60 * 1000,       // how long a visitor's new picture stays on top
 border: 9,                   // the black mount around every print
 ```
 
 Checked on a 1920×1080 page with the clock run forward: 6 prints at every check, none off
-screen; a visitor's picture on top on arrival and 3 minutes later, and off the top by 6. Over
+screen, and every newly laid print above every other, a visitor's arrival included. Over
 10,000 draws per side, no place came up twice running, every run of three used all three places,
 and each place got 33.3%.
 
@@ -1594,21 +1595,26 @@ looking like a pile:
 - **Its own stylesheet.** `gallery.html` used to load the exhibit's 22 KB stylesheet for three
   colours and a background. `css/gallery.css` now carries those itself, and the full-screen
   gradient background is gone: one less screen-sized surface.
-- **A fresh start every hour.** A browser left running for days creeps up in memory, and on a
-  1 GB machine that ends in a stall. Each screen reloads 60 to 65 minutes after it started, a
-  different few minutes each, so the four never go dark together. It won't reload within three
-  minutes of a visitor's picture arriving, since they're walking over to find it. It won't
-  reload unless the page can actually be fetched, because a reload that can't reach the server
-  is a browser error page that never retries. If either condition fails, it tries again a
-  minute later. Leaving hands the screen's pictures back to the server, so nothing is stranded.
+- **Nothing reloads the page.** It used to reload itself every hour, and whenever the server
+  forgot the screen. But a reload rebuilds everything from nothing, every picture fetched and
+  decoded again, on a machine already short of power, and a reload that can't reach the server
+  is a browser error page that never retries. Now, if the server forgets a screen,
+  `wallscreen.js` signs it back in on its next claim, and what's on screen stays up and rolls
+  over as usual. To start a screen afresh, reload it by hand or reboot the Pi.
 - **Pictures at the size they're shown.** A print here is drawn up to about 900 pixels wide on a
   1080p screen, so 1200 on the long edge is right for both the visitors' pictures (`WALL_EDGE`)
   and the curated set.
 
-The reload was checked on the production build: none in 20 minutes, exactly one in 70.
 **Test the gallery on the production build, not the dev server,** when the clock is being run
 forward. The dev server's live-reload client reloads the page when it thinks the server has
-gone, which fast-forwarded time makes it think. That reload looks exactly like the wall's own.
+gone, which fast-forwarded time makes it think.
+
+**Undervoltage on the Pis is the power supply, not the page.** A Pi 3B+ wants 5.1 V at 2.5 A.
+A TV's USB port, a phone charger or a long thin cable will all sag under load, and a Pi running
+Chromium will report undervoltage even on a page doing nothing. Check with
+`vcgencmd get_throttled`: `0x0` is healthy, and a non-zero value with bit 0 or bit 16 set
+means undervoltage now or since boot. The fix is the official supply, or one equal to it, on a
+short cable.
 
 ### Keeping the visitors' share
 

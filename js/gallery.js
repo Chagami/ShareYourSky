@@ -53,12 +53,6 @@ const WALL = {
   /** ...and this fraction of everything on the wall should be visitors' own. */
   communityShare: 0.25,
 
-  /**
-   * How long a visitor's new picture stays on top. With only six on the wall, it would otherwise
-   * be half buried within a couple of minutes — before its owner has walked over to find it.
-   */
-  pinFor: 5 * 60 * 1000,
-
   /** The black mount around every print, in pixels. */
   border: 9,
 
@@ -69,8 +63,11 @@ const WALL = {
 const wall = document.getElementById('wall')
 const empty = document.getElementById('empty')
 
+// Nothing on this page reloads it. A reload is a full page rebuilt from nothing — every picture
+// fetched and decoded again, on a Pi 3 already short of power — and one that cannot reach the
+// server is a browser error page that never retries. If the server forgets this screen,
+// wallscreen.js signs it back in on the next beat instead.
 const screen = joinWall({
-  onLost: () => location.reload(),
   onTrouble: (err) => say(`no allocator (${err.message}) — this screen may repeat its neighbours`),
 })
 
@@ -79,10 +76,9 @@ let pool = [] // curated pictures this screen holds and has not laid down yet
 let community = [] // the visitors' pictures, newest first
 let shown = new Set() // ids of visitors' pictures already on this wall
 let laid = { total: 0, community: 0 } // what is on the wall now, for keeping the share
-let pinned = null // the visitor's picture being kept on top, and until when
+let newest = null // the visitor's picture wearing the outline: the latest one shared
 let nextSide = Math.random() < 0.5 ? 'left' : 'right'
 let stacking = 0 // the z-order: every print lands above everything before it
-const PIN_Z = 1e6
 
 // ── where the next one lands ────────────────────────────────────────────────
 
@@ -182,13 +178,12 @@ function lay(item, kind) {
   return entry
 }
 
-/** Take the oldest prints off, never the one being kept on top. */
+/** Take the oldest prints off. */
 function trim() {
   const handBack = []
   while (prints.length > WALL.keep) {
-    const i = prints.findIndex((e) => e !== pinned?.entry)
-    if (i < 0) break
-    const [gone] = prints.splice(i, 1)
+    const gone = prints.shift()
+    if (gone === newest) newest = null
     gone.spinning?.cancel()
     gone.print.remove()
     laid.total--
@@ -206,7 +201,7 @@ function settle(entry) {
   entry.rect = r
   print.style.width = `${r.w}px`
   print.style.height = `${r.h}px`
-  print.style.zIndex = String(entry === pinned?.entry ? PIN_Z : entry.z)
+  print.style.zIndex = String(entry.z)
   print.style.transform = `translate(${r.x}px, ${r.y}px) rotate(${entry.tilt}deg)`
 }
 
@@ -222,7 +217,7 @@ function spin(entry, { from, scale }) {
       { transform: put(tilt, 1), opacity: 1 },
     ],
     {
-      duration: entry === pinned?.entry ? WALL.spin * 1.5 : WALL.spin,
+      duration: entry === newest ? WALL.spin * 1.5 : WALL.spin,
       easing: 'cubic-bezier(.2, .84, .25, 1)',
       fill: 'both',
     }
@@ -263,29 +258,20 @@ function caption(item) {
 // ── the newest visitor's picture ────────────────────────────────────────────
 
 /**
- * Keep a visitor's new picture on top for a while, and bring it in with a bigger turn.
+ * Mark a visitor's new picture, and bring it in with a bigger turn.
  *
- * Kept on top by stacking order alone: the curated pictures that follow still land, just under
- * it. When its time is up it takes its place in the pile like any other and gets covered.
+ * It is not held on top. It was, for five minutes, and that meant every picture laid in that
+ * time slid in *under* it — and after every reload an old visitor's picture was the one held
+ * there, so for five minutes an hour the whole wall was landing underneath somebody's photo
+ * from the day before. Every print now lands on top of everything before it, this one
+ * included; it is simply the newest when it arrives, and the pile covers it like any other.
  */
 function crown(entry) {
   if (!entry) return
-  const was = pinned?.entry
-  if (was && was !== entry) was.print.classList.remove('newest')
-  pinned = { entry, until: Date.now() + WALL.pinFor }
+  if (newest && newest !== entry) newest.print.classList.remove('newest')
+  newest = entry
   entry.print.classList.add('newest')
-  if (was && was !== entry) settle(was)
-  settle(entry)
   spin(entry, { from: entry.tilt - 380, scale: 0.4 })
-}
-
-function unpinIfDue() {
-  if (!pinned || Date.now() < pinned.until) return
-  const { entry } = pinned
-  pinned = null
-  entry.print.classList.remove('newest')
-  settle(entry)
-  trim()
 }
 
 // ── what goes up next ───────────────────────────────────────────────────────
@@ -309,7 +295,6 @@ function nextUp() {
 }
 
 async function tick() {
-  unpinIfDue()
   const up = nextUp()
   if (up) lay(up.item, up.kind)
   // Keep a few in hand, so the timer never waits on the network.
@@ -320,8 +305,7 @@ async function tick() {
 // ── a visitor shares something ──────────────────────────────────────────────
 
 /**
- * Straight onto the wall, ahead of the timer, and kept on top: the person who made it is walking
- * over to look.
+ * Straight onto the wall, ahead of the timer: the person who made it is walking over to look.
  *
  * The share is not rebalanced here the way the grid wall did it, by laying curated pictures down
  * straight after to dilute it. With six on the wall that buried the very picture it was for.
@@ -392,39 +376,5 @@ function say(message) {
   )
 }
 
-// ── an hour at a time ───────────────────────────────────────────────────────
-//
-// A browser left running for days creeps up in memory however tidy the page is, and on a Pi
-// with a gigabyte the creep ends in a stall. So each screen starts afresh every hour; the first
-// few go down again at once and the pile rebuilds from there. Leaving hands its pictures back
-// to the server (see wallscreen.js), so nothing is stranded.
-//
-// Three things it will not do:
-// - Reload into an error page. A reload that cannot reach the server is a browser error page,
-//   and that never retries — a dark screen until somebody walks over. So it checks the page can
-//   be fetched first, and if not, tries again in a minute.
-// - Wipe a picture somebody has just made. A visitor who has just shared is walking over to find
-//   it, so it waits until the newest one has been up for a few minutes.
-// - Go dark on all four screens at once. Each waits a different few minutes past the hour.
-const RELOAD_EVERY = 60 * 60 * 1000
-const RELOAD_SPREAD = 5 * 60 * 1000
-const RELOAD_QUIET = 3 * 60 * 1000
-let lastArrival = 0
-
-async function freshStart() {
-  if (Date.now() - lastArrival < RELOAD_QUIET) return setTimeout(freshStart, 60 * 1000)
-  try {
-    const res = await fetch(location.href, { cache: 'no-store' })
-    if (!res.ok) throw new Error(`${res.status}`)
-  } catch {
-    return setTimeout(freshStart, 60 * 1000)
-  }
-  location.reload()
-}
-setTimeout(freshStart, RELOAD_EVERY + Math.random() * RELOAD_SPREAD)
-
-subscribe((items) => {
-  if (items[0]?.id && !shown.has(items[0].id)) lastArrival = Date.now()
-  onPublished(items)
-})
+subscribe(onPublished)
 start()
