@@ -482,7 +482,14 @@ body[data-rot="270"] .framed { transform: translate(-50%, -50%) rotate(270deg) s
   grid-template-columns: minmax(0, 1fr);
   justify-items: center;
   width: min(90vw, 1300px);
+  /* The picture and the paragraph under it, centred on the screen as one group. Auto margins in
+     the step's flex column, so the second phase, which has no such margins, still starts at the
+     top. */
+  margin-block: auto;
 }
+/* ...and even padding above and below while it is, or the group is centred on a box that is
+   itself off centre. */
+.step[data-step="adjust"]:has(> .split[data-phase="ask"]) { padding-block: 3.5vh; }
 .split[data-phase="ask"] .channels { display: none; }
 .split[data-phase="ask"] .split-left { align-items: center; gap: 4vh; }
 .split[data-phase="ask"] .pic-col {
@@ -515,16 +522,28 @@ body[data-rot="270"] .framed { transform: translate(-50%, -50%) rotate(270deg) s
      height, which read as carelessness rather than as a pairing. */
   align-items: start;
 }
+/* The pictures, the explanation and the summary as one group, held together and centred on the
+   screen by the step. The summary is a row of its own under both columns. */
+.step[data-step="edit"] .split-parts { row-gap: 4vh; }
 .step[data-step="edit"] .split-left {
   align-items: center;
   gap: 2.4vh;
 }
 .step[data-step="edit"] .pic-col { width: min(100%, calc(42vh * var(--shot-ar))); }
+/* Twice the size they were: these two blocks are the whole of what the screen says. */
 .step[data-step="edit"] .story {
   max-width: 48ch;
   text-align: center;
-  font-size: clamp(0.95rem, 2.1vw, 2.2rem);
+  font-size: clamp(1.9rem, 4.2vw, 4.4rem);
   min-height: 0;
+}
+/* Centred on the page and as wide as it, so "In an instant, the camera combines these colors."
+   holds a single line at the size above. */
+.step[data-step="edit"] #storyAfter {
+  grid-column: 1 / -1;
+  justify-self: center;
+  max-width: none;
+  text-wrap: balance;
 }
 
 /* The three channels, stacked. Sized by height rather than by width: three portrait frames at
@@ -615,7 +634,10 @@ body[data-rot="270"] .framed { transform: translate(-50%, -50%) rotate(270deg) s
    nothing else says which is the one they are making. */
 .pic-title {
   margin: 0;
-  font-size: clamp(0.72rem, 1.5vw, 1.15rem);
+  /* A variable, so the adjust screen can line its charts up with the picture under this label
+     — and a line-height given outright, so that sum is exact. */
+  font-size: var(--pic-title-size, clamp(0.72rem, 1.5vw, 1.15rem));
+  line-height: 1.2;
   font-weight: 600;
   letter-spacing: 0.16em;
   text-transform: uppercase;
@@ -627,11 +649,14 @@ body[data-rot="270"] .framed { transform: translate(-50%, -50%) rotate(270deg) s
 
 /* The instruction over the spectra. It arrives with the first of them rather than with the
    column, so it is never a caption on an empty space. A heading rather than the small muted
-   label it was: on this screen it is the only thing telling a visitor what to do. */
+   label it was: on this screen it is the only thing telling a visitor what to do — so it runs
+   across both columns, centred on the page, at twice the size it had in the right one. */
 .channels-title {
-  align-self: center;
-  margin: 0 0 1.4vh;
-  font-size: clamp(1.2rem, 3vw, 3rem);
+  grid-column: 1 / -1;
+  justify-self: center;
+  margin: 0;
+  text-align: center;
+  font-size: clamp(2.4rem, 6vw, 6rem);
   font-weight: 700;
   letter-spacing: -0.02em;
   line-height: 1.1;
@@ -640,6 +665,55 @@ body[data-rot="270"] .framed { transform: translate(-50%, -50%) rotate(270deg) s
   transition: opacity 420ms linear;
 }
 .channels-title.in { opacity: 1; }
+.split[data-phase="ask"] .channels-title { display: none; }
+
+/* "colors", with the rainbow swept through it once every two seconds, left to right. The
+   gradient is two whole rainbows across a box twice the word's width, so moving it by one
+   word's width lands on the same colours and the loop has no seam. */
+.rainbow {
+  background-image: linear-gradient(90deg,
+    hsl(0, 95%, 62%), hsl(45, 95%, 58%), hsl(120, 80%, 55%), hsl(190, 90%, 58%),
+    hsl(250, 90%, 68%), hsl(310, 90%, 64%), hsl(360, 95%, 62%),
+    hsl(405, 95%, 58%), hsl(480, 80%, 55%), hsl(550, 90%, 58%),
+    hsl(610, 90%, 68%), hsl(670, 90%, 64%), hsl(720, 95%, 62%));
+  background-size: 200% 100%;
+  background-clip: text;
+  color: transparent;
+  animation: rainbow-swipe 2s linear infinite;
+}
+@keyframes rainbow-swipe {
+  from { background-position: 100% 0; }
+  to { background-position: 0% 0; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .rainbow { animation: none; }
+}
+
+/* The second phase of the adjust screen: the picture's top edge and the first chart's top edge
+   are the same line. The right column is pushed down by exactly the label over the picture and
+   the gap under it. The label is drawn in close to its picture rather than a whole column gap
+   above it. Bigger text all round, for reading from where a visitor stands. */
+.step[data-step="adjust"] { --pic-title-size: clamp(1rem, 2.2vw, 1.8rem); }
+.split[data-phase="tune"] { align-items: start; }
+.split[data-phase="tune"] .pic-title { margin-bottom: -1.8vh; }
+.split[data-phase="tune"] .channels { padding-top: calc(var(--pic-title-size) * 1.2 + 1.2vh); }
+.split[data-phase="tune"] .story { font-size: clamp(1.4rem, 3.2vw, 3.4rem); }
+.step[data-step="adjust"] .levels-compact .levels-head {
+  font-size: clamp(1rem, 1.6vw, 1.8rem);
+}
+.step[data-step="adjust"] .levels-compact .levels-dot { width: 0.6em; height: 0.6em; }
+
+/* The question that follows the visitor's first change. Larger and heavier than the paragraph
+   above it, because it is a question put to them rather than more explanation. */
+.notice-ask {
+  margin: 0;
+  font-size: clamp(1.8rem, 4.4vw, 4.8rem);
+  font-weight: 700;
+  line-height: 1.15;
+  letter-spacing: -0.025em;
+}
+.notice-ask:empty,
+.split[data-phase="ask"] .notice-ask { display: none; }
 
 /* ─── the question, and the answer ─── */
 
@@ -965,6 +1039,112 @@ body[data-rot="270"] .framed { transform: translate(-50%, -50%) rotate(270deg) s
   .wheel-arrow { animation: none; }
 }
 
+/* ─── the stars round the wheel ───
+
+   Behind everything on the screen: the field is first in the step and positioned, and the split
+   is positioned after it, so the picture and its paragraph paint over the field rather than the
+   other way round. js/main.js keeps the stars off the group in any case. */
+.starfield {
+  position: absolute;
+  inset: 0;
+  /* A star on the very edge must not make the step scrollable. */
+  overflow: hidden;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 700ms linear;
+}
+.starfield.on { opacity: 1; }
+.step[data-step="adjust"] > .split { position: relative; }
+
+/* A hard-edged dot, sized against the screen's width so the field reads the same at any size.
+   No glow: a soft halo on near black is the ramp the exhibit panel cannot hold still. Each star
+   carries its colour and brightness under every filter, and the field's data-f picks which. The
+   change takes about the length of the wheel's swing, so the sky and the glass arrive together. */
+.star {
+  position: absolute;
+  width: calc(var(--s) * 0.1vw);
+  aspect-ratio: 1;
+  margin: calc(var(--s) * -0.05vw) 0 0 calc(var(--s) * -0.05vw);
+  border-radius: 50%;
+  background-color: var(--c0);
+  opacity: var(--o0);
+  transition: opacity 700ms linear, background-color 700ms linear, transform 700ms var(--ease);
+}
+.star.covered { display: none; }
+/* A star the filter passes in full swells a little as well as taking the glass's colour. */
+.starfield[data-f="1"] .star { background-color: var(--c1); opacity: var(--o1); transform: scale(var(--k1)); }
+.starfield[data-f="2"] .star { background-color: var(--c2); opacity: var(--o2); transform: scale(var(--k2)); }
+.starfield[data-f="3"] .star { background-color: var(--c3); opacity: var(--o3); transform: scale(var(--k3)); }
+
+/* The readouts on three of the stars each colour filter picks out: a ring round the star, a
+   leader out to a short rule, and three lines of instrument text sitting on the rule. Thin, flat
+   white — hard edges, nothing soft, for the panel's sake. Only the filter in the gate has its
+   readouts up. They draw in once that filter's stars have changed and go quickly when it leaves:
+   a transition uses the timing of the state it is heading for, so the rules below set the slow
+   arrival and these set the quick exit. */
+.star-notes { position: absolute; inset: 0; }
+.note-lines {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+}
+.note-ring,
+.note-line {
+  fill: none;
+  stroke: rgba(255, 255, 255, 0.8);
+  stroke-width: 1.5;
+  /* pathLength="1" on each, so one dash the length of the whole path, offset by all of it, is
+     the path not drawn yet. */
+  stroke-dasharray: 1;
+  stroke-dashoffset: 1;
+  transition: stroke-dashoffset 220ms linear;
+}
+.note {
+  position: absolute;
+  display: flex;
+  flex-direction: column;
+  gap: 0.2em;
+  white-space: nowrap;
+  font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  font-size: clamp(0.72rem, 0.95vw, 1.3rem);
+  line-height: 1.25;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: rgba(255, 255, 255, 0.86);
+  opacity: 0;
+  transition: opacity 180ms linear;
+}
+/* The target's name, in the colour of the glass it is seen through. */
+.note-id { color: var(--acc); font-weight: 700; }
+
+.starfield[data-f="1"] .note-ring[data-f="1"],
+.starfield[data-f="2"] .note-ring[data-f="2"],
+.starfield[data-f="3"] .note-ring[data-f="3"] {
+  stroke-dashoffset: 0;
+  transition: stroke-dashoffset 420ms var(--ease) 500ms;
+}
+.starfield[data-f="1"] .note-line[data-f="1"],
+.starfield[data-f="2"] .note-line[data-f="2"],
+.starfield[data-f="3"] .note-line[data-f="3"] {
+  stroke-dashoffset: 0;
+  transition: stroke-dashoffset 620ms var(--ease) 760ms;
+}
+.starfield[data-f="1"] .note[data-f="1"],
+.starfield[data-f="2"] .note[data-f="2"],
+.starfield[data-f="3"] .note[data-f="3"] {
+  opacity: 1;
+  transition: opacity 320ms linear 1200ms;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .star { transition-duration: 200ms; }
+  .note-ring, .note-line, .note { transition-duration: 0ms !important; transition-delay: 0ms !important; }
+}
+body[data-fx="lite"] .starfield,
+body[data-fx="off"] .starfield { display: none; }
+
 /* ─── the Reality screen ─── */
 
 /* Two charts of the same question, one above the other so the shift between them is a shift
@@ -1022,10 +1202,15 @@ body[data-rot="270"] .framed { transform: translate(-50%, -50%) rotate(270deg) s
   bottom: 0;
   /* Clamped, so an answer at the very end of the scale still draws its full width instead of
      half of it disappearing past the edge of the well. */
-  left: clamp(1px, calc(var(--you, 0.5) * 100%), calc(100% - 1px));
-  width: 2px;
-  margin-left: -1px;
-  background: rgba(255, 255, 255, 0.75);
+  left: clamp(2px, calc(var(--you, 0.5) * 100%), calc(100% - 2px));
+  /* Solid white with a dark edge either side: the visitor's own answer is always one of the
+     counted ones, so this always lands on a bar, and a faint hairline vanishes into a pale one. */
+  width: 4px;
+  margin-left: -2px;
+  background: #fff;
+  box-shadow: 0 0 0 2px #05060a;
+  /* Above the bars, which are drawn on the canvas underneath it. */
+  z-index: 1;
 }
 /* The tag is centred on the line until that would take it outside the well, and then it slides
    back in by however much it needs — js/main.js measures that, because it depends on how wide
@@ -1039,7 +1224,8 @@ body[data-rot="270"] .framed { transform: translate(-50%, -50%) rotate(270deg) s
   border-radius: 999px;
   background: #fff;
   color: #05060a;
-  font-size: clamp(0.62rem, 1.2vw, 1.05rem);
+  /* Half as big again as it was, so it can be found from where the visitor stands. */
+  font-size: clamp(0.93rem, 1.8vw, 1.58rem);
   font-weight: 800;
   letter-spacing: 0.06em;
   text-transform: uppercase;
@@ -1056,14 +1242,66 @@ body[data-rot="270"] .framed { transform: translate(-50%, -50%) rotate(270deg) s
   margin-top: 0.9vh;
 }
 
+/* Which picture people shared: two wide bars in the same well as the charts above, each as tall
+   as its share of the larger, with its count in the label underneath. */
+.share-bars {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 3vw;
+}
+.share-well {
+  position: relative;
+  height: clamp(110px, 13vh, 300px);
+  border-radius: 14px;
+  background: var(--well);
+  box-shadow: inset 0 0 0 1px var(--line);
+  overflow: hidden;
+}
+.share-fill {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: calc(var(--share, 0) * 100%);
+  background: #c9ced6;
+}
+.share-bar[data-pick="edited"] .share-fill { background: var(--hot); }
+.share-n {
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+.share-label {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: 0.6em;
+  margin-top: 1vh;
+  font-size: clamp(0.95rem, 2.1vw, 2rem);
+  font-weight: 700;
+}
+.share-you {
+  padding: 0.2em 0.6em;
+  border-radius: 999px;
+  background: #fff;
+  color: #05060a;
+  /* The same size as the tags on the two charts above: 0.8 of the label is 1.6rem on the kiosk. */
+  font-size: 0.8em;
+  font-style: normal;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+.share-you[hidden] { display: none; }
+
 /* ─── the share question ─── */
 
 /* The picture across the screen, the question underneath it. This is the last and longest look
    a visitor gets at what they made, and it was previously sharing a row with the text at half
    the width — which read as an illustration to the question rather than the subject of it. */
 .step[data-step="confirm"] {
-  justify-content: center;
-  /* No side padding: the two reels run the full width of the screen, and a marquee that stops
+  /* The strip of wall at the top, and the pair centred in what is left under it. */
+  justify-content: flex-start;
+  /* No side padding: the reel runs the full width of the screen, and a marquee that stops
      short of the edges reads as a row of pictures rather than as a wall going past. */
   padding: 2vh 0;
   gap: 2.4vh;
@@ -1073,28 +1311,60 @@ body[data-rot="270"] .framed { transform: translate(-50%, -50%) rotate(270deg) s
   flex-direction: column;
   align-items: center;
   gap: 2.4vh;
+  margin-block: auto;
   padding: 0 5vw;
   min-height: 0;
   /* Never shrunk. A flex column short of room takes it from whatever will give, and what
      must not give is the visitor's photograph — squeezed, it stops being the shape of the
-     picture they actually took. The strips above and below are what yield instead. */
+     picture they actually took. The strip above is what yields instead. */
   flex: none;
 }
 
-/* The picture, with room above and below it for the wall it is about to join. It was 68vh when
-   it had the screen to itself; the two reels want 14vh each and the question needs its line. */
+/* The original on the left and the edited one on the right: before and after, in reading
+   order. Each column is exactly as wide as its picture, so the scale under it is too. */
+.confirm-pair {
+  display: flex;
+  justify-content: center;
+  align-items: flex-start;
+  gap: 4vw;
+}
+.confirm-col {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 1.6vh;
+  width: min(42vw, calc(40vh * var(--shot-ar)));
+  min-width: 0;
+}
+
+/* The picture, with room above it for the wall it is about to join. */
 .pic-hero {
-  width: min(66vw, calc(38vh * var(--shot-ar)));
+  width: 100%;
   /* .pic has no height of its own — every one of these gives itself a shape, because the
      visitor's photo and the nebula are different shapes and neither can be given the other's.
      Without this the box is zero pixels tall and all that renders is the hairline. */
   aspect-ratio: var(--shot-ar);
 }
 
+/* The two questions keep their room from the start, invisible until they are asked, so the
+   pictures do not jump upwards when they arrive. Full width, so the scale under each picture
+   is as wide as the picture. */
+.confirm-col .verdict {
+  display: block;
+  visibility: hidden;
+  width: 100%;
+  margin-top: 0.6vh;
+  text-align: center;
+}
+.confirm-col .verdict.in { visibility: visible; }
+.confirm-col .real-ask { font-size: clamp(1.3rem, 3.6vw, 4.2rem); }
+/* Which is which, at a size that can be read from where the visitor stands. */
+.confirm-col { --pic-title-size: clamp(1rem, 2.4vw, 2.2rem); }
+
 .story-ask {
-  /* .story reserves 6.5em so paragraphs arriving in sequence do not shunt the page around.
-     There is only ever one line here, and at this size that reservation is half a screen. */
-  min-height: 0;
+  /* Two lines held open, whatever is in them, so the question arriving after both answers does
+     not shunt the pictures up the screen. */
+  min-height: 2.36em;
   max-width: 44ch;
   font-size: clamp(1.4rem, 4.2vw, 3.9rem);
   font-weight: 600;
@@ -1183,7 +1453,10 @@ body[data-rot="270"] .framed { transform: translate(-50%, -50%) rotate(270deg) s
   border-top: 1px solid var(--line);
 }
 
-.dock-action { display: flex; align-items: center; justify-content: center; min-height: 1px; }
+.dock-action { display: flex; align-items: center; justify-content: center; gap: 2.4vw; min-height: 1px; }
+/* Three answers to the share question side by side: narrower than a lone button, so all three
+   fit across the dock. */
+body[data-step="confirm"] .dock .btn-lg { padding-inline: 1.6em; }
 .dock-action > [hidden] { display: none !important; }
 
 /* Two buttons that are really one button at two moments: `Next` brings the colours up, and

@@ -86,14 +86,6 @@
           <canvas id="photoB" class="photo"></canvas>
         </div>
         <p class="story" id="story"></p>
-        <p class="story" id="storyAfter"></p>
-        <!-- The first time the question is asked: of the picture the camera made, before the
-             visitor has touched anything. Its own block rather than the last line of the
-             paragraph above, and the scale inside it is built by js/main.js from the template
-             at the foot of this file. -->
-        <div class="verdict" id="editVerdict">
-          <p class="real-ask"></p>
-        </div>
       </div>
 
       <!-- The same light, taken apart. Each one arrives at the moment its name lights in the
@@ -104,6 +96,10 @@
         <figure class="chan-layer" data-ch="1"><canvas class="chan-img"></canvas></figure>
         <figure class="chan-layer" data-ch="2"><canvas class="chan-img"></canvas></figure>
       </div>
+
+      <!-- The summary, across the foot of the screen and centred on it, under both columns:
+           it is about the picture and its three parts together. -->
+      <p class="story" id="storyAfter"></p>
     </div>
 
     <!-- The copies that fly from a layer into the frame. Over the whole step rather than inside
@@ -120,7 +116,14 @@
        The charts are the same controls over the same numbers, but with the colour each
        channel's light is *shown* as now loose. Nothing is offered until they have moved one. -->
   <section class="step" data-step="adjust">
+    <!-- A field of stars round the picture, built by js/main.js. Each has a temperature, and so
+         a colour, and the filter in the wheel's gate decides which of them come through — the
+         same sky, a different population of it at every filter. -->
+    <div class="starfield" id="starfield" aria-hidden="true"></div>
     <div class="split" id="adjustSplit" data-phase="ask">
+      <!-- Across both columns in the second phase, over the picture and the charts alike. The
+           word "colors" carries the rainbow that sweeps through it. -->
+      <h2 class="channels-title" id="slidersTitle">Try changing the <span class="rainbow">colors</span></h2>
       <div class="split-left">
         <h2 class="pic-title">Your final image</h2>
         <div class="pic pic-col" id="adjustPic">
@@ -138,20 +141,10 @@
           </div>
         </div>
         <p class="story" id="adjustStory"></p>
-        <!-- Arrives only once a colour has actually been changed, so the question is asked of
-             something the visitor has just done rather than of something they were shown. A
-             block of its own, set apart from the paragraph above it: it is not the next
-             sentence of that explanation, it is the thing the whole exhibit is asking.
-
-             The figure is dragged between No and Yes and where it is left is the answer. It
-             starts in the middle, undecided, and js/main.js reports it to api/answer when the
-             visitor leaves this screen — but only if they moved it. -->
-        <div class="verdict" id="verdict">
-          <p class="real-ask"></p>
-        </div>
+        <!-- Arrives with the visitor's first change, whatever they changed. -->
+        <p class="notice-ask" id="noticeAsk"></p>
       </div>
       <div class="channels" id="adjustChannels">
-        <h2 class="channels-title" id="slidersTitle">Try changing the colors</h2>
         <div class="channel" data-ch="0"><div class="channel-editor"></div></div>
         <div class="channel" data-ch="1"><div class="channel-editor"></div></div>
         <div class="channel" data-ch="2"><div class="channel-editor"></div></div>
@@ -159,22 +152,45 @@
     </div>
   </section>
 
-  <!-- 4 ─ SHARE? ─────────────────────────────────────────────────────────── -->
-  <!-- The one question the exhibit asks that has a wrong answer, so it gets a screen of its own
-       rather than a button on a screen about something else: the picture they made, and Yes or
-       No. No starts the whole thing again; nothing is kept. -->
-  <!-- Two strips of the wall itself, running opposite ways, so the question is asked with the
-       thing it is about already on screen. Decorative until the answer is yes, at which point
-       a space opens in one of them and the visitor's picture turns into it. -->
+  <!-- 4 ─ REAL? AND SHARE? ──────────────────────────────────────────────────── -->
+  <!-- The photograph as the camera made it and as the visitor left it, side by side, each with
+       "Is this image real?" underneath — the question asked of the pair, where the difference
+       between them is on screen. Once both have been answered, the share question: share the
+       edited one, the original, or neither. Neither starts the whole thing again; nothing is
+       kept.
+
+       Each figure is dragged between No and Yes and where it is left is the answer. It starts
+       in the middle, undecided, and js/main.js reports it to api/answer when the visitor leaves
+       this screen — but only if they moved it. The scales are built from the template at the
+       foot of this file. -->
+  <!-- A strip of the wall itself, so the question is asked with the thing it is about already
+       on screen. Decorative until a picture is shared, when a space opens in it and the
+       visitor's picture turns into it. -->
   <section class="step" data-step="confirm">
     <div class="reel" id="reelTop" aria-hidden="true"><div class="reel-track"></div></div>
     <div class="confirm-mid">
-      <div class="pic pic-hero" id="confirmPic">
-        <canvas id="confirmCanvas" class="photo"></canvas>
+      <div class="confirm-pair">
+        <div class="confirm-col" id="originalCol">
+          <h2 class="pic-title">Original</h2>
+          <div class="pic pic-hero" id="originalPic">
+            <canvas id="originalCanvas" class="photo"></canvas>
+          </div>
+          <div class="verdict" id="editVerdict">
+            <p class="real-ask"></p>
+          </div>
+        </div>
+        <div class="confirm-col" id="editedCol">
+          <h2 class="pic-title">Edited</h2>
+          <div class="pic pic-hero" id="confirmPic">
+            <canvas id="confirmCanvas" class="photo"></canvas>
+          </div>
+          <div class="verdict" id="verdict">
+            <p class="real-ask"></p>
+          </div>
+        </div>
       </div>
       <p class="story story-ask" id="confirmAsk"></p>
     </div>
-    <div class="reel" id="reelBottom" aria-hidden="true"><div class="reel-track"></div></div>
   </section>
 
   <!-- 4 ─ REALITY ──────────────────────────────────────────────────────── -->
@@ -211,6 +227,25 @@
         </div>
         <div class="answer-base"></div>
         <div class="scale-ends"><span>No</span><span>Yes</span></div>
+      </figure>
+
+      <!-- Which of the two pictures people chose to put on the wall. Two bars, drawn by
+           js/main.js from the same summary. -->
+      <figure class="answer-chart share-chart" data-stage="shared">
+        <figcaption>
+          <b>Which picture people shared</b>
+          <span class="answer-count"></span>
+        </figcaption>
+        <div class="share-bars">
+          <div class="share-bar" data-pick="edited">
+            <div class="share-well"><i class="share-fill"></i></div>
+            <span class="share-label">Edited <span class="share-n"></span> <em class="share-you" hidden>you</em></span>
+          </div>
+          <div class="share-bar" data-pick="original">
+            <div class="share-well"><i class="share-fill"></i></div>
+            <span class="share-label">Original <span class="share-n"></span> <em class="share-you" hidden>you</em></span>
+          </div>
+        </div>
       </figure>
     </div>
   </section>
@@ -252,8 +287,9 @@
       <button id="coloursBtn" class="btn btn-lg">Next</button>
       <button id="submitBtn" class="btn btn-lg">Share my sky</button>
     </span>
-    <button id="noBtn" class="btn ghost btn-lg">No</button>
-    <button id="yesBtn" class="btn btn-lg">Yes</button>
+    <button id="noBtn" class="btn ghost btn-lg">Don’t share</button>
+    <button id="yesBtn" class="btn btn-lg">Share Edited</button>
+    <button id="originalBtn" class="btn btn-lg">Share Original</button>
     <button id="resetBtn" class="btn ghost">Start again</button>
   </div>
 

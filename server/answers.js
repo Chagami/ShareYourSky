@@ -8,7 +8,8 @@
 //
 //   POST   api/answer          one { stage, value }; appends a row
 //   GET    api/answer          the whole file, as a download for whoever runs the exhibit
-//   GET    api/answer/summary  both stages binned across 0..1, for the Reality screen
+//   GET    api/answer/summary  both stages binned across 0..1, and the share split, for the
+//                              Reality screen
 //   DELETE api/answer          start a fresh file (the old one is gone for good)
 //
 // One row per visitor per question, written when they leave that screen, and only if they
@@ -27,6 +28,11 @@ const HEADER = 'time,stage,value\n'
 // Which picture an answer is about. `unedited` is the camera's own; `edited` is after the
 // visitor has changed its colours.
 const STAGES = ['unedited', 'edited']
+
+// Not a question but a choice: which of the two pictures a visitor put on the wall. Kept in the
+// same file, as stage `shared` with 1 for the edited picture and 0 for the original, so the
+// download is still one table. Somebody who shared neither writes nothing.
+const SHARED = 'shared'
 
 // How many buckets the Reality screen's charts are drawn from. Fine enough that a cluster round
 // one answer shows as a cluster, coarse enough that a quiet morning is not a row of single bars.
@@ -94,7 +100,7 @@ export function answerLog({ dir = 'data', file = 'answers.csv' } = {}) {
       if (cells.length < 2 || cells[0] === 'time') continue
       const stage = cells.length > 2 ? cells[1] : 'edited'
       const value = Number(cells.at(-1))
-      if (!STAGES.includes(stage) || !Number.isFinite(value)) continue
+      if (!(STAGES.includes(stage) || stage === SHARED) || !Number.isFinite(value)) continue
       out.push({ stage, value: Math.min(1, Math.max(0, value)) })
     }
     return out
@@ -104,7 +110,14 @@ export function answerLog({ dir = 'data', file = 'answers.csv' } = {}) {
   function summary() {
     const counts = Object.fromEntries(STAGES.map((k) => [k, new Array(BINS).fill(0)]))
     const totals = Object.fromEntries(STAGES.map((k) => [k, 0]))
+    const shared = { edited: 0, original: 0 }
+    totals[SHARED] = 0
     for (const { stage, value } of rows()) {
+      if (stage === SHARED) {
+        shared[value >= 0.5 ? 'edited' : 'original']++
+        totals[SHARED]++
+        continue
+      }
       // The very top of the range belongs to the last bucket rather than to one past the end.
       counts[stage][Math.min(BINS - 1, Math.floor(value * BINS))]++
       totals[stage]++
@@ -113,7 +126,7 @@ export function answerLog({ dir = 'data', file = 'answers.csv' } = {}) {
       const of = rows().filter((r) => r.stage === k)
       return of.length ? of.reduce((a, r) => a + r.value, 0) / of.length : null
     }
-    return { bins: BINS, counts, totals, means: Object.fromEntries(STAGES.map((k) => [k, mean(k)])) }
+    return { bins: BINS, counts, totals, shared, means: Object.fromEntries(STAGES.map((k) => [k, mean(k)])) }
   }
 
   async function handle(req, res, next) {
@@ -149,8 +162,8 @@ export function answerLog({ dir = 'data', file = 'answers.csv' } = {}) {
         return json(res, 400, { error: 'expected JSON' })
       }
       const stage = String(sent?.stage ?? '')
-      if (!STAGES.includes(stage)) {
-        return json(res, 400, { error: `stage must be one of ${STAGES.join(', ')}` })
+      if (!STAGES.includes(stage) && stage !== SHARED) {
+        return json(res, 400, { error: `stage must be one of ${[...STAGES, SHARED].join(', ')}` })
       }
       const value = Number(sent?.value)
       // Not `!value`: zero is the whole of one end of the scale, and it is an answer.

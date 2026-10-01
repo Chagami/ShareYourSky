@@ -30,6 +30,7 @@ import {
   showing as perfShowing,
 } from './perf.js'
 import { publish as publishToWall } from './store.js'
+import shutterSoundUrl from '../audio/camera-shutter.mp3'
 
 // ── the knobs you'll actually want to turn ──────────────────────────────────
 
@@ -61,12 +62,12 @@ const TIMELINE = {
   spinOut: 950, // yes: away to the right, when there is no wall to join
   feather: 2600, // no: down, slowly, the long way
 
-  // ...and yes, when there is. The two strips stop, a space opens, the picture turns into it.
-  reelStop: 460, // both strips easing to a halt
+  // ...and a share, when there is. The strip stops, a space opens, the picture turns into it.
+  reelStop: 460, // the strip easing to a halt
   reelGapOpen: 540, // a space opening in one of them
   reelJoin: 1150, // the picture turning down into that space
   reelSettle: 480, // a beat with it sitting there, one of the wall
-  reelZoom: 950, // and both strips away to the right
+  reelZoom: 950, // and the strip away to the right
 
   // Step 3, which asks its question and then hands back the controls.
   phaseSwap: 720, // the picture moving aside to make room for the charts
@@ -144,6 +145,7 @@ const adjustSplit = $('adjustSplit')
 const adjustPic = $('adjustPic')
 const adjustCanvas = $('adjustCanvas')
 const adjustStoryEl = $('adjustStory')
+const noticeAsk = $('noticeAsk')
 const adjustChannels = $('adjustChannels')
 const realityLead = $('realityLead')
 const realityCharts = $('realityCharts')
@@ -155,6 +157,7 @@ const coloursBtn = $('coloursBtn')
 const submitBtn = $('submitBtn')
 const noBtn = $('noBtn')
 const yesBtn = $('yesBtn')
+const originalBtn = $('originalBtn')
 const resetBtn = $('resetBtn')
 const slidersTitle = $('slidersTitle')
 const filterWheel = $('filterWheel')
@@ -164,11 +167,16 @@ const scaleTpl = $('scaleTpl')
 const confirmAsk = $('confirmAsk')
 const confirmPic = $('confirmPic')
 const confirmCanvas = $('confirmCanvas')
+const originalPic = $('originalPic')
+const originalCanvas = $('originalCanvas')
+const originalCol = $('originalCol')
+const editedCol = $('editedCol')
 const liveCrop = $('liveCrop')
 const standIn = $('standIn')
 const reelTop = $('reelTop')
-const reelBottom = $('reelBottom')
-const DOCK = [shutter, nextBtn, coloursBtn, submitBtn, noBtn, yesBtn, resetBtn]
+const DOCK = [shutter, nextBtn, coloursBtn, submitBtn, noBtn, yesBtn, originalBtn, resetBtn]
+// The three answers to the share question, in the order they sit in the dock.
+const SHARE_BTNS = [noBtn, yesBtn, originalBtn]
 
 /**
  * The four steps, in order. Each owns one screen and one action in the dock.
@@ -189,7 +197,7 @@ const STEPS = [
   { id: 'camera', action: ['shutter'], mark: 0 },
   { id: 'edit', action: ['nextBtn'], mark: 0 },
   { id: 'adjust', action: ['coloursBtn', 'submitBtn'], mark: 1 },
-  { id: 'confirm', action: ['noBtn', 'yesBtn'], mark: 2 },
+  { id: 'confirm', action: ['noBtn', 'yesBtn', 'originalBtn'], mark: 2 },
   { id: 'reality', action: ['resetBtn'], mark: 3 },
 ]
 const STEP_IDS = STEPS.map((s) => s.id)
@@ -297,12 +305,9 @@ function goToStep(id, { animate = true, blob = true } = {}) {
   // picture out of. Measured now, because a step that is no longer current has no rectangle.
   flightFrom = HERO[step()]?.()?.getBoundingClientRect() ?? null
 
-  // Leaving a screen that asked is the moment its answer is final, however it is left —
+  // Leaving the screen that asked is the moment its answers are final, however it is left —
   // pressing on, or the exhibit giving up and starting again with nobody there.
-  if (step() !== id) {
-    if (step() === 'edit') editVerdict.send()
-    if (step() === 'adjust') adjustVerdict.send()
-  }
+  if (step() !== id && step() === 'confirm') sendVerdicts()
 
   stepIndex = i
   document.body.dataset.step = id
@@ -430,7 +435,11 @@ new ResizeObserver(() => {
   moveBlob(stepIndex, { animate: false })
   // The wheel is placed from the photograph's measured box, so a window that changes shape
   // has to have it placed again.
-  if (wheelLive) placeWheel()
+  if (wheelLive) {
+    placeWheel()
+    clearStarsOffPicture()
+    layoutNotes()
+  }
 }).observe(stepsBar)
 
 function setAspect(w, h) {
@@ -1105,6 +1114,17 @@ function runQueuedDraw() {
 /** A handle moved: mark it and let the next frame draw it. */
 function onLevelsChanged(index) {
   queueDraw(index)
+  if (step() === 'adjust') askWhatTheyNotice()
+}
+
+// Asked once the visitor has changed something on the colours screen — a colour or a handle,
+// either counts — so it is asked of what they have just done.
+const NOTICE_ASK = 'What do you notice?'
+
+function askWhatTheyNotice() {
+  if (noticeAsk.childNodes.length) return
+  noticeAsk.textContent = NOTICE_ASK
+  rise(noticeAsk)
 }
 
 
@@ -1333,14 +1353,14 @@ function showCameraFault(err) {
     NoFramesError:
       'The camera opened but sent no picture. Add ?res=1080 to the address to stop asking it for 4K.',
   }
-  // What a visitor reads. The second sentence waits for the stand-in to actually load, because
-  // offering an example photograph that is not on screen is worse than saying nothing.
+  // What a visitor reads: an invitation to use the example, and nothing about the fault. It
+  // waits for the stand-in to actually load, because offering an example photograph that is not
+  // on screen is worse than saying nothing.
   const said = document.createElement('span')
   said.className = 'err-public'
-  said.textContent = 'Camera is undergoing maintenance.'
   const example = document.createElement('span')
   example.id = 'camErrExample'
-  example.textContent = ' Try sharing your sky with this example astrophotograph!'
+  example.textContent = 'Try sharing your sky with this example astrophotograph!'
   example.hidden = !standingIn
   said.append(example)
 
@@ -1423,6 +1443,14 @@ const STEP_ENTER = {
     lit = -1
     drawUpTo(-1)
 
+    // Both paragraphs in place before anything moves, invisible, so the screen is laid out at
+    // its finished size. The group is centred, and text arriving into empty paragraphs would
+    // grow it and shove the photograph up the screen just after it has landed.
+    for (const [el, segments] of [[storyEl, STORY], [storyAfterEl, STORY_AFTER]]) {
+      writeSegments(el, segments)
+      el.style.opacity = '0'
+    }
+
     await flyInto(photoStack, TIMELINE.photoFlight)
     await wait(t(TIMELINE.storyLeadIn))
     await revealStory()
@@ -1440,6 +1468,10 @@ const STEP_ENTER = {
     coloursBtn.classList.add('waiting')
     coloursBtn.disabled = false
     drawAdjust()
+    // The paragraph in place before the picture moves, invisible, so the centred group already
+    // has its finished height and the picture does not jump when the text fades in.
+    writeSegments(adjustStoryEl, ADJUST_STORY)
+    adjustStoryEl.style.opacity = '0'
 
     await flyInto(adjustPic, TIMELINE.photoFlight)
     // The wheel starts turning while the sentences are being read, not after them.
@@ -1455,19 +1487,24 @@ const STEP_ENTER = {
     coloursPop = pop(coloursBtn)
   },
 
-  // The picture they made, and the one question in the piece with a wrong answer.
+  // The picture they made beside the one the camera made, "Is this image real?" asked of each,
+  // and then the one question in the piece with a wrong answer.
   async confirm() {
     if (!frame) return
     confirmAsk.replaceChildren()
-    confirmPic.style.visibility = ''
-    yesBtn.disabled = false
-    noBtn.disabled = false
-    // The answers wait for the question. They are in the dock at the foot of the screen, which
-    // is below the text either way, and arriving with it would offer a choice before it has
-    // been put.
-    yesBtn.classList.add('waiting')
-    noBtn.classList.add('waiting')
+    editVerdict.clear()
+    adjustVerdict.clear()
+    for (const el of [confirmPic, originalPic, originalCol, editedCol]) el.style.visibility = ''
+    // The answers wait for both questions. They are in the dock at the foot of the screen, and
+    // arriving early would offer a choice before the pictures have been looked at.
+    for (const btn of SHARE_BTNS) {
+      btn.disabled = false
+      btn.classList.add('waiting')
+    }
     drawComposite(confirmCanvas, viewFrame ?? frame, lutsNow(), tints())
+    drawComposite(originalCanvas, viewFrame ?? frame, originalLuts(), ORIGINAL_TINTS)
+    // Hidden until it arrives, so the edited one spins in alone.
+    originalPic.style.visibility = 'hidden'
 
     // The wall goes up first, so the picture arrives onto something already moving rather than
     // having a wall appear underneath it afterwards.
@@ -1476,25 +1513,22 @@ const STEP_ENTER = {
     stopReels()
     if (pool.length) {
       const deck = [...pool].sort(() => Math.random() - 0.5)
-      const each = Math.min(REEL.perReel, Math.max(1, Math.floor(deck.length / 2)))
-      fillReel(reelTop, -1, deck.slice(0, each))
-      fillReel(reelBottom, 1, deck.slice(each, each * 2))
+      fillReel(reelTop, -1, deck.slice(0, REEL.perReel))
       startReels()
     } else {
       reelTop.hidden = true
-      reelBottom.hidden = true
     }
 
     await spinInFromLeft(confirmPic, TIMELINE.spin)
     if (step() !== 'confirm') return
+    // ...and the camera's own picture beside it, for comparison.
+    originalPic.style.visibility = ''
+    rise(originalPic)
     await wait(t(TIMELINE.storyLeadIn))
-    await fadeIn(confirmAsk, CONFIRM_ASK)
     if (step() !== 'confirm') return
 
-    yesBtn.classList.remove('waiting')
-    noBtn.classList.remove('waiting')
-    pop(noBtn)
-    pop(yesBtn, 90)
+    editVerdict.show()
+    adjustVerdict.show()
   },
 
   // Not about the visitor's picture at all. It is about the room: everyone who stands here is
@@ -1527,6 +1561,38 @@ function nextStep() {
 
 // ── 1. camera ───────────────────────────────────────────────────────────────
 
+// The shutter sound, timed so that it ends as the flash does. It is longer than the flash, so it
+// starts during the countdown, and the flash is then fired off the sound rather than the other
+// way round: the photograph can be held up waiting for the camera to reach its full size, and a
+// flash that kept its own time would drift away from a sound that had already started.
+const FLASH_MS = 460 // .flash.go's animation in app.css
+const SHUTTER_FALLBACK_S = 1.512 // the file's length, until the browser has read it for itself
+const shutterSound = new Audio(shutterSoundUrl)
+shutterSound.preload = 'auto'
+// When the sound now playing will end, on the performance clock. 0 when none is. A guess when
+// play() is asked for, corrected once the sound is actually coming out, which is a few tens of
+// milliseconds later.
+let shutterEndsAt = 0
+shutterSound.addEventListener('playing', () => {
+  if (!shutterEndsAt) return
+  shutterEndsAt = performance.now() + (shutterSound.duration - shutterSound.currentTime) * 1000
+})
+
+function playShutter() {
+  const length = Number.isFinite(shutterSound.duration) ? shutterSound.duration : SHUTTER_FALLBACK_S
+  shutterSound.currentTime = 0
+  shutterEndsAt = performance.now() + length * 1000
+  // Refused without a gesture on the page, which only a ?step= jump can manage. Silence then.
+  shutterSound.play().catch(() => {
+    shutterEndsAt = 0
+  })
+}
+
+function stopShutter() {
+  shutterSound.pause()
+  shutterEndsAt = 0
+}
+
 async function runCountdown() {
   // A borrowed picture counts as something to photograph; without the second half of this the
   // shutter on a camera-less machine looked alive and did nothing at all.
@@ -1535,10 +1601,20 @@ async function runCountdown() {
   // Up to 4K now, so the switch happens while the visitor is still counting, not after.
   primePhotoSize()
 
-  for (let n = TIMELINE.countdownFrom; n > 0; n--) {
+  // The sound starts when it has to for its end to meet the end of the flash, if the flash
+  // fires the moment the count runs out — which it does unless the camera keeps it waiting.
+  const length = Number.isFinite(shutterSound.duration) ? shutterSound.duration : SHUTTER_FALLBACK_S
+  const tick = t(TIMELINE.countdownTick)
+  const count = TIMELINE.countdownFrom * tick
+  later(Math.max(0, count + FLASH_MS - length * 1000), playShutter)
+
+  // Each number on the clock from when the count began, not from the last one: five waits in a
+  // row each start a little late, and that adds up to a flash audibly behind its sound.
+  const began = performance.now()
+  for (let n = TIMELINE.countdownFrom, k = 1; n > 0; n--, k++) {
     countdownEl.textContent = String(n)
     pop(countdownEl)
-    await wait(t(TIMELINE.countdownTick))
+    await wait(Math.max(0, began + k * tick - performance.now()))
   }
   countdownEl.textContent = ''
   takePhoto()
@@ -1548,6 +1624,14 @@ async function takePhoto() {
   // The photograph waits for the switch up to its size, if it has not finished — usually it
   // has, a countdown being long enough to reopen a camera in.
   if (!standingIn) await primePhotoSize()
+
+  // The flash ends with the sound: fired as long before the sound's end as the flash lasts. A
+  // camera slow enough to have kept the photograph past that point gets its flash straight away.
+  if (shutterEndsAt) {
+    const lead = shutterEndsAt - FLASH_MS - performance.now()
+    shutterEndsAt = 0
+    if (lead > 0) await wait(lead)
+  }
 
   flash.classList.remove('go')
   void flash.offsetWidth
@@ -1670,6 +1754,254 @@ const WHEEL_STEP = 360 / FILTERS.length
 const WHEEL_SWING = 900 // the swing from one filter to the next; matches the CSS transition
 const WHEEL_WAIT = 4200 // how long the arrows get on their own before the wheel demonstrates
 const WHEEL_DWELL = 3400 // and how long each filter then sits in the gate
+// How much of the photograph the filter in the gate covers, by area. It was a quarter of the
+// width at the widest point of the arc, which came to about a sixth of the picture.
+const WHEEL_COVER = 0.3
+
+/**
+ * How far into the picture the arc has to reach for the filter to cover `cover` of it.
+ *
+ * The filter in the gate is a circular segment whose chord is the picture's full height, so its
+ * area follows from how deep it reaches. That has no closed-form inverse; halving the interval
+ * forty times is far more precise than a pixel.
+ */
+function bandForCover(w, h, cover) {
+  const half = h / 2
+  const area = (band) => {
+    const rad = (band * band + half * half) / (2 * band)
+    return rad * rad * Math.acos((rad - band) / rad) - (rad - band) * half
+  }
+  let lo = 1
+  let hi = w
+  for (let i = 0; i < 40; i++) {
+    const mid = (lo + hi) / 2
+    if (area(mid) < cover * w * h) lo = mid
+    else hi = mid
+  }
+  return lo
+}
+
+// ── the stars round the wheel ──────────────────────────────────────
+//
+// A nod to what the filters are for, without claiming anything about the visitor's picture: a
+// field of stars in the space round it, each with a temperature and so a colour, and the filter
+// in the gate decides which of them come through. Through RGB every star shows in its own colour,
+// as a camera takes them all at once. Through Red the cool stars stand out and the hot ones drop
+// away, through Blue the reverse, and through Green the Sun-like ones in between — the Sun's
+// light peaks in the green. The same sky, a different population of it at every filter, which is
+// what isolating data with a filter means.
+//
+// Drawn, not photographed, and true as far as it goes: real stars are these three colours, in
+// roughly these numbers, and a filter passes the ones that are bright in its band. There are no
+// green stars. Under the Green filter it is the white-yellow ones, tinted by the glass.
+//
+// Kept steady and hard-edged for the exhibit panel's sake: no twinkle, no glow, and a star that a
+// filter does not pass goes out entirely rather than to a faint grey — near black is exactly
+// where that panel shimmers.
+const STAR_COUNT = 300
+const STAR_KINDS = [
+  // `flux` is how bright each kind is in the red, green and blue bands, as a share of its best.
+  // `temp` is the range of surface temperatures, in kelvin, that gives a star that colour.
+  { share: 0.38, natural: '#ffc49a', flux: [1, 0.55, 0.2], temp: [2800, 4800] }, // cool: red and orange
+  { share: 0.37, natural: '#fff3e2', flux: [0.7, 1, 0.7], temp: [5300, 6800] }, // Sun-like: white and yellow
+  { share: 0.25, natural: '#c4d8ff', flux: [0.25, 0.55, 1], temp: [9500, 24000] }, // hot: blue-white
+]
+/** What a filter makes of a star that bright in its band: fully lit, partly lit, or not at all. */
+const passed = (flux) => (flux >= 0.9 ? 1 : flux >= 0.65 ? 0.6 : 0)
+// How much a star the filter passes in full swells, so the ones it picks out read as picked out.
+const STAR_PICKED = 1.45
+
+const starfield = $('starfield')
+const stars = []
+
+/** Scatter the stars, once. Each carries its look under every filter, so a swing is just a class. */
+function buildStars() {
+  if (stars.length) return
+  for (let n = 0; n < STAR_COUNT; n++) {
+    let pick = Math.random()
+    const kind = STAR_KINDS.find((k) => (pick -= k.share) < 0) ?? STAR_KINDS[0]
+    // Most stars faint, a few bright, as in any patch of sky. Never so faint as to sit in the
+    // panel's near-black range.
+    const glow = 0.72 + 0.28 * Math.random() ** 3
+    const el = document.createElement('i')
+    el.className = 'star'
+    const x = Math.random()
+    const y = Math.random()
+    const s = 1.5 + 2 * Math.random() ** 2.5
+    el.style.left = `${(x * 100).toFixed(2)}%`
+    el.style.top = `${(y * 100).toFixed(2)}%`
+    el.style.setProperty('--s', s.toFixed(2))
+    el.style.setProperty('--c0', kind.natural)
+    el.style.setProperty('--o0', glow.toFixed(2))
+    const through = kind.flux.map(passed)
+    CHANNELS.forEach((ch, i) => {
+      el.style.setProperty(`--c${i + 1}`, ch.accent)
+      el.style.setProperty(`--o${i + 1}`, (glow * through[i]).toFixed(2))
+      el.style.setProperty(`--k${i + 1}`, through[i] === 1 ? STAR_PICKED : 1)
+    })
+    starfield.append(el)
+    const [lo, hi] = kind.temp
+    const temp = Math.round((lo + (hi - lo) * Math.random()) / 100) * 100
+    stars.push({ el, n, x, y, s, glow, through, temp })
+  }
+  starfield.append(starNotes)
+}
+
+// ── what the readouts say about a star ──
+//
+// Engineering-style callouts on three of the stars each colour filter picks out. Made up only
+// where nothing real could be meant: the catalogue numbers are this field's own, in a form no
+// real catalogue uses. Everything else is true of the star as drawn — its temperature is the one
+// that gave it its colour, the class is what that temperature is called, the band is the filter's,
+// and the signal is how bright the star is drawn through it.
+const NOTES_PER_FILTER = 3
+const starNotes = document.createElement('div')
+starNotes.className = 'star-notes'
+
+/** The Morgan–Keenan class a temperature falls in. */
+const spectralClass = (k) => (k < 3700 ? 'M' : k < 5200 ? 'K' : k < 6000 ? 'G' : k < 7500 ? 'F' : k < 10000 ? 'A' : 'B')
+
+function noteLines(star, f) {
+  // 7919 is prime to 9000, so every star in the field gets a different number.
+  const id = `SKY-${1000 + ((star.n * 7919) % 9000)}`
+  const filter = FILTERS[f]
+  return [
+    `◆ TGT ${id}`,
+    `CLASS ${spectralClass(star.temp)} · ${star.temp.toLocaleString('en-US')} K`,
+    `${filter.name} ${filter.sub} · SIG ${star.glow.toFixed(2)}`,
+  ]
+}
+
+/**
+ * Lay the callouts out for every filter, clear of the picture, the edges and each other.
+ *
+ * Measured, so it is redone whenever the screen or the picture changes size. A star with no room
+ * round it for a readout is passed over for another the same filter picks out.
+ */
+function layoutNotes() {
+  starNotes.replaceChildren()
+  const host = starfield.getBoundingClientRect()
+  const g = adjustSplit.getBoundingClientRect()
+  if (!host.width || !g.width) return
+  const W = host.width
+  const H = host.height
+  const pad = W * 0.025
+  const keep = H * 0.02
+  const group = { l: g.left - host.left - keep, r: g.right - host.left + keep, t: g.top - host.top - keep, b: g.bottom - host.top + keep }
+  const hits = (a, b) => a.l < b.r && a.r > b.l && a.t < b.b && a.b > b.t
+
+  const svgNS = 'http://www.w3.org/2000/svg'
+  const svg = document.createElementNS(svgNS, 'svg')
+  svg.setAttribute('class', 'note-lines')
+  svg.setAttribute('viewBox', `0 0 ${W} ${H}`)
+  starNotes.append(svg)
+
+  for (let f = 1; f < FILTERS.length; f++) {
+    const placed = []
+    const pool = stars
+      .filter((st) => st.through[f - 1] === 1 && !st.el.classList.contains('covered'))
+      .sort(() => Math.random() - 0.5)
+
+    // Spread round the screen rather than bunched: a readout this near another's star is passed
+    // over for one further off.
+    const apart = Math.max(W, H) * 0.16
+    const marked = []
+    for (const star of pool) {
+      if (placed.length >= NOTES_PER_FILTER) break
+      const sx = star.x * W
+      const sy = star.y * H
+      if (marked.some(([mx, my]) => Math.hypot(mx - sx, my - sy) < apart)) continue
+      const note = document.createElement('div')
+      note.className = 'note'
+      note.dataset.f = String(f)
+      note.style.setProperty('--acc', CHANNELS[f - 1].accent)
+      for (const [i, text] of noteLines(star, f).entries()) {
+        const line = document.createElement('span')
+        line.textContent = text
+        if (i === 0) line.className = 'note-id'
+        note.append(line)
+      }
+      starNotes.append(note)
+      const lw = note.offsetWidth
+      const lh = note.offsetHeight
+
+      // The ring sits just outside the star at its picked-out size.
+      const ring = ((star.s * innerWidth) / 2000) * STAR_PICKED + W * 0.004
+      const rise = W * 0.024
+      const inward = sx < W / 2 ? 1 : -1
+      let spot = null
+      for (const dir of [inward, -inward]) {
+        for (const vert of sy < H * 0.2 ? [1, -1] : [-1, 1]) {
+          const ex = sx + dir * rise
+          const ey = sy + vert * rise
+          const hx = ex + dir * (lw + W * 0.004)
+          const box = {
+            l: Math.min(sx, ex, hx) - 6,
+            r: Math.max(sx, ex, hx) + 6,
+            t: Math.min(sy, ey - lh - 6) - 6,
+            b: Math.max(sy, ey) + 6,
+          }
+          if (box.l < pad || box.r > W - pad || box.t < pad || box.b > H - pad) continue
+          if (hits(box, group) || placed.some((p) => hits(box, p))) continue
+          spot = { dir, vert, ex, ey, hx, box }
+          break
+        }
+        if (spot) break
+      }
+      if (!spot) {
+        note.remove()
+        continue
+      }
+      placed.push(spot.box)
+      marked.push([sx, sy])
+
+      note.style.left = `${Math.min(spot.ex, spot.hx)}px`
+      note.style.top = `${spot.ey - lh - 6}px`
+      note.style.textAlign = spot.dir < 0 ? 'right' : 'left'
+
+      const ringEl = document.createElementNS(svgNS, 'circle')
+      ringEl.setAttribute('cx', sx)
+      ringEl.setAttribute('cy', sy)
+      ringEl.setAttribute('r', ring)
+      const lead = document.createElementNS(svgNS, 'polyline')
+      // From the edge of the ring, out along the diagonal, then along under the readout.
+      const off = ring / Math.SQRT2
+      lead.setAttribute('points', `${sx + spot.dir * off},${sy + spot.vert * off} ${spot.ex},${spot.ey} ${spot.hx},${spot.ey}`)
+      for (const el of [ringEl, lead]) {
+        el.setAttribute('pathLength', '1')
+        el.setAttribute('class', el === ringEl ? 'note-ring' : 'note-line')
+        el.dataset.f = String(f)
+        svg.append(el)
+      }
+    }
+  }
+}
+
+/**
+ * Leave the picture and its paragraph clear.
+ *
+ * Measured rather than assumed, because the group is centred and its size is the photograph's,
+ * which is whatever shape the camera made it.
+ */
+function clearStarsOffPicture() {
+  const host = starfield.getBoundingClientRect()
+  const group = adjustSplit.getBoundingClientRect()
+  if (!host.width || !group.width) return
+  const margin = host.height * 0.02
+  for (const { el, x, y } of stars) {
+    const px = host.left + x * host.width
+    const py = host.top + y * host.height
+    el.classList.toggle(
+      'covered',
+      px > group.left - margin && px < group.right + margin && py > group.top - margin && py < group.bottom + margin
+    )
+  }
+}
+
+/** The sky through whichever filter is in the gate. */
+function showStars(filter) {
+  starfield.dataset.f = String(filter)
+}
 
 let wheelAt = 0
 let wheelLive = false
@@ -1694,8 +2026,8 @@ function placeWheel() {
   const pic = adjustPic.getBoundingClientRect()
   if (!pic.width) return
 
-  const band = Math.round(pic.width * 0.25)
   const half = pic.height / 2
+  const band = Math.round(bandForCover(pic.width, pic.height, WHEEL_COVER))
   const rad = Math.round((band * band + half * half) / (2 * band))
   // Just clear of touching: a wheel of n discs of radius rad needs rad / sin(pi/n) between the
   // hub and each centre for them not to overlap.
@@ -1750,6 +2082,8 @@ function markGate(at, keep = false) {
     const mine = Number(el.dataset.i) === i
     if (mine || !keep) el.classList.toggle('in-gate', mine)
   }
+  // The sky changes with the glass, at the same moment.
+  showStars(i)
 }
 
 /** Whether a swipe should be doing anything at all. */
@@ -1763,6 +2097,10 @@ function startWheel() {
   wheelAt = 0
   placeWheel()
   buildWheel()
+  buildStars()
+  clearStarsOffPicture()
+  layoutNotes()
+  starfield.classList.add('on')
   filterWheel.classList.remove('touched')
   // Nobody swipes a photograph unprompted. The arrows get a while on their own; if they are not
   // taken up the wheel turns itself, so the point is still made to a visitor who only watches.
@@ -1860,6 +2198,8 @@ function stopWheel() {
   wheelDrag = null
   wheelLive = false
   filterWheel.classList.remove('dragging')
+  // The sky belongs to the wheel, and goes with it.
+  starfield.classList.remove('on')
 }
 
 // The question the piece is actually asking. Held back until a colour has been changed, so it
@@ -1868,7 +2208,7 @@ const REAL_ASK_BEFORE = 'Is this image '
 const REAL_ASK_WORD = 'real'
 const REAL_ASK_AFTER = '?'
 
-const CONFIRM_ASK = [{ text: 'Would you like to share your sky to the gallery?' }]
+const CONFIRM_ASK = [{ text: 'How would you like to share your sky to the gallery?' }]
 
 const REALITY_LEAD = [
   { text: 'Your image was shared and is now part of the gallery.' },
@@ -1891,6 +2231,18 @@ let lit = -1
  * once and the *beats* carry the pacing instead.
  */
 function fadeIn(el, segments, ms = TIMELINE.blockFade) {
+  writeSegments(el, segments)
+  return track(
+    el.animate([{ opacity: 0 }, { opacity: 1 }], {
+      duration: t(ms),
+      easing: 'linear',
+      fill: 'both',
+    })
+  ).finished.catch(() => {})
+}
+
+/** Put a line's segments into an element, with each channel's name ready to light. */
+function writeSegments(el, segments) {
   el.replaceChildren(
     ...segments.map((seg) => {
       const span = document.createElement('span')
@@ -1904,13 +2256,6 @@ function fadeIn(el, segments, ms = TIMELINE.blockFade) {
       return span
     })
   )
-  return track(
-    el.animate([{ opacity: 0 }, { opacity: 1 }], {
-      duration: t(ms),
-      easing: 'linear',
-      fill: 'both',
-    })
-  ).finished.catch(() => {})
 }
 
 /** The picture with the first `n + 1` channels in it, and nothing else. */
@@ -2006,11 +2351,9 @@ async function revealStory() {
 
   await wait(t(TIMELINE.afterGap))
   if (!alive()) return
-  await fadeIn(storyAfterEl, STORY_AFTER)
-  await wait(t(TIMELINE.assembleWait))
 
-  // ...and now the sentence is acted out: each layer sends a copy of itself into the frame, and
-  // the picture is built out of the three the visitor has just been shown.
+  // Each layer sends a copy of itself into the frame, and the picture is built out of the three
+  // the visitor has just been shown...
   for (let i = 0; i < CHANNELS.length; i++) {
     if (!alive()) return
     await flyLayerIn(i)
@@ -2018,18 +2361,24 @@ async function revealStory() {
   }
   if (!alive()) return
 
-  // The question, and nothing to press until it has been answered.
-  editVerdict.show()
+  // ...and only once it is whole does the summary pop up to say what just happened.
+  await pop(storyAfterEl)?.finished.catch(() => {})
+  if (!alive()) return
+
+  // The picture is made and explained, and only now is there a way on. The question of whether
+  // it is real waits for the share screen, where it is asked beside the edited one.
+  nextBtn.classList.remove('waiting')
+  pop(nextBtn)
 }
 
 /** Put every step that says something back to the empty screen it starts from. */
 function clearBeats() {
-  ;[storyEl, storyAfterEl, adjustStoryEl, confirmAsk, realityLead].forEach((el) =>
+  ;[storyEl, storyAfterEl, adjustStoryEl, noticeAsk, confirmAsk, realityLead].forEach((el) =>
     el.replaceChildren()
   )
   document.querySelectorAll('.channel, .chan-layer').forEach((el) => el.classList.remove('in'))
   slidersTitle.classList.remove('in')
-  ;[nextBtn, coloursBtn, submitBtn, yesBtn, noBtn, resetBtn].forEach((b) =>
+  ;[nextBtn, coloursBtn, submitBtn, ...SHARE_BTNS, resetBtn].forEach((b) =>
     b.classList.remove('waiting')
   )
   coloursBtn.disabled = false
@@ -2039,7 +2388,7 @@ function clearBeats() {
   adjustVerdict.clear()
   stopReels()
   stopWheel()
-  confirmPic.style.visibility = ''
+  for (const el of [confirmPic, originalPic, originalCol, editedCol]) el.style.visibility = ''
   fliers.replaceChildren()
   realityCharts.hidden = true
   adjustSplit.dataset.phase = 'ask'
@@ -2080,11 +2429,11 @@ function flipTo(el, from, ms) {
   return anim.finished.catch(() => {})
 }
 
-// ── two strips of the wall, behind the question ───────────────────────────────
+// ── a strip of the wall, above the question ───────────────────────────────────
 //
 // The share question is easier to answer with the thing it is about already on screen, so the
-// curated pictures run past above and below it — the top strip leftwards, the bottom strip
-// rightwards. Say yes and a space opens in one of them for the visitor's own.
+// curated pictures run past above it, leftwards. Share one and a space opens in the strip for
+// the visitor's own.
 //
 // They come from api/gallery/all, which claims nothing. Joining the register the way a real
 // gallery screen does would put the tablet on the wall as an extra screen and hold a hand of
@@ -2146,7 +2495,7 @@ function fillReel(el, dir, pics) {
   reels.push({ el, strip, dir, anim: null })
 }
 
-/** Set both strips running. Each plays forwards; the keyframes carry the direction. */
+/** Set the strips running. Each plays forwards; the keyframes carry the direction. */
 function startReels() {
   for (const reel of reels) {
     const half = reel.strip.scrollWidth / 2
@@ -2164,10 +2513,8 @@ function startReels() {
 function stopReels() {
   for (const reel of reels) reel.anim?.cancel()
   reels.length = 0
-  for (const el of [reelTop, reelBottom]) {
-    el.hidden = false
-    el.querySelector('.reel-track')?.replaceChildren()
-  }
+  reelTop.hidden = false
+  reelTop.querySelector('.reel-track')?.replaceChildren()
 }
 
 /**
@@ -2248,8 +2595,9 @@ function spinIntoGap(el, to, ms) {
  * The strips stop, a space opens somewhere a visitor can see it, the picture turns into that
  * space, and then the whole wall runs off to the right. Returns false if there is no wall —
  * an empty img/sky/ folder, or no server — and the caller falls back to the plain exit.
+ * `drawPrint` paints the picture that lands in the space, whichever of the two it is.
  */
-async function joinTheWall(el) {
+async function joinTheWall(el, drawPrint) {
   const live = reels.filter((r) => r.anim && !r.el.hidden)
   if (!live.length || !frame) return false
 
@@ -2296,7 +2644,7 @@ async function joinTheWall(el) {
   // The picture appears in the strip and the flying one goes, in that order and in the same
   // task, so there is never a frame showing both or neither.
   const print = document.createElement('canvas')
-  drawComposite(print, thumbFrame ?? viewFrame ?? frame, lutsNow(), tints())
+  drawPrint(print)
   gap.append(print)
   gap.classList.remove('reel-gap')
   flight?.cancel()
@@ -2521,8 +2869,10 @@ function pickHue(src, deg) {
   // touched the strip — landing back where you started has not answered the question.
   if (!recoloured && deg !== CHANNELS[src].hue) {
     recoloured = true
-    // Share my sky arrives with the answer, not with the question — see makeVerdict's onTouch.
-    adjustVerdict.show()
+    // The way on arrives with the first change. Whether the result is real is asked on the
+    // next screen, beside the original.
+    submitBtn.classList.remove('waiting')
+    pop(submitBtn)
     bigEditors.forEach((e) => e.setAsking(false))
   }
 
@@ -2762,40 +3112,61 @@ function makeVerdict(stage, block, onTouch) {
       if (sent || !touched) return
       sent = true
       answered[stage] = at
-      const body = JSON.stringify({ stage, value: Number(at.toFixed(3)) })
       setInfo('answer', `${stage} ${at.toFixed(3)}`)
-      try {
-        // A visitor who is mid-answer when the kiosk reloads still gets counted: a beacon
-        // survives the page, and a fetch does not.
-        if (navigator.sendBeacon?.(new URL('api/answer', location.href), new Blob([body], { type: 'application/json' }))) return
-      } catch {}
-      fetch('api/answer', { method: 'POST', headers: { 'content-type': 'application/json' }, body, keepalive: true })
-        .catch((err) => setInfo('answer', `not written: ${err?.message ?? err}`))
+      sendAnswer({ stage, value: Number(at.toFixed(3)) })
     },
   }
 }
 
-// Asked of the camera's own picture, before anything has been changed...
-const editVerdict = makeVerdict('unedited', editVerdictBlock, () => {
-  // ...and only now is there a way on. The question is the screen's whole business; a Next
-  // button sitting there while it is being asked invites skipping past it.
-  nextBtn.classList.remove('waiting')
-  pop(nextBtn)
-})
+/**
+ * One row to api/answer.
+ *
+ * Deliberately not awaited and deliberately never in the way: a visitor pressing on must not
+ * wait for a network, and an exhibit machine that cannot write the file is a thing for whoever
+ * runs it to find in the debug overlay, not a thing to stop a visitor with.
+ */
+function sendAnswer(row) {
+  const body = JSON.stringify(row)
+  try {
+    // A visitor who is mid-answer when the kiosk reloads still gets counted: a beacon survives
+    // the page, and a fetch does not.
+    if (navigator.sendBeacon?.(new URL('api/answer', location.href), new Blob([body], { type: 'application/json' }))) return
+  } catch {}
+  fetch('api/answer', { method: 'POST', headers: { 'content-type': 'application/json' }, body, keepalive: true })
+    .catch((err) => setInfo('answer', `not written: ${err?.message ?? err}`))
+}
 
-// ...and again of the same picture once its colours have been moved somewhere the camera never
-// put them.
-const adjustVerdict = makeVerdict('edited', verdictBlock, () => {
-  submitBtn.classList.remove('waiting')
-  pop(submitBtn)
-})
+// Asked of the camera's own picture, and of the same picture once its colours have been moved
+// somewhere the camera never put them — side by side, on the share screen. Only once both have
+// been answered is the share question put.
+const editVerdict = makeVerdict('unedited', editVerdictBlock, () => askToShare())
+const adjustVerdict = makeVerdict('edited', verdictBlock, () => askToShare())
+
+async function askToShare() {
+  if (step() !== 'confirm' || !editVerdict.touched || !adjustVerdict.touched) return
+  if (confirmAsk.childNodes.length) return // already asked
+  await fadeIn(confirmAsk, CONFIRM_ASK)
+  if (step() !== 'confirm') return
+  SHARE_BTNS.forEach((btn, i) => {
+    btn.classList.remove('waiting')
+    pop(btn, i * 90)
+  })
+}
+
+/** Report both answers, each once and only if it was given. */
+function sendVerdicts() {
+  editVerdict.send()
+  adjustVerdict.send()
+}
 
 // The kiosk is never closed, but it is reloaded, and a visitor mid-answer when that happens is
 // still a visitor who answered.
-addEventListener('pagehide', () => {
-  editVerdict.send()
-  adjustVerdict.send()
-})
+addEventListener('pagehide', sendVerdicts)
+
+// The picture as the camera made it: its own levels, and each channel shown in its own colour.
+// The levels are the ones the photograph opened on, which the visitor may since have moved.
+const ORIGINAL_TINTS = CHANNELS.map((c) => hueTint(c.hue))
+const originalLuts = () => frame.rest.map((l) => levelsLut(l.black, l.white))
 
 
 /** "Share my sky" no longer shares anything — it asks. */
@@ -2809,45 +3180,61 @@ async function onSubmit() {
   goToStep('confirm')
 }
 
+// Which picture this visitor shared, for the last screen to mark on its chart. Null if neither.
+let sharedPick = null
+
 /**
- * Yes.
+ * Share one of the two pictures: `edited`, or `original` as the camera made it.
  *
- * Deliberately not awaited. A visitor pressing Yes must never wait on a network, and never has
- * to: the store keeps the picture on this device if the wall cannot be reached, so the turn
+ * Deliberately not awaited. A visitor pressing Share must never wait on a network, and never
+ * has to: the store keeps the picture on this device if the wall cannot be reached, so the turn
  * carries on either way. Where it actually went goes to the debug overlay, because that is a
  * question for whoever is running the exhibit and not for the person standing here.
  */
-async function onYes() {
+async function onShare(pick) {
   if (step() !== 'confirm') return
-  yesBtn.disabled = true
-  noBtn.disabled = true
+  SHARE_BTNS.forEach((b) => (b.disabled = true))
 
+  const edited = pick === 'edited'
+  const luts = edited ? lutsNow() : originalLuts()
+  const shownTints = edited ? tints() : ORIGINAL_TINTS
   publishToWall({
-    image: compositeURL(downscaleFrame(frame, WALL_EDGE), lutsNow(), tints()),
-    levels: levels.map((l) => ({ ...l })),
-    shownHue: [...shownHue],
+    image: compositeURL(downscaleFrame(frame, WALL_EDGE), luts, shownTints),
+    levels: edited ? levels.map((l) => ({ ...l })) : frame.rest.map((l) => ({ black: l.black, white: l.white })),
+    shownHue: edited ? [...shownHue] : CHANNELS.map((c) => c.hue),
   }).then(
-    (r) => setInfo('shared', r.kept === 'wall' ? 'to the wall' : `${r.kept} — ${r.why}`),
+    (r) => setInfo('shared', `${pick} ${r.kept === 'wall' ? 'to the wall' : `${r.kept} — ${r.why}`}`),
     (err) => setInfo('shared', `failed: ${err.message}`)
   )
+  sharedPick = pick
+  sendAnswer({ stage: 'shared', value: edited ? 1 : 0 })
+
+  // The other picture, the scales and the question step back, so the one going on the wall is
+  // the only thing moving.
+  const going = edited ? confirmPic : originalPic
+  const staying = edited ? originalCol : editedCol
+  const fade = [staying, editVerdictBlock, verdictBlock, confirmAsk].map((el) =>
+    track(el.animate([{ opacity: 1 }, { opacity: 0 }], { duration: t(320), easing: 'linear', fill: 'both' }))
+  )
+  await fade[0].finished.catch(() => {})
+  if (step() !== 'confirm') return
 
   // Into a space on the wall if there is a wall; off to the side if the folder is empty.
-  const joined = await joinTheWall(confirmPic)
-  if (!joined) await spinAwayRight(confirmPic, TIMELINE.spinOut)
+  const joined = await joinTheWall(going, (c) => drawComposite(c, thumbFrame ?? viewFrame ?? frame, luts, shownTints))
+  if (!joined) await spinAwayRight(going, TIMELINE.spinOut)
   goToStep('reality')
 }
 
 /**
- * No.
+ * Don't share.
  *
- * The picture falls rather than cutting away. It is the one moment in the piece where something
+ * The pictures fall rather than cutting away. It is the one moment in the piece where something
  * a visitor made is discarded, and letting it go quietly is worth the two and a half seconds.
  */
 async function onNo() {
   if (step() !== 'confirm') return
-  yesBtn.disabled = true
-  noBtn.disabled = true
-  await featherDown(confirmPic, TIMELINE.feather)
+  SHARE_BTNS.forEach((b) => (b.disabled = true))
+  await Promise.all([featherDown(confirmPic, TIMELINE.feather), featherDown(originalPic, TIMELINE.feather)])
   reset()
 }
 
@@ -2955,26 +3342,50 @@ async function showAnswers() {
     }
   }
 
-  setInfo('answers', `${data?.totals?.unedited ?? 0} / ${data?.totals?.edited ?? 0}`)
+  showShares(data?.shared ?? { edited: 0, original: 0 })
+  setInfo('answers', `${data?.totals?.unedited ?? 0} / ${data?.totals?.edited ?? 0} · shared ${data?.totals?.shared ?? 0}`)
 
   // One at a time, the way the charts arrived on the screen before this one.
-  for (const { stage } of ANSWER_CHARTS) {
+  for (const stage of [...ANSWER_CHARTS.map((c) => c.stage), 'shared']) {
     const chart = realityCharts.querySelector(`[data-stage="${stage}"]`)
     if (chart) rise(chart)
     await wait(t(TIMELINE.chartIn))
   }
 }
 
+/**
+ * Which picture people put on the wall: two bars, edited and original, each as tall as its
+ * share of the larger. The count sits on the bar, and this visitor's choice is tagged.
+ */
+function showShares(shared) {
+  const chart = realityCharts.querySelector('[data-stage="shared"]')
+  if (!chart) return
+  const total = shared.edited + shared.original
+  chart.querySelector('.answer-count').textContent = total === 1 ? '1 picture so far' : `${total} pictures so far`
+  const peak = Math.max(1, shared.edited, shared.original)
+  for (const bar of chart.querySelectorAll('.share-bar')) {
+    const n = shared[bar.dataset.pick] ?? 0
+    bar.style.setProperty('--share', (n / peak).toFixed(4))
+    bar.querySelector('.share-n').textContent = String(n)
+    bar.querySelector('.share-you').hidden = sharedPick !== bar.dataset.pick
+  }
+}
+
 // ── reset ───────────────────────────────────────────────────────────────────
 
 function reset() {
+  // Starting again is leaving the share screen too, and its answers count — sent before
+  // clearBeats puts both scales back to untouched.
+  if (step() === 'confirm') sendVerdicts()
   cancelAll()
+  stopShutter()
   // A countdown nobody finished leaves the camera at the photograph's size.
   restorePreviewSize()
 
   frame = null
   answered.unedited = null
   answered.edited = null
+  sharedPick = null
   viewFrame = null
   thumbFrame = null
   levels = null
@@ -2990,7 +3401,7 @@ function reset() {
   if (standingIn) useStandIn({ fresh: true })
   countdownEl.textContent = ''
   submitBtn.disabled = false
-  ;[photoA, photoB, adjustCanvas, confirmCanvas, ...chanLayers.querySelectorAll('.chan-img')].forEach(
+  ;[photoA, photoB, adjustCanvas, confirmCanvas, originalCanvas, ...chanLayers.querySelectorAll('.chan-img')].forEach(
     (c) => c.getContext('2d').clearRect(0, 0, c.width, c.height)
   )
 
@@ -3016,8 +3427,9 @@ shutter.addEventListener('click', runCountdown)
 nextBtn.addEventListener('click', nextStep)
 coloursBtn.addEventListener('click', onColours)
 submitBtn.addEventListener('click', onSubmit)
-yesBtn.addEventListener('click', onYes)
-// No keeps nothing: the picture is never published, and the next visitor starts clean.
+yesBtn.addEventListener('click', () => onShare('edited'))
+originalBtn.addEventListener('click', () => onShare('original'))
+// Don't share keeps nothing: neither picture is published, and the next visitor starts clean.
 noBtn.addEventListener('click', onNo)
 resetBtn.addEventListener('click', reset)
 
