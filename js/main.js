@@ -1055,6 +1055,11 @@ function registerDebugActions() {
     hint: 'back to the camera, keeping nothing',
     run: () => reset(),
   })
+  addDebugAction({
+    label: 'Reload page',
+    hint: 'a real browser refresh, for kiosk mode where there is no F5 — picks up a new version after an update',
+    run: () => location.reload(),
+  })
 }
 
 // ── the photo bay: two stacked canvases, so any change can crossfade ────────
