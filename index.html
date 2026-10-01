@@ -2,7 +2,10 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
+<!-- No zooming: on a touchscreen kiosk a pinch is always an accident, and there is nobody there
+     to pinch it back. Phone browsers honour this; desktop ones on a touchscreen need the
+     touch-action in css/app.css and the listeners in js/main.js as well. -->
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
 <title>Share Your Sky</title>
 <link rel="stylesheet" href="css/app.css">
 </head>

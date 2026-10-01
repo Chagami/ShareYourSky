@@ -62,6 +62,12 @@
 
 html, body { height: 100%; margin: 0; overflow: hidden; }
 
+/* No pinch-zoom and no double-tap zoom, anywhere: a touchscreen kiosk is zoomed by accident and
+   then left that way for the next visitor. Panning still works, for the steps that scroll. This
+   is what a desktop browser on a touchscreen respects — it ignores the viewport tag. The controls
+   that set touch-action: none for their own drags are stricter than this and stay as they are. */
+html { touch-action: pan-x pan-y; }
+
 body {
   background: var(--bg);
   color: var(--ink);

@@ -3413,6 +3413,14 @@ function reset() {
 
 // ── wiring ──────────────────────────────────────────────────────────────────
 
+// No zooming, for the ways a touchscreen's CSS cannot stop: a trackpad pinch arrives as a wheel
+// event with ctrlKey set, and Safari pinches with its own gesture events. Passive: false, or the
+// browser is free to zoom before preventDefault is heard.
+addEventListener('wheel', (e) => e.ctrlKey && e.preventDefault(), { passive: false })
+for (const kind of ['gesturestart', 'gesturechange']) {
+  addEventListener(kind, (e) => e.preventDefault(), { passive: false })
+}
+
 // Hand the camera back before the page goes away.
 //
 // Nothing else does. On a reload the browser is supposed to release it when the old document
