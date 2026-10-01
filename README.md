@@ -216,7 +216,7 @@ The visitors' own pictures are handled separately and are *meant* to repeat: eve
 new arrivals, because a picture that appeared on only one of four monitors would be missed by
 the person who just made it.
 
-One limit worth knowing before opening night: `img/sky/` holds **90** curated pictures, and the
+One limit worth knowing before opening night: `img/sky/` holds **97** curated pictures, and the
 stacking wall lays a new one down every 30 seconds per screen. Four screens exhaust that pool
 within minutes and begin repeating. It wants a few hundred.
 
