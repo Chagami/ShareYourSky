@@ -1148,48 +1148,76 @@ body[data-fx="off"] .starfield { display: none; }
 /* ─── the Reality screen ─── */
 
 /* Two charts of the same question, one above the other so the shift between them is a shift
-   downwards rather than a comparison the eye has to carry sideways. */
+   downwards rather than a comparison the eye has to carry sideways, and the share chart under
+   them.
+
+   Everything here has to fit the screen without scrolling and without touching the paragraph
+   above it, whatever size the screen is. So the charts are the part that gives: they can shrink,
+   and inside each one it is the well that gives up height, never the captions or the scale. The
+   paragraph above never shrinks — it did, once, to nothing, and the charts drew over its text. */
 .reality {
   display: flex;
   flex-direction: column;
-  gap: 4.5vh;
+  flex: 0 1 auto;
+  min-height: 0;
+  gap: 2.4vh;
   width: min(100%, 1500px);
   margin: 0 auto;
 }
+.reality[hidden] { display: none; }
 
 .answer-chart {
+  display: flex;
+  flex-direction: column;
+  /* Shrinks, and the well inside is what gives, down to its own minimum: the captions and the
+     scale stay whole. min-height 0, or the browser counts the well at the height it would like and
+     refuses to shrink at all. */
+  flex: 0 1 auto;
+  min-height: 0;
   margin: 0;
 }
+/* Two short bars that need no more room than they have. */
+.share-chart { flex: none; }
+.answer-chart > * { flex: none; }
 .answer-chart figcaption {
   display: flex;
   justify-content: space-between;
   align-items: baseline;
   gap: 1em;
-  margin-bottom: 1.4vh;
+  margin-bottom: 1.2vh;
 }
+/* Against the height as well as the width, so a short screen does not get text sized for a
+   tall one. */
 .answer-chart b {
-  font-size: clamp(1.05rem, 2.5vw, 2.3rem);
+  font-size: clamp(1rem, min(2.5vw, 1.6vh), 2.3rem);
   font-weight: 700;
   letter-spacing: -0.015em;
 }
 .answer-count {
   color: var(--muted);
-  font-size: clamp(0.8rem, 1.7vw, 1.5rem);
+  font-size: clamp(0.8rem, min(1.7vw, 1.1vh), 1.5rem);
   font-weight: 600;
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
 }
 
-/* The same well the levels editors sit in, so this reads as one of them. */
+/* The same well the levels editors sit in, so this reads as one of them. Its height is what it
+   would like rather than what it gets: on a screen with less room it is the thing that gives. */
+.answer-chart > .answer-plot {
+  flex: 0 1 clamp(120px, 15vh, 330px);
+  min-height: 24px;
+}
 .answer-plot {
   position: relative;
-  height: clamp(150px, 20vh, 400px);
   border-radius: 14px;
   background: var(--well);
   box-shadow: inset 0 0 0 1px var(--line);
   overflow: hidden;
 }
 .answer-plot canvas {
+  /* Out of the flow, so its own pixel height is no reason for the well to stay tall. */
+  position: absolute;
+  inset: 0;
   display: block;
   width: 100%;
   height: 100%;
@@ -1240,6 +1268,7 @@ body[data-fx="off"] .starfield { display: none; }
 }
 .answer-chart .scale-ends {
   margin-top: 0.9vh;
+  font-size: clamp(0.85rem, min(2.1vw, 1.3vh), 2rem);
 }
 
 /* Which picture people shared: two wide bars in the same well as the charts above, each as tall
@@ -1251,7 +1280,7 @@ body[data-fx="off"] .starfield { display: none; }
 }
 .share-well {
   position: relative;
-  height: clamp(110px, 13vh, 300px);
+  height: clamp(36px, 7vh, 200px);
   border-radius: 14px;
   background: var(--well);
   box-shadow: inset 0 0 0 1px var(--line);
@@ -1276,7 +1305,7 @@ body[data-fx="off"] .starfield { display: none; }
   align-items: center;
   gap: 0.6em;
   margin-top: 1vh;
-  font-size: clamp(0.95rem, 2.1vw, 2rem);
+  font-size: clamp(0.85rem, min(2.1vw, 1.3vh), 2rem);
   font-weight: 700;
 }
 .share-you {
@@ -1436,9 +1465,11 @@ body[data-fx="off"] .starfield { display: none; }
    this one is a paragraph and the charts under it are the screen's business — at 26ch it stood
    seven lines tall and pushed them into the floor. */
 .step[data-step="reality"] .story-wide {
+  flex: none;
   min-height: 0;
   max-width: 44ch;
-  margin-bottom: 3vh;
+  margin-bottom: 1vh;
+  font-size: clamp(1.1rem, min(2.9vw, 2.4vh), 3.1rem);
 }
 
 /* ─── the dock ─── */
