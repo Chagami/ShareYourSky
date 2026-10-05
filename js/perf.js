@@ -230,6 +230,14 @@ export function addDebugAction({ label, hint, run, state }) {
  * much to trim. `get` is read when the menu is drawn, `set` is called on every movement, so
  * whatever it changes should be cheap enough to change while a finger is on it.
  */
+/**
+ * Draw the menu again, if it is open. For an action whose outcome arrives later than its press —
+ * one that has to ask the server — so its row can show how it went once it knows.
+ */
+export function refreshDebug() {
+  if (menuOn) drawMenu()
+}
+
 export function addDebugSlider({ label, hint, min = 0, max = 100, step = 1, get, set, format }) {
   actions.push({ slider: true, label, hint, min, max, step, get, set, format })
   if (menuOn) drawMenu()

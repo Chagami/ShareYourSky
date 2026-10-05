@@ -27,7 +27,7 @@ const clamp255 = (v) => (v < 0 ? 0 : v > 255 ? 255 : v)
  * the stack works its own out from the result, so a stack of eight would otherwise count
  * twenty-four full frames of histogram only to throw them away.
  */
-export function captureFrame(video, maxEdge = 2600, rotate = 0, crop = null, { stats = true } = {}) {
+export function captureFrame(video, maxEdge = 2600, rotate = 0, crop = null, { stats = true, flip = null } = {}) {
   // A video, or a canvas holding one of its frames — which is how the frame guard hands over
   // the frame it actually checked, rather than whatever the video has moved on to since.
   const vw = video.videoWidth || video.width
@@ -73,6 +73,15 @@ export function captureFrame(video, maxEdge = 2600, rotate = 0, crop = null, { s
   // The browser's own resampler, which is a proper filter rather than nearest neighbour.
   ctx.imageSmoothingEnabled = true
   ctx.imageSmoothingQuality = 'high'
+
+  // The flips from the debug menu come first and so act last: on the finished picture, about
+  // its middle, left to right and top to bottom as it is seen — the same as the viewfinder, which
+  // flips the whole cropped window it shows.
+  if (flip?.x || flip?.y) {
+    ctx.translate(outW / 2, outH / 2)
+    ctx.scale(flip.x ? -1 : 1, flip.y ? -1 : 1)
+    ctx.translate(-outW / 2, -outH / 2)
+  }
 
   // Work from the middle: put the window's centre at the middle of the canvas, then rotate,
   // mirror, and draw the frame centred on the origin. Done this way the order is the same

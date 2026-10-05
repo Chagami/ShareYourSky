@@ -26,6 +26,7 @@ import {
   addDebugAction,
   addDebugSlider,
   toggleDebug,
+  refreshDebug,
   toggle as togglePerf,
   showing as perfShowing,
 } from './perf.js'
@@ -119,6 +120,19 @@ let camRot = (() => {
     // Storage disabled or private mode. The default below is a perfectly good answer.
   }
   return 270
+})()
+
+// Flips, on top of the rotation: left to right and top to bottom, as the picture is seen on
+// screen. Like the rotation, a fact about one camera on one bracket, so set from the debug menu
+// and remembered on the machine. Both the viewfinder and the photograph take them.
+const FLIP_KEY = 'sharedsky.flip'
+const flipAt = (() => {
+  try {
+    const saved = JSON.parse(localStorage.getItem(FLIP_KEY) ?? 'null')
+    return { x: saved?.x === true, y: saved?.y === true }
+  } catch {
+    return { x: false, y: false }
+  }
 })()
 
 const PACE = matchMedia('(prefers-reduced-motion: reduce)').matches ? 0.3 : 1
@@ -796,7 +810,7 @@ async function captureWithDenoise() {
   // A frame headed for a stack skips its histograms; the stack counts its own from the result.
   const stats = mode.shots === 1
   await guard.eachClean(mode.shots, nextCameraFrame, (source) => {
-    const shot = captureFrame(source, CAPTURE_EDGE, camRot, cropWindow(), { stats })
+    const shot = captureFrame(source, CAPTURE_EDGE, camRot, cropWindow(), { stats, flip: flipAt })
     if (shot) shots.push(shot)
   })
   if (!shots.length) return null
@@ -893,12 +907,18 @@ let cropAt = (() => {
   }
 })()
 
-/** The kept window, in the terms both the viewfinder and the capture need. */
+/**
+ * The kept window, in the terms both the viewfinder and the capture need.
+ *
+ * The four edges are the edges of the screen. A flip turns the picture over after the window is
+ * taken, so under a flip the window is taken from the opposite edge — or "Crop top" would trim
+ * whatever had been flipped to the bottom.
+ */
 function cropWindow() {
-  const l = cropAt.left / 100
-  const r = cropAt.right / 100
-  const t0 = cropAt.top / 100
-  const b = cropAt.bottom / 100
+  const l = (flipAt.x ? cropAt.right : cropAt.left) / 100
+  const r = (flipAt.x ? cropAt.left : cropAt.right) / 100
+  const t0 = (flipAt.y ? cropAt.bottom : cropAt.top) / 100
+  const b = (flipAt.y ? cropAt.top : cropAt.bottom) / 100
   return {
     l,
     r,
@@ -914,7 +934,9 @@ function applyCrop() {
   const { zoom, cx, cy } = cropWindow()
   // Rightmost first: the window's middle is brought to the middle of the frame, and then the
   // whole thing is enlarged about that same middle. .live-frame's overflow does the cutting.
+  // The flips go leftmost, so they turn over the finished window, as the capture does.
   liveCrop.style.transform =
+    `scale(${flipAt.x ? -1 : 1}, ${flipAt.y ? -1 : 1}) ` +
     `scale(${zoom.toFixed(4)}) ` +
     `translate(${((0.5 - cx) * 100).toFixed(3)}%, ${((0.5 - cy) * 100).toFixed(3)}%)`
   const cropped = EDGES.some((edge) => cropAt[edge])
@@ -941,6 +963,18 @@ function saveCrop() {
   applyCrop()
 }
 
+/** Flip the picture on one axis, and remember it — the bracket will be the same tomorrow. */
+function toggleFlip(axis) {
+  flipAt[axis] = !flipAt[axis]
+  try {
+    localStorage.setItem(FLIP_KEY, JSON.stringify(flipAt))
+  } catch {
+    // Not being able to remember it is no reason to refuse to do it.
+  }
+  applyCrop()
+  setInfo('flip', flipAt.x || flipAt.y ? `${flipAt.x ? 'x ' : ''}${flipAt.y ? 'y' : ''}`.trim() : null)
+}
+
 /** Push the current rotation into the page: the viewfinder's CSS, the frame's shape, the HUD. */
 function applyRotation() {
   document.body.dataset.rot = String(camRot)
@@ -961,6 +995,36 @@ function setRotation(deg) {
   applyRotation()
 }
 
+// How the last request to leave or re-enter kiosk mode went, shown on its row in the menu —
+// cut short there, because the row does not wrap; the whole of it goes to the overlay.
+const kioskNote = {}
+const shortNote = (note = '') => (note.length > 22 ? `${note.slice(0, 21)}…` : note)
+
+/**
+ * Ask the server to take the browser out of kiosk mode, or put it back.
+ *
+ * A page cannot do either to the browser it is in; see server/kiosk.js. When it works the answer
+ * hardly matters, because this page is about to be closed. When it does not — the dev machine, or
+ * a kiosk set up some other way — the reason goes on the button, for the person who pressed it.
+ */
+async function askKiosk(action) {
+  kioskNote[action] = '…'
+  refreshDebug()
+  try {
+    const res = await fetch('api/kiosk', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ action }),
+    })
+    const body = await res.json().catch(() => ({}))
+    kioskNote[action] = res.ok ? 'on its way' : `refused: ${body.error ?? res.status}`
+  } catch (err) {
+    kioskNote[action] = `failed: ${err?.message ?? err}`
+  }
+  setInfo('kiosk', `${action} ${kioskNote[action]}`)
+  refreshDebug()
+}
+
 /**
  * What the debug menu can do.
  *
@@ -974,6 +1038,18 @@ function registerDebugActions() {
     hint: 'quarter turn — viewfinder and capture together, remembered on this machine',
     state: () => `${camRot}°`,
     run: () => setRotation(camRot + 90),
+  })
+  addDebugAction({
+    label: 'Mirror X',
+    hint: 'flips left to right as seen on screen — viewfinder and photo together, remembered on this machine',
+    state: () => (flipAt.x ? 'flipped' : 'as is'),
+    run: () => toggleFlip('x'),
+  })
+  addDebugAction({
+    label: 'Mirror Y',
+    hint: 'flips top to bottom as seen on screen — viewfinder and photo together, remembered on this machine',
+    state: () => (flipAt.y ? 'flipped' : 'as is'),
+    run: () => toggleFlip('y'),
   })
   for (const edge of EDGES) {
     addDebugSlider({
@@ -1054,6 +1130,18 @@ function registerDebugActions() {
     label: 'Restart',
     hint: 'back to the camera, keeping nothing',
     run: () => reset(),
+  })
+  addDebugAction({
+    label: 'Exit kiosk mode',
+    hint: 'closes the full-screen kiosk and opens this page in an ordinary browser window, with tabs and developer tools — done by the server, on the exhibit machine only',
+    state: () => shortNote(kioskNote.exit),
+    run: () => askKiosk('exit'),
+  })
+  addDebugAction({
+    label: 'Back to kiosk mode',
+    hint: 'from that ordinary window: closes it and starts the kiosk again',
+    state: () => shortNote(kioskNote.enter),
+    run: () => askKiosk('enter'),
   })
   addDebugAction({
     label: 'Reload page',
