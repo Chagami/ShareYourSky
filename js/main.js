@@ -17,6 +17,7 @@ import {
 } from './imaging.js'
 import { createLevels } from './levels.js'
 import { createFrameGuard } from './frameguard.js'
+import { createLiveDenoise, LIVE_MODES } from './livedenoise.js'
 import {
   initPerf,
   measure,
@@ -782,8 +783,34 @@ let guardAt = (() => {
   }
 })()
 
+// ── the noise in the dark, cleaned as it arrives ──────────────────────────
+//
+// See js/livedenoise.js. It rides on the frame guard's viewfinder, which already draws every
+// frame itself, so with the guard off or on the photo only there is no live clean-up — the
+// photograph still gets its share. `colour` by default: it has nothing to trade against motion.
+const LIVE_KEY = 'sharedsky.livedenoise'
+const live = createLiveDenoise()
+live.mode = (() => {
+  try {
+    const saved = localStorage.getItem(LIVE_KEY)
+    return LIVE_MODES.includes(saved) ? saved : 'colour'
+  } catch {
+    return 'colour'
+  }
+})()
+
+function setLive(next) {
+  live.mode = LIVE_MODES[((next % LIVE_MODES.length) + LIVE_MODES.length) % LIVE_MODES.length]
+  try {
+    localStorage.setItem(LIVE_KEY, live.mode)
+  } catch {
+    // Not being able to remember it is no reason to refuse to do it.
+  }
+}
+
 const guard = createFrameGuard(feed, {
   host: liveCrop,
+  process: (video, w, h) => live.frame(video, w, h),
   // The crop enlarges the wrapper, so the viewfinder shows fewer camera pixels over the same
   // screen — the canvases are drawn big enough for that, or a crop would soften the picture.
   zoom: () => cropWindow().zoom,
@@ -816,7 +843,11 @@ async function captureWithDenoise() {
   // A frame headed for a stack skips its histograms; the stack counts its own from the result.
   const stats = mode.shots === 1
   await guard.eachClean(mode.shots, nextCameraFrame, (source) => {
-    const shot = captureFrame(source, CAPTURE_EDGE, camRot, cropWindow(), { stats, flip: flipAt })
+    const shot = captureFrame(source, CAPTURE_EDGE, camRot, cropWindow(), {
+      stats,
+      flip: flipAt,
+      clean: (canvas, w, h) => live.still(canvas, w, h),
+    })
     if (shot) shots.push(shot)
   })
   if (!shots.length) return null
@@ -1108,6 +1139,17 @@ function registerDebugActions() {
     hint: 'drops frames that arrive torn — the flashing at the bottom of the picture at 4K; the overlay counts what it catches',
     state: () => GUARD_MODES[guardAt].label,
     run: () => setGuard(guardAt + 1),
+  })
+  addDebugAction({
+    label: 'Live denoise',
+    hint: 'cleans the noise in the dark parts of the viewfinder and the photo; colour + time also averages frames, which can leave faint trails behind fast movement — the viewfinder half needs the frame guard on viewfinder + photo',
+    state: () =>
+      !live.available
+        ? 'no WebGL'
+        : live.mode === 'off'
+          ? 'off'
+          : `${live.mode}${GUARD_MODES[guardAt].key === 'both' ? '' : ' (photo only)'}`,
+    run: () => setLive(LIVE_MODES.indexOf(live.mode) + 1),
   })
   addDebugAction({
     label: 'Denoise',
@@ -1467,6 +1509,8 @@ function noteWatchdog(what) {
 setInterval(() => {
   const now = performance.now()
   armFrameWatch()
+  // Riding on this clock rather than one of its own: the live denoise's cost, for the overlay.
+  setInfo('live denoise', live.available ? `${live.mode}${live.mode === 'off' ? '' : ` · ${live.cost.toFixed(1)}ms a frame`}` : 'no WebGL')
   // A second witness, for a browser whose frame callback stalls when nothing else does.
   const total = feed.getVideoPlaybackQuality?.().totalVideoFrames
   if (total != null && total !== lastFrameTotal) {

@@ -27,7 +27,7 @@ const clamp255 = (v) => (v < 0 ? 0 : v > 255 ? 255 : v)
  * the stack works its own out from the result, so a stack of eight would otherwise count
  * twenty-four full frames of histogram only to throw them away.
  */
-export function captureFrame(video, maxEdge = 2600, rotate = 0, crop = null, { stats = true, flip = null } = {}) {
+export function captureFrame(video, maxEdge = 2600, rotate = 0, crop = null, { stats = true, flip = null, clean = null } = {}) {
   // A video, or a canvas holding one of its frames — which is how the frame guard hands over
   // the frame it actually checked, rather than whatever the video has moved on to since.
   const vw = video.videoWidth || video.width
@@ -93,6 +93,11 @@ export function captureFrame(video, maxEdge = 2600, rotate = 0, crop = null, { s
   ctx.scale(-1, 1) // mirror, so the live feed reads like a mirror
   ctx.drawImage(video, (-vw * scale) / 2, (-vh * scale) / 2, vw * scale, vh * scale)
   ctx.setTransform(1, 0, 0, 1, 0, 0)
+
+  // The live denoise's colour pass, so the photograph is as clean as the viewfinder was. It hands
+  // back a canvas the size of this one, or nothing when it is off.
+  const cleaned = clean?.(canvas, outW, outH)
+  if (cleaned) ctx.drawImage(cleaned, 0, 0)
 
   return framePixels(ctx, outW, outH, stats)
 }

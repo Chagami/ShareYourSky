@@ -119,7 +119,7 @@ export function judge(prev, cur, next) {
  * size it is shown at, and a torn one is simply never made visible. In `capture` the viewfinder
  * is left alone and only the photograph is protected. `off` is how it was before.
  */
-export function createFrameGuard(video, { host, zoom = () => 1, onReport = () => {} } = {}) {
+export function createFrameGuard(video, { host, zoom = () => 1, process = (v) => v, onReport = () => {} } = {}) {
   const views = [0, 1, 2].map(() => {
     const c = document.createElement('canvas')
     c.className = 'framed guard-view'
@@ -192,7 +192,9 @@ export function createFrameGuard(video, { host, zoom = () => 1, onReport = () =>
 
     const started = performance.now()
     const slot = views.find((v) => v !== shown?.canvas && v !== pending?.canvas)
-    slot.getContext('2d').drawImage(video, 0, 0, slot.width, slot.height)
+    // Through `process` on the way, which is where the live denoise goes: whatever it hands back
+    // — the frame cleaned, or the video untouched — is what is judged and what is shown.
+    slot.getContext('2d').drawImage(process(video, slot.width, slot.height), 0, 0, slot.width, slot.height)
     // Taken from the canvas, not the video, so what is judged is exactly what would be shown.
     const incoming = { canvas: slot, sig: signatureOf(slot) }
     stats.seen++
