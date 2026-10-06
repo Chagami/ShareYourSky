@@ -355,6 +355,8 @@ function goToStep(id, { animate = true, blob = true } = {}) {
     )
   }
   STEP_ENTER[id]?.()
+  // A new step is a fresh minute, and the camera step has none.
+  idleArm()
 }
 
 
@@ -610,9 +612,13 @@ async function setRes(next) {
 // Every change to the camera goes through here, one at a time. Two requests in flight on one
 // USB camera is how a slow camera becomes a dead one — see camera.js.
 let camQueue = Promise.resolve()
+// How many camera jobs are queued or running. The viewfinder watchdog stands back while any are:
+// a camera in the middle of being switched is allowed a moment with no pictures.
+let camJobs = 0
 function queueCamera(job) {
+  camJobs++
   const run = camQueue.then(job, job)
-  camQueue = run.catch(() => {})
+  camQueue = run.catch(() => {}).finally(() => camJobs--)
   return run
 }
 
@@ -1418,6 +1424,100 @@ async function openCamera() {
   }
 }
 
+// ── a viewfinder that has stopped ──────────────────────────────────────────
+//
+// Every visitor's turn switches the camera twice — up to 4K for the photograph, and back — and
+// pauses the viewfinder at the shutter. Any of that can leave it standing still: a USB camera
+// that changes mode and then sends nothing while still reporting itself live, or a play() that
+// was refused and left the video paused. Neither raises an error, so nothing else notices, and
+// the next visitor walks up to a frozen picture or none.
+//
+// So on the camera screen, and only there, the viewfinder is watched for new frames. Two
+// seconds with none, and it is told to play again. Five, and the camera is let go and opened
+// afresh — after a pause, because on Linux a camera reopened the instant it is released is
+// still busy. Never during the countdown and the photograph, never while a camera job is under
+// way, and never while a borrowed picture is standing in: those have their own handling.
+const WATCH = { replayAfter: 2000, reopenAfter: 5000, release: 800, quietAfterReopen: 10000 }
+
+// Whether a countdown or photograph is in progress, when a pause in the frames is expected.
+let shooting = false
+let viewfinderFrameAt = 0 // when the viewfinder last showed a new frame, on the performance clock
+let frameWatchArmed = false
+let lastFrameTotal = -1
+let replayed = false
+let watchQuietUntil = 0
+const dog = { replays: 0, reopens: 0 }
+
+/** Note every frame the viewfinder presents. Re-armed by the watchdog if a new stream drops it. */
+function armFrameWatch() {
+  if (frameWatchArmed || !feed.requestVideoFrameCallback) return
+  frameWatchArmed = true
+  feed.requestVideoFrameCallback(() => {
+    frameWatchArmed = false
+    viewfinderFrameAt = performance.now()
+    armFrameWatch()
+  })
+}
+
+function noteWatchdog(what) {
+  const at = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+  setInfo('watchdog', `replayed ${dog.replays} · reopened ${dog.reopens} · last: ${what} at ${at}`)
+}
+
+setInterval(() => {
+  const now = performance.now()
+  armFrameWatch()
+  // A second witness, for a browser whose frame callback stalls when nothing else does.
+  const total = feed.getVideoPlaybackQuality?.().totalVideoFrames
+  if (total != null && total !== lastFrameTotal) {
+    lastFrameTotal = total
+    viewfinderFrameAt = now
+  }
+
+  const watching =
+    step() === 'camera' &&
+    !shooting &&
+    !standingIn &&
+    camJobs === 0 &&
+    camHandle &&
+    $('camError').hidden &&
+    document.visibilityState === 'visible' &&
+    now >= watchQuietUntil
+  if (!watching) {
+    // The clock only runs while it is watching, so arriving back on this screen after minutes
+    // elsewhere is two seconds' grace, not an instant alarm.
+    viewfinderFrameAt = now
+    replayed = false
+    return
+  }
+
+  const still = now - viewfinderFrameAt
+  if (still < WATCH.replayAfter) {
+    replayed = false
+    return
+  }
+  if (!replayed) {
+    replayed = true
+    dog.replays++
+    noteWatchdog(`${feed.paused ? 'paused' : 'no frames'} ${(still / 1000).toFixed(1)}s, played again`)
+    feed.play().catch((err) => setInfo('play', `${err.name} - watchdog replay refused`))
+    return
+  }
+  if (still < WATCH.reopenAfter) return
+
+  dog.reopens++
+  replayed = false
+  watchQuietUntil = now + WATCH.quietAfterReopen
+  noteWatchdog(`no frames ${(still / 1000).toFixed(1)}s, reopened the camera`)
+  queueCamera(async () => {
+    camHandle?.stop()
+    camHandle = null
+    feed.srcObject = null
+    await after(WATCH.release)
+    await openCamera()
+  })
+}, 500)
+
 function showCameraFault(err) {
   shutter.disabled = true
   const box = $('camError')
@@ -1517,6 +1617,9 @@ const HERO = {
 const STEP_ENTER = {
   camera() {
     shutter.disabled = !feed.videoWidth
+    // The shutter paused it. Asked here as well as in reset(), so a play() refused there is
+    // asked again the moment the screen is back; the watchdog keeps asking after that.
+    if (feed.srcObject && feed.paused) feed.play().catch(() => {})
   },
 
   // The photo flies out of the viewfinder into the corner, the sentence types itself
@@ -1691,6 +1794,7 @@ async function runCountdown() {
   // shutter on a camera-less machine looked alive and did nothing at all.
   if ((!feed.videoWidth && !standingIn) || step() !== 'camera') return
   shutter.disabled = true
+  shooting = true
   // Up to 4K now, so the switch happens while the visitor is still counting, not after.
   primePhotoSize()
 
@@ -1750,6 +1854,7 @@ async function takePhoto() {
   if (!frame) {
     restorePreviewSize()
     shutter.disabled = false
+    shooting = false
     return
   }
 
@@ -1758,6 +1863,7 @@ async function takePhoto() {
   feed.pause()
   // The picture is taken; nothing needs 4K until the next one.
   restorePreviewSize()
+  shooting = false
 
   // Where each channel's light actually sits. Step 2 has no handles to walk in from the ends of
   // a track any more, so the picture opens on its own range and step 3 takes it from there.
@@ -3472,6 +3578,7 @@ function reset() {
   if (step() === 'confirm') sendVerdicts()
   cancelAll()
   stopShutter()
+  shooting = false
   // A countdown nobody finished leaves the camera at the photograph's size.
   restorePreviewSize()
 
@@ -3503,6 +3610,95 @@ function reset() {
   setAspect(feed.videoWidth, feed.videoHeight)
   shutter.disabled = !feed.videoWidth && !standingIn
 }
+
+// ── nobody there ────────────────────────────────────────────────────────────
+//
+// A visitor who walks away mid-turn leaves the next one a screen half way through somebody
+// else's picture. So on every step but the camera, a minute with nobody touching anything offers
+// a fresh start, off to the side; ten seconds more and it counts down from five, says so, and
+// starts over. Any touch at all, at any point before that, calls it off — somebody is there.
+//
+// Real seconds, not paced ones: reduced motion shortens animations, not how long a person gets.
+const IDLE = { after: 60000, warn: 10000, from: 5, tick: 1000, resetting: 3000 }
+
+const idleBox = $('idle')
+const idleBtn = $('idleBtn')
+const idleCount = $('idleCount')
+let idleTimers = []
+let idleArmedAt = 0
+
+function idleLater(ms, fn) {
+  idleTimers.push(setTimeout(fn, ms))
+}
+
+/** Put it all away: nothing offered, nothing counting. */
+function idleClear() {
+  idleTimers.forEach(clearTimeout)
+  idleTimers = []
+  idleBox.hidden = true
+  idleBtn.classList.remove('warm')
+  idleBtn.textContent = 'Start over'
+  idleBtn.disabled = false
+  idleCount.textContent = ''
+}
+
+/** Start the minute again — on every step change and every touch. Nothing on the camera step. */
+function idleArm() {
+  idleClear()
+  idleArmedAt = performance.now()
+  if (step() === 'camera') return
+  idleLater(IDLE.after, idleOffer)
+}
+
+function idleOffer() {
+  idleBox.classList.remove('lifted')
+  idleBox.hidden = false
+  // Beside the step's own buttons if there is room, and just above the dock if there is not —
+  // the share step's three answers fill a narrow screen's dock almost edge to edge.
+  const mine = idleBtn.getBoundingClientRect()
+  const crowded = [...document.querySelectorAll('.dock-action > :not([hidden])')].some((el) => {
+    const r = el.getBoundingClientRect()
+    return r.width && r.right > mine.left - 12 && r.left < mine.right + 12
+  })
+  idleBox.classList.toggle('lifted', crowded)
+  // In white, as every button arrives here, and then warm to the orange once it has landed.
+  pop(idleBtn)
+  idleLater(t(620), () => idleBtn.classList.add('warm'))
+  idleLater(IDLE.warn, () => idleCountdown(IDLE.from))
+}
+
+function idleCountdown(n) {
+  idleBtn.textContent = 'Starting over'
+  if (n < 1) return idleResetting()
+  idleCount.textContent = String(n)
+  pop(idleCount)
+  idleLater(IDLE.tick, () => idleCountdown(n - 1))
+}
+
+function idleResetting() {
+  idleCount.textContent = ''
+  idleBtn.textContent = 'Resetting…'
+  idleLater(IDLE.resetting, () => reset())
+}
+
+// Anything a person does counts — except pressing the offer itself, which must still be there to
+// be pressed when the finger lifts. Moves are only counted a few times a second: a drag fires
+// dozens, and the clock does not need restarting for each.
+for (const kind of ['pointerdown', 'pointermove', 'keydown', 'wheel']) {
+  addEventListener(
+    kind,
+    (e) => {
+      if (idleBox.contains(e.target)) return
+      if (kind === 'pointermove' && idleBox.hidden && performance.now() - idleArmedAt < 250) return
+      idleArm()
+    },
+    { capture: true, passive: true }
+  )
+}
+idleBtn.addEventListener('click', () => {
+  idleBtn.disabled = true
+  reset()
+})
 
 // ── wiring ──────────────────────────────────────────────────────────────────
 

@@ -1491,6 +1491,55 @@ body[data-fx="off"] .starfield { display: none; }
 }
 
 .dock-action { display: flex; align-items: center; justify-content: center; gap: 2.4vw; min-height: 1px; }
+
+/* ─── starting over, when nobody is there ───
+
+   At the right-hand end of the dock, where buttons are, but off to the side of the step's own:
+   it is for somebody who has walked up to a screen someone else left, not part of the piece.
+   Smaller than the step's buttons, and positioned so that offering it never moves them. */
+.dock { position: relative; }
+.idle {
+  position: absolute;
+  right: 2.5vw;
+  top: 50%;
+  transform: translateY(-50%);
+}
+.idle[hidden] { display: none; }
+/* When the dock has no room beside the step's buttons, the same corner, just above the dock. */
+.idle.lifted {
+  top: auto;
+  bottom: calc(100% + 1.6vh);
+  transform: none;
+}
+/* A little smaller than a .btn-lg — about nine-tenths. It arrives white, as every button here does, and then warms to
+   the progress blob's orange — the colour that means "this is where you are". */
+/* .btn.idle-btn, not .idle-btn: .btn is defined further down at the same weight, and it was
+   quietly winning both of these. */
+.btn.idle-btn {
+  padding: 1em 2.2em;
+  font-size: clamp(1.15rem, 3vw, 2.4rem);
+  white-space: nowrap;
+  transition: background-color 700ms ease, color 700ms ease, transform 200ms var(--ease);
+}
+.btn.idle-btn.warm {
+  background: var(--hot);
+  color: #2a1002;
+}
+/* The count to a fresh start: above the button, in the corner, large enough to be seen from
+   where a visitor would be standing and nowhere near the middle of anything. */
+.idle-count {
+  position: absolute;
+  right: 0;
+  bottom: calc(100% + 1.2vh);
+  min-width: 100%;
+  text-align: center;
+  font-size: clamp(3rem, 9vw, 8rem);
+  font-weight: 800;
+  line-height: 1;
+  font-variant-numeric: tabular-nums;
+  color: var(--hot);
+}
+.idle-count:empty { display: none; }
 /* Three answers to the share question side by side: narrower than a lone button, so all three
    fit across the dock. */
 body[data-step="confirm"] .dock .btn-lg { padding-inline: 1.6em; }

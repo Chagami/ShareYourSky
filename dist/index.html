@@ -7,10 +7,10 @@
      touch-action in css/app.css and the listeners in js/main.js as well. -->
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
 <title>Share Your Sky</title>
-  <script type="module" crossorigin src="./assets/main-CONPR78M.js"></script>
+  <script type="module" crossorigin src="./assets/main-DBdqX0Rk.js"></script>
   <link rel="modulepreload" crossorigin href="./assets/modulepreload-polyfill-P2Xu9kJm.js">
   <link rel="modulepreload" crossorigin href="./assets/store-Bw-aBf6I.js">
-  <link rel="stylesheet" crossorigin href="./assets/app-CSiiKSUH.css">
+  <link rel="stylesheet" crossorigin href="./assets/app-CO2Mlun7.css">
 </head>
 <body data-step="camera">
 
@@ -297,6 +297,14 @@
     <button id="yesBtn" class="btn btn-lg">Share Edited</button>
     <button id="originalBtn" class="btn btn-lg">Share Original</button>
     <button id="resetBtn" class="btn ghost">Start again</button>
+  </div>
+
+  <!-- Offered after a minute with nobody touching anything, on every step but the camera: off to
+       the right, out of the way of the step's own button, and counting down to a fresh start if
+       it is still not touched. js/main.js runs it. -->
+  <div class="idle" id="idle" hidden>
+    <span class="idle-count" id="idleCount" aria-live="polite"></span>
+    <button id="idleBtn" class="btn idle-btn">Start over</button>
   </div>
 
 </footer>

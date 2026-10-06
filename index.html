@@ -296,6 +296,14 @@
     <button id="resetBtn" class="btn ghost">Start again</button>
   </div>
 
+  <!-- Offered after a minute with nobody touching anything, on every step but the camera: off to
+       the right, out of the way of the step's own button, and counting down to a fresh start if
+       it is still not touched. js/main.js runs it. -->
+  <div class="idle" id="idle" hidden>
+    <span class="idle-count" id="idleCount" aria-live="polite"></span>
+    <button id="idleBtn" class="btn idle-btn">Start over</button>
+  </div>
+
 </footer>
 
 <div class="flash" id="flash" aria-hidden="true"></div>
