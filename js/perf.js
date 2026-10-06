@@ -20,6 +20,7 @@ const REPAINT = 250 // ms between DOM writes; sampling is per frame, drawing is 
 
 let on = false
 let box = null
+let text = null // the readout inside it
 let raf = 0
 let lastFrame = 0
 let lastPaint = 0
@@ -96,6 +97,29 @@ function build() {
     font: 11px/1.5 ui-monospace, "SF Mono", Menlo, Consolas, monospace;
     white-space: pre; pointer-events: none;
     text-shadow: 0 1px 2px rgba(0, 0, 0, .8);`
+
+  // The readout is rewritten several times a second, so it has an element of its own and the
+  // button beside it is left alone.
+  text = document.createElement('div')
+  text.style.cssText = 'padding-right: 46px; min-height: 40px'
+
+  // The one part of the overlay that can be touched, so it can be closed on a kiosk with no
+  // keyboard. Small and in its own corner: the rest stays pointer-events: none, for the reason
+  // above.
+  const close = document.createElement('button')
+  close.type = 'button'
+  close.textContent = '×'
+  close.title = 'Close'
+  close.setAttribute('aria-label', 'Close the performance overlay')
+  close.style.cssText = `
+    position: absolute; top: 6px; right: 6px; width: 40px; height: 40px; padding: 0;
+    pointer-events: auto; cursor: pointer;
+    border: 1px solid rgba(255, 255, 255, .22); border-radius: 9px;
+    background: rgba(255, 255, 255, .06); color: inherit; text-shadow: none;
+    font: 20px/1 ui-monospace, Menlo, Consolas, monospace;`
+  close.addEventListener('click', () => toggle(false))
+
+  box.append(text, close)
   document.body.append(box)
 }
 
@@ -170,7 +194,7 @@ function paint(now) {
   const stage = document.body.dataset.stage ?? '-'
   lines.push(`stage ${stage}${document.body.dataset.split ? ' · split' : ''}   dpr ${window.devicePixelRatio || 1}`)
   lines.push(`${innerWidth}x${innerHeight}  hold top-left or P to hide`)
-  box.textContent = lines.join('\n')
+  text.textContent = lines.join('\n')
 }
 
 export function toggle(next = !on) {
