@@ -1062,6 +1062,69 @@ async function askKiosk(action) {
   refreshDebug()
 }
 
+// ── the camera's exposure, through the server ──────────────────────────────
+//
+// See server/camera.js: Firefox gives a page no say over exposure, so the server sets it with
+// v4l2-ctl, the way qv4l2 does. What the camera last said, for the menu to show; null until it
+// has answered, with the reason in `exposureNote` if it will not.
+let exposure = null
+let exposureNote = '…'
+
+async function exposureAsk(body) {
+  try {
+    const res = await fetch('api/camera/exposure', body
+      ? { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) }
+      : { cache: 'no-store' })
+    const answer = await res.json().catch(() => ({}))
+    if (!res.ok) throw new Error(answer.error ?? res.status)
+    exposure = answer
+    exposureNote = ''
+    setInfo('exposure', `${answer.mode}, ${exposureMs(answer.time.value)} on ${answer.device}`)
+  } catch (err) {
+    exposure = null
+    exposureNote = res501(err) ? 'not here' : 'unavailable'
+    setInfo('exposure', `unavailable: ${err?.message ?? err}`)
+  }
+}
+const res501 = (err) => /only on the exhibit machine/.test(String(err?.message ?? err))
+
+/** The camera's units are tenths of a millisecond. */
+const exposureMs = (units) => {
+  const ms = units / 10
+  return `${ms < 10 ? ms.toFixed(1) : Math.round(ms)} ms`
+}
+
+// The slider runs 0-100 and is mapped onto the camera's range logarithmically: its range is
+// typically a tenth of a millisecond to half a second, and everything that matters for a moving
+// subject at 30 frames a second is under 33ms — on a straight scale, the first few percent.
+const EXPOSURE_STEPS = 100
+function exposureFromSlider(p) {
+  const { min, max } = exposure.time
+  const lo = Math.log(Math.max(1, min))
+  return Math.round(Math.exp(lo + ((Math.log(max) - lo) * p) / EXPOSURE_STEPS))
+}
+function exposureToSlider(units) {
+  const { min, max } = exposure.time
+  const lo = Math.log(Math.max(1, min))
+  return Math.round(((Math.log(Math.max(1, units)) - lo) / (Math.log(max) - lo)) * EXPOSURE_STEPS)
+}
+
+// One change in flight at a time, and always ending on the latest: a drag fires far faster than
+// v4l2-ctl answers, and queueing every step of it would leave the camera catching up for seconds.
+let exposureSending = false
+let exposureWanted = null
+async function sendExposureTime(units) {
+  exposureWanted = units
+  if (exposureSending) return
+  exposureSending = true
+  while (exposureWanted !== null) {
+    const next = exposureWanted
+    exposureWanted = null
+    await exposureAsk({ time: next })
+  }
+  exposureSending = false
+}
+
 /**
  * What the debug menu can do.
  *
@@ -1070,6 +1133,7 @@ async function askKiosk(action) {
  * facts belong in the HUD, which is already showing them.
  */
 function registerDebugActions() {
+  exposureAsk()
   addDebugAction({
     label: 'Rotate camera',
     hint: 'quarter turn — viewfinder and capture together, remembered on this machine',
@@ -1139,6 +1203,33 @@ function registerDebugActions() {
     hint: 'drops frames that arrive torn — the flashing at the bottom of the picture at 4K; the overlay counts what it catches',
     state: () => GUARD_MODES[guardAt].label,
     run: () => setGuard(guardAt + 1),
+  })
+  addDebugAction({
+    label: 'Exposure',
+    hint: 'the camera’s own exposure, as qv4l2 sets it — auto, or manual with the time below; done by the server on the exhibit machine, and forgotten if the camera is unplugged',
+    state: () => exposure?.mode ?? exposureNote,
+    run: async () => {
+      // Not heard from the camera yet: ask again, rather than switch blind.
+      if (exposure) await exposureAsk({ mode: exposure.mode === 'manual' ? 'auto' : 'manual' })
+      else await exposureAsk()
+      refreshDebug()
+    },
+  })
+  addDebugSlider({
+    label: 'Exposure time',
+    hint: 'longer is brighter and less noisy, but past 33 ms the camera cannot keep 30 frames a second and moving things blur',
+    min: 0,
+    max: EXPOSURE_STEPS,
+    step: 1,
+    shown: () => exposure?.mode === 'manual',
+    get: () => exposureToSlider(exposure.time.value),
+    set: (p) => {
+      const units = exposureFromSlider(p)
+      // Kept here as well, so a redraw of the menu mid-drag puts the slider where the finger is.
+      exposure.time.value = units
+      sendExposureTime(units)
+    },
+    format: (p) => exposureMs(exposureFromSlider(p)),
   })
   addDebugAction({
     label: 'Live denoise',
@@ -1300,6 +1391,8 @@ function wireDebugKnock() {
     } else if (dot.dataset.step === 'edit' && taps >= KNOCK_TAPS) {
       taps = 0
       toggleDebug(true)
+      // What the camera is set to now: somebody may have changed it from a terminal since.
+      exposureAsk().then(refreshDebug)
     } else {
       taps = 0
     }

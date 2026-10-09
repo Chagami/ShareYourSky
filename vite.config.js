@@ -5,6 +5,7 @@ import { wallStore } from './server/wall.js'
 import { galleryAllocator } from './server/gallery.js'
 import { answerLog } from './server/answers.js'
 import { kioskControl } from './server/kiosk.js'
+import { cameraControl } from './server/camera.js'
 
 // Where the exhibit answers, and how. The defaults are the developer's; the exhibit machine
 // sets these in scripts/exhibit.env, so the address on the kiosk shortcut can be a bare name
@@ -73,8 +74,9 @@ export default defineConfig({
   // wallStore keeps the visitors' pictures; galleryAllocator hands the curated ones out to the
   // four gallery screens so that no two of them show the same thing.
   // basicSsl only when there is no real certificate to use — the two fight over the same job.
-  // kioskControl takes the kiosk browser out of full screen and back, from the debug menu.
-  plugins: [...(selfSigned ? [basicSsl()] : []), wallStore(), galleryAllocator(), answerLog(), kioskControl()],
+  // kioskControl takes the kiosk browser out of full screen and back, from the debug menu, and
+  // cameraControl sets the camera's exposure from it.
+  plugins: [...(selfSigned ? [basicSsl()] : []), wallStore(), galleryAllocator(), answerLog(), kioskControl(), cameraControl()],
   // Nothing to pre-bundle: this project has no runtime dependencies and every import in js/ is
   // relative, so the dependency optimizer scans the whole tree and renames a directory into
   // place to produce an empty result. On Windows that rename fails outright if anything is

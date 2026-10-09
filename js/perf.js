@@ -242,8 +242,8 @@ let menuOn = false
  * `run` does the thing. `state`, if given, returns a short string shown beside the label and
  * re-read on every redraw, so a button that changes something can show what it changed it to.
  */
-export function addDebugAction({ label, hint, run, state }) {
-  actions.push({ label, hint, run, state })
+export function addDebugAction({ label, hint, run, state, shown }) {
+  actions.push({ label, hint, run, state, shown })
   if (menuOn) drawMenu()
 }
 
@@ -262,8 +262,8 @@ export function refreshDebug() {
   if (menuOn) drawMenu()
 }
 
-export function addDebugSlider({ label, hint, min = 0, max = 100, step = 1, get, set, format }) {
-  actions.push({ slider: true, label, hint, min, max, step, get, set, format })
+export function addDebugSlider({ label, hint, min = 0, max = 100, step = 1, get, set, format, shown }) {
+  actions.push({ slider: true, label, hint, min, max, step, get, set, format, shown })
   if (menuOn) drawMenu()
 }
 
@@ -328,6 +328,15 @@ function drawMenu() {
   }
 
   for (const a of actions) {
+    // `shown`, when given, decides whether the row is there at all — a slider that only means
+    // something in one mode of another setting, say. One that throws keeps its row.
+    if (a.shown) {
+      let there = true
+      try {
+        there = a.shown()
+      } catch {}
+      if (!there) continue
+    }
     if (a.slider) {
       const row = document.createElement('div')
       row.style.cssText = 'padding:7px 2px 3px'
