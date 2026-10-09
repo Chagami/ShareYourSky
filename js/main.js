@@ -141,6 +141,24 @@ const PACE = matchMedia('(prefers-reduced-motion: reduce)').matches ? 0.3 : 1
 // still and let it be a row of pictures.
 const STILL = matchMedia('(prefers-reduced-motion: reduce)').matches
 const t = (ms) => Math.round(ms * PACE)
+
+/**
+ * A copy of `list` in a fair random order.
+ *
+ * Not `sort(() => Math.random() - 0.5)`, which this used: a sort given a coin toss for a
+ * comparison does not shuffle, it nudges, and leaves the list close to the order it came in. With
+ * the curated folder in filename order that put the same early pictures in the share screen's
+ * strip visitor after visitor — measured in Chrome, the first ten files came up twice as often as
+ * the last ten. Fisher–Yates gives every order the same chance.
+ */
+function shuffled(list) {
+  const out = [...list]
+  for (let i = out.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1))
+    ;[out[i], out[j]] = [out[j], out[i]]
+  }
+  return out
+}
 const EASE = 'cubic-bezier(.16, 1, .3, 1)'
 
 const $ = (id) => document.getElementById(id)
@@ -1845,7 +1863,7 @@ const STEP_ENTER = {
     if (step() !== 'confirm') return
     stopReels()
     if (pool.length) {
-      const deck = [...pool].sort(() => Math.random() - 0.5)
+      const deck = shuffled(pool)
       fillReel(reelTop, -1, deck.slice(0, REEL.perReel))
       startReels()
     } else {
@@ -2234,9 +2252,7 @@ function layoutNotes() {
 
   for (let f = 1; f < FILTERS.length; f++) {
     const placed = []
-    const pool = stars
-      .filter((st) => st.through[f - 1] === 1 && !st.el.classList.contains('covered'))
-      .sort(() => Math.random() - 0.5)
+    const pool = shuffled(stars.filter((st) => st.through[f - 1] === 1 && !st.el.classList.contains('covered')))
 
     // Spread round the screen rather than bunched: a readout this near another's star is passed
     // over for one further off.
