@@ -18,6 +18,8 @@ const selectAllBtn = document.getElementById('selectAll')
 const removeSelBtn = document.getElementById('removeSel')
 const clearAllBtn = document.getElementById('clearAll')
 const clearAnswersBtn = document.getElementById('clearAnswers')
+const downloadAllLink = document.getElementById('downloadAll')
+const downloadSelBtn = document.getElementById('downloadSel')
 
 let items = []
 let selected = new Set()
@@ -84,7 +86,7 @@ function card(item) {
   // The whole card is the selection target. An operator may well be doing this on the tablet,
   // and a checkbox in a corner is a poor thing to hit with a thumb.
   root.addEventListener('click', (e) => {
-    if (e.target.closest('.shot-x')) return
+    if (e.target.closest('.shot-x, .shot-dl')) return
     selected.has(item.id) ? selected.delete(item.id) : selected.add(item.id)
     root.classList.toggle('picked', selected.has(item.id))
     syncTools()
@@ -101,6 +103,17 @@ function card(item) {
     await load()
   })
   root.append(x)
+
+  // This one picture, under a name that says when it was shared. A link, because a link is what
+  // saves a file; same origin, so `download` is honoured.
+  const dl = document.createElement('a')
+  dl.className = 'shot-dl'
+  dl.href = item.image
+  dl.download = item.name ?? `${item.id}.jpg`
+  dl.title = 'Download this photo'
+  dl.setAttribute('aria-label', 'Download this photo')
+  dl.textContent = '↓'
+  root.append(dl)
 
   const meta = document.createElement('figcaption')
   meta.className = 'shot-meta'
@@ -120,6 +133,10 @@ function syncTools() {
   const n = selected.size
   removeSelBtn.disabled = n === 0
   reset(removeSelBtn, n ? `Delete ${n} selected` : 'Delete selected')
+  downloadSelBtn.disabled = n === 0
+  downloadSelBtn.textContent = n ? `Download ${n} selected` : 'Download selected'
+  // Nothing to download is a link that answers with an error page, so it is shown as off.
+  downloadAllLink.classList.toggle('off', items.length === 0)
   selectAllBtn.textContent = n && n === items.length ? 'Select none' : 'Select all'
   ;[...grid.children].forEach((el) => el.classList.toggle('picked', selected.has(el.dataset.id)))
 }
@@ -192,6 +209,25 @@ function reset(button, idle) {
 }
 
 // ── the toolbar ─────────────────────────────────────────────────────────────
+
+// The selection, as one zip. Sent as a form rather than fetched: the browser then treats the
+// answer as the download it is, saving it as it arrives, instead of this page holding a season's
+// photos in memory to hand over at the end.
+downloadSelBtn.addEventListener('click', () => {
+  if (!selected.size) return
+  const form = document.createElement('form')
+  form.method = 'POST'
+  form.action = `${API}/zip`
+  form.hidden = true
+  const ids = document.createElement('input')
+  ids.type = 'hidden'
+  ids.name = 'ids'
+  ids.value = [...selected].join(',')
+  form.append(ids)
+  document.body.append(form)
+  form.submit()
+  form.remove()
+})
 
 refreshBtn.addEventListener('click', () => {
   load()

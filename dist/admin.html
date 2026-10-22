@@ -4,9 +4,9 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Share Your Sky — Photos</title>
-  <script type="module" crossorigin src="./assets/admin-xcSxgYZc.js"></script>
+  <script type="module" crossorigin src="./assets/admin-BB-44epW.js"></script>
   <link rel="modulepreload" crossorigin href="./assets/modulepreload-polyfill-P2Xu9kJm.js">
-  <link rel="stylesheet" crossorigin href="./assets/admin-DppTu3-F.css">
+  <link rel="stylesheet" crossorigin href="./assets/admin-WZ3JtAA5.css">
   <link rel="stylesheet" crossorigin href="./assets/app-CO2Mlun7.css">
 </head>
 <!-- Not the exhibit. This is the page for whoever is running it: every picture ever shared,
@@ -26,6 +26,10 @@
     <button class="abtn danger ghost" id="clearAnswers" disabled>Clear answers</button>
     <button class="abtn" id="refresh">Refresh</button>
     <button class="abtn" id="selectAll">Select all</button>
+    <!-- Downloads, as one zip each, built by server/wall.js. "All" is a plain link; a selection
+         goes as a form, because a few hundred ids will not fit in an address. -->
+    <a class="abtn" id="downloadAll" href="api/wall/zip" download>Download all</a>
+    <button class="abtn" id="downloadSel" disabled>Download selected</button>
     <button class="abtn danger" id="removeSel" disabled>Delete selected</button>
     <button class="abtn danger ghost" id="clearAll">Delete everything</button>
   </div>

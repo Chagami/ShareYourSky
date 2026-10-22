@@ -24,6 +24,10 @@
     <button class="abtn danger ghost" id="clearAnswers" disabled>Clear answers</button>
     <button class="abtn" id="refresh">Refresh</button>
     <button class="abtn" id="selectAll">Select all</button>
+    <!-- Downloads, as one zip each, built by server/wall.js. "All" is a plain link; a selection
+         goes as a form, because a few hundred ids will not fit in an address. -->
+    <a class="abtn" id="downloadAll" href="api/wall/zip" download>Download all</a>
+    <button class="abtn" id="downloadSel" disabled>Download selected</button>
     <button class="abtn danger" id="removeSel" disabled>Delete selected</button>
     <button class="abtn danger ghost" id="clearAll">Delete everything</button>
   </div>

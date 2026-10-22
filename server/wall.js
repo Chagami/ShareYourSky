@@ -15,6 +15,8 @@
 //   GET    api/wall/img/<id>.jpg the picture itself
 //   DELETE api/wall/img/<id>     remove one picture, for good
 //   DELETE api/wall              empty the wall (for whoever is running the exhibit)
+//   GET    api/wall/zip          every picture, as one zip to download
+//   POST   api/wall/zip          the pictures named in the form field `ids`, comma-separated
 //
 // Images are written as files rather than kept as base64 in a JSON blob. A data URL is a third
 // larger than the bytes it carries, and twenty-four captures of it is more than the 5MB a
@@ -36,6 +38,108 @@ const ON_THE_WALL = 24
 // A generous ceiling on one upload. A 1400px JPEG data URL is well under a megabyte; this is
 // only here so that a malformed request cannot make the exhibit machine read forever.
 const MAX_UPLOAD = 12 * 1024 * 1024
+
+/**
+ * A picture's name for whoever downloads it: when it was shared, to the minute, and the start of
+ * its id so two in the same minute do not collide. In the exhibit machine's own time.
+ */
+export function downloadName(entry) {
+  const d = new Date(entry.ts)
+  const p = (n) => String(n).padStart(2, '0')
+  const when = Number.isFinite(d.getTime())
+    ? `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}-${p(d.getHours())}${p(d.getMinutes())}`
+    : 'undated'
+  return `share-your-sky-${when}-${entry.id.slice(0, 8)}.jpg`
+}
+
+// ── a zip, written by hand ──────────────────────────────────────────────────
+//
+// The pictures are JPEGs, which do not compress any further, so they go in "stored" — copied
+// as they are — and a zip of stored files is simple enough to write without a library: a header
+// before each file, a directory of them all at the end. Streamed, one picture at a time, so a
+// season's worth never has to be in memory at once.
+
+const CRC_TABLE = new Uint32Array(256).map((_, n) => {
+  let c = n
+  for (let k = 0; k < 8; k++) c = c & 1 ? 0xedb88320 ^ (c >>> 1) : c >>> 1
+  return c >>> 0
+})
+function crc32(bytes) {
+  let c = 0xffffffff
+  for (let i = 0; i < bytes.length; i++) c = CRC_TABLE[(c ^ bytes[i]) & 0xff] ^ (c >>> 8)
+  return (c ^ 0xffffffff) >>> 0
+}
+
+/** The date and time a zip entry carries, in the old MS-DOS form zips still use. */
+function dosStamp(ts) {
+  const d = new Date(Number.isFinite(ts) ? ts : Date.now())
+  const time = (d.getHours() << 11) | (d.getMinutes() << 5) | (d.getSeconds() >> 1)
+  const date = (Math.max(0, d.getFullYear() - 1980) << 9) | ((d.getMonth() + 1) << 5) | d.getDate()
+  return { time, date }
+}
+
+/** Write `files` ({ name, path, ts }) to `res` as a zip. Ones that have gone missing are skipped. */
+function sendZip(res, zipName, files) {
+  res.statusCode = 200
+  res.setHeader('content-type', 'application/zip')
+  res.setHeader('content-disposition', `attachment; filename="${zipName}"`)
+  res.setHeader('cache-control', 'no-store')
+
+  const central = []
+  let offset = 0
+  for (const file of files) {
+    let bytes
+    try {
+      bytes = readFileSync(file.path)
+    } catch {
+      continue
+    }
+    const name = Buffer.from(file.name, 'utf8')
+    const crc = crc32(bytes)
+    const { time, date } = dosStamp(file.ts)
+
+    const local = Buffer.alloc(30)
+    local.writeUInt32LE(0x04034b50, 0) // local file header
+    local.writeUInt16LE(20, 4) // version needed
+    local.writeUInt16LE(0x0800, 6) // names are UTF-8
+    local.writeUInt16LE(0, 8) // stored
+    local.writeUInt16LE(time, 10)
+    local.writeUInt16LE(date, 12)
+    local.writeUInt32LE(crc, 14)
+    local.writeUInt32LE(bytes.length, 18)
+    local.writeUInt32LE(bytes.length, 22)
+    local.writeUInt16LE(name.length, 26)
+    local.writeUInt16LE(0, 28)
+    res.write(local)
+    res.write(name)
+    res.write(bytes)
+
+    const entry = Buffer.alloc(46)
+    entry.writeUInt32LE(0x02014b50, 0) // central directory header
+    entry.writeUInt16LE(20, 4) // made by
+    entry.writeUInt16LE(20, 6) // version needed
+    entry.writeUInt16LE(0x0800, 8)
+    entry.writeUInt16LE(0, 10)
+    entry.writeUInt16LE(time, 12)
+    entry.writeUInt16LE(date, 14)
+    entry.writeUInt32LE(crc, 16)
+    entry.writeUInt32LE(bytes.length, 20)
+    entry.writeUInt32LE(bytes.length, 24)
+    entry.writeUInt16LE(name.length, 28)
+    entry.writeUInt32LE(offset, 42)
+    central.push(entry, name)
+    offset += local.length + name.length + bytes.length
+  }
+
+  const directory = Buffer.concat(central)
+  const end = Buffer.alloc(22)
+  end.writeUInt32LE(0x06054b50, 0) // end of central directory
+  end.writeUInt16LE(central.length / 2, 8)
+  end.writeUInt16LE(central.length / 2, 10)
+  end.writeUInt32LE(directory.length, 12)
+  end.writeUInt32LE(offset, 16)
+  res.end(Buffer.concat([directory, end]))
+}
 
 export function wallStore({ dir = 'wall' } = {}) {
   let root = process.cwd()
@@ -83,6 +187,8 @@ export function wallStore({ dir = 'wall' } = {}) {
     return {
       id: entry.id,
       image: `api/wall/img/${entry.id}.jpg`,
+      // What it is called when somebody downloads it from the admin page.
+      name: downloadName(entry),
       w: size.w,
       h: size.h,
       levels: entry.levels,
@@ -175,6 +281,29 @@ export function wallStore({ dir = 'wall' } = {}) {
       res.setHeader('cache-control', 'public, max-age=31536000, immutable')
       res.end(readFileSync(file))
       return
+    }
+
+    // ── many pictures at once, as a zip ──
+    // GET for all of them; POST from a form for a selection, because a list of a few hundred ids
+    // is too long to put in an address.
+    if (rest === 'zip') {
+      let entries = readIndex()
+      const day = new Date().toISOString().slice(0, 10)
+      let zipName = `share-your-sky-photos-${day}.zip`
+      if (req.method === 'POST') {
+        const form = new URLSearchParams(await readBody(req))
+        const wanted = new Set((form.get('ids') ?? '').split(',').filter((id) => /^[0-9a-f-]{36}$/i.test(id)))
+        entries = entries.filter((e) => wanted.has(e.id))
+        zipName = `share-your-sky-photos-${day}-${entries.length}-selected.zip`
+      } else if (req.method !== 'GET') {
+        return json(res, 405, { error: `${req.method} not allowed here` })
+      }
+      if (!entries.length) return json(res, 404, { error: 'no pictures to download' })
+      return sendZip(
+        res,
+        zipName,
+        entries.map((e) => ({ name: downloadName(e), path: paths().img(e.id), ts: e.ts }))
+      )
     }
 
     // ── live updates ──

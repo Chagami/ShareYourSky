@@ -151,6 +151,31 @@ body.admin {
   padding: 0 0.8em;
 }
 
+/* Download, in the corner opposite delete: the same shape, so the two read as a pair, but the
+   ink colour rather than the warning one, because nothing is lost by pressing it. */
+.shot-dl {
+  position: absolute;
+  top: 6px;
+  left: 6px;
+  z-index: 2;
+  display: grid;
+  place-items: center;
+  min-width: 30px;
+  height: 30px;
+  padding: 0 0.5em;
+  border-radius: 15px;
+  background: rgba(8, 9, 12, 0.82);
+  color: var(--ink);
+  font-size: 1rem;
+  line-height: 1;
+  text-decoration: none;
+  transition: background 160ms ease, color 160ms ease;
+}
+.shot-dl:hover { background: var(--hot); color: #2a1002; }
+
+/* A link with nothing behind it yet — "Download all" before anything has been shared. */
+.abtn.off { opacity: 0.35; pointer-events: none; }
+
 .shot-meta {
   display: flex;
   align-items: center;
