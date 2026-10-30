@@ -3863,6 +3863,27 @@ for (const kind of ['gesturestart', 'gesturechange']) {
   addEventListener(kind, (e) => e.preventDefault(), { passive: false })
 }
 
+// ── the kiosk's heartbeat ────────────────────────────────────────────────────
+//
+// See server/kiosk.js: the server restarts the kiosk browser when these stop. Sent only while the
+// page is still drawing — a frame clock that has stood still for ten seconds means the picture
+// has frozen, which is exactly the failure the graphics hangs produce, so then nothing is sent
+// and the silence is the report. Only from the kiosk itself, which opens the page on localhost;
+// anywhere else it would only be noise the server ignores.
+const BEAT_EVERY = 5000
+const BEAT_STALLED = 10000
+let drewAt = performance.now()
+;(function frameClock() {
+  drewAt = performance.now()
+  requestAnimationFrame(frameClock)
+})()
+if (['localhost', '127.0.0.1', '[::1]'].includes(location.hostname)) {
+  setInterval(() => {
+    if (performance.now() - drewAt > BEAT_STALLED) return
+    fetch('api/kiosk/heartbeat', { method: 'POST', keepalive: true }).catch(() => {})
+  }, BEAT_EVERY)
+}
+
 // Hand the camera back before the page goes away.
 //
 // Nothing else does. On a reload the browser is supposed to release it when the old document

@@ -7,6 +7,7 @@
 //   POST api/kiosk { action: 'exit' }   stop the kiosk service, open the page in an ordinary
 //                                       window — tabs, a close button, the developer tools
 //   POST api/kiosk { action: 'enter' }  close that window and start the kiosk service again
+//   POST api/kiosk/heartbeat            the kiosk page saying it is alive and still drawing
 //
 // Either way the answer goes back before anything is done, because the browser asking is the
 // one about to be closed. What happened is in the server's journal: journalctl -u sharedsky.
@@ -16,6 +17,13 @@
 //   SKY_KIOSK_PROFILE  the Firefox profile it uses                   (~/snap/firefox/common/kiosk-profile)
 //   SKY_KIOSK_BROWSER  the browser                                   (/snap/bin/firefox)
 //   SKY_KIOSK_URL      what the ordinary window opens                (http://localhost/)
+//
+// and how patient the heartbeat watchdog is, in seconds:
+//   SKY_KIOSK_HEARTBEAT_TIMEOUT  silence before the browser is restarted      (120)
+//   SKY_KIOSK_FIRST_BEAT_GRACE   for a browser that has never beaten at all   (300)
+//   SKY_KIOSK_RESTART_GAP        the least time between two restarts          (600)
+//   SKY_KIOSK_HEARTBEAT_CHECK    how often it looks                           (15)
+//   SKY_KIOSK_EXIT_PAUSE         out of kiosk mode this long, watch again     (7200)
 //
 // No authentication, for the same reason as the rest of the server: a LAN exhibit with no route
 // in from outside. The worst a stranger on that network can do here is take the kiosk out of
@@ -32,6 +40,83 @@ const BROWSER = process.env.SKY_KIOSK_BROWSER || '/snap/bin/firefox'
 const PAGE = process.env.SKY_KIOSK_URL || 'http://localhost/'
 
 const sleep = (ms) => new Promise((done) => setTimeout(done, ms))
+const seconds = (name, fallback) => (Number(process.env[name]) > 0 ? Number(process.env[name]) : fallback) * 1000
+
+// ── the heartbeat watchdog ──────────────────────────────────────────────────
+//
+// The kiosk browser can stop working without stopping: in October the graphics chip hung inside
+// Firefox again and again, and a hang like that can leave the picture frozen or blank while every
+// process is still running, so nothing that watches processes ever notices. So the page itself
+// reports in, every few seconds, but only while it is still managing to draw (see main.js) — and
+// when the reports stop, the browser is restarted.
+//
+// Only the kiosk counts. It opens http://localhost/, so a report from anywhere but this machine —
+// a visitor's tablet, a laptop on the admin page — is ignored, or one of those could keep a dead
+// kiosk looking alive. It stands back while the kiosk has been taken out of full screen from the
+// debug menu, and leaves a browser alone that was stopped on purpose.
+const BEAT_TIMEOUT = seconds('SKY_KIOSK_HEARTBEAT_TIMEOUT', 120)
+const FIRST_BEAT_GRACE = seconds('SKY_KIOSK_FIRST_BEAT_GRACE', 300)
+const RESTART_GAP = seconds('SKY_KIOSK_RESTART_GAP', 600)
+// Out of kiosk mode for troubleshooting is a pause, not a switch-off: somebody who forgets to go
+// back to it still gets a watched kiosk again after this.
+const EXIT_PAUSE = seconds('SKY_KIOSK_EXIT_PAUSE', 7200)
+const BEAT_CHECK = seconds('SKY_KIOSK_HEARTBEAT_CHECK', 15)
+
+const beats = {
+  last: null, // the kiosk's last report, ms since the epoch
+  since: Date.now(), // when the watch began: server start, or the last restart
+  restartedAt: 0,
+  exited: 0, // when it was taken out of kiosk mode from the debug menu; 0 while it is in it
+  restarts: 0,
+}
+
+const fromThisMachine = (req) => /^(::1|127\.0\.0\.1|::ffff:127\.0\.0\.1)$/.test(req.socket?.remoteAddress ?? '')
+
+async function checkBeats() {
+  const now = Date.now()
+  if (beats.exited) {
+    if (now - beats.exited < EXIT_PAUSE) return
+    console.log(`[kiosk] watchdog: out of kiosk mode for ${Math.round((now - beats.exited) / 60000)} minutes — watching again`)
+    Object.assign(beats, { exited: 0, last: null, since: now })
+    return
+  }
+  const quiet = now - (beats.last ?? beats.since)
+  if (quiet < (beats.last ? BEAT_TIMEOUT : FIRST_BEAT_GRACE)) return
+  if (now - beats.restartedAt < RESTART_GAP) return
+
+  // What the browser's service says it is doing. No answer at all means there is no desktop
+  // session to run it in — the session watchdog's business, not this one's.
+  const state = await run('systemctl', ['--user', 'is-active', UNIT], { ok: true })
+  if (!state) return
+  const why = beats.last ? `no heartbeat for ${Math.round(quiet / 1000)}s` : `never a heartbeat in ${Math.round(quiet / 1000)}s`
+  beats.restartedAt = now
+  beats.since = now
+  beats.last = null
+  try {
+    if (state === 'active' || state === 'activating') {
+      console.log(`[kiosk] watchdog: ${why} — restarting the kiosk browser`)
+      await run('systemctl', ['--user', 'restart', UNIT])
+    } else if (state === 'failed') {
+      console.log(`[kiosk] watchdog: ${why}, and the browser had failed — starting it again`)
+      await run('systemctl', ['--user', 'reset-failed', UNIT], { ok: true })
+      await run('systemctl', ['--user', 'start', UNIT])
+    } else {
+      // Stopped, by somebody, on purpose. Not this watchdog's place to overrule them.
+      console.log(`[kiosk] watchdog: ${why}, but the browser is ${state} — leaving it`)
+      return
+    }
+    beats.restarts++
+  } catch (err) {
+    console.error(`[kiosk] watchdog: restart failed: ${err.message}`)
+  }
+}
+
+let watching = false
+function watchBeats() {
+  if (watching || process.platform !== 'linux') return
+  watching = true
+  setInterval(() => checkBeats().catch((err) => console.error(`[kiosk] watchdog: ${err.message}`)), BEAT_CHECK).unref()
+}
 
 /**
  * Run a command against the desktop account's own systemd.
@@ -72,6 +157,7 @@ async function freeProfile() {
 
 const ACTIONS = {
   async exit() {
+    beats.exited = Date.now()
     await run('systemctl', ['--user', 'stop', UNIT])
     await run('systemctl', ['--user', 'stop', WINDOW_UNIT], { ok: true })
     await freeProfile()
@@ -81,6 +167,8 @@ const ACTIONS = {
     await run('systemctl', ['--user', 'stop', WINDOW_UNIT], { ok: true })
     await freeProfile()
     await run('systemctl', ['--user', 'start', UNIT])
+    // A fresh browser, and a fresh watch: it gets the first-beat grace, not the short timeout.
+    Object.assign(beats, { exited: 0, last: null, since: Date.now() })
   },
 }
 
@@ -94,6 +182,15 @@ export function kioskControl() {
 
   async function handle(req, res, next) {
     const path = new URL(req.url, 'http://x').pathname.replace(/^\/+/, '')
+
+    if (path === 'api/kiosk/heartbeat') {
+      if (req.method !== 'POST') return json(res, 405, { error: `${req.method} not allowed here` })
+      req.resume() // nothing in the body is needed
+      if (fromThisMachine(req)) beats.last = Date.now()
+      res.statusCode = 204
+      return res.end()
+    }
+
     if (path !== 'api/kiosk') return next()
     if (req.method !== 'POST') return json(res, 405, { error: `${req.method} not allowed here` })
 
@@ -132,6 +229,7 @@ export function kioskControl() {
   // Braces, not an expression body — see the same note in answers.js and wall.js.
   const install = (server) => {
     server.middlewares.use((req, res, next) => handle(req, res, next))
+    watchBeats()
   }
 
   return {
