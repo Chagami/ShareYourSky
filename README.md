@@ -137,8 +137,11 @@ like a success.
 A visitor who presses **Share Edited** or **Share Original** can take that picture home. The
 results screen then offers **Download Your Photo** beside *Start again*; it opens a large QR
 code, and the phone that scans it gets a small page with the photo, a **Download** button and
-"Or press and hold the photo to save" for iPhones. Visitors who choose *Don't share* get nothing,
+a line telling them where it will go. Visitors who choose *Don't share* get nothing,
 and nothing of theirs leaves the machine.
+
+The photo is the full captured picture — up to 2160x3840 from the 4K camera, JPEG quality 0.95 —
+not the wall's 1200px copy.
 
 How it works: `server/share.js` uploads two objects to an R2 bucket through R2's S3-compatible
 API — `<token>.jpg` and `<token>.html`, named by a fresh random token per photo (16 random
@@ -186,8 +189,13 @@ page sit in the bucket under a random name until the lifecycle rule deletes them
 the picture in memory only until the next visitor, so *Try again* has something to send, and the
 server forgets the job within half an hour. The server's log names an upload by the first six
 characters of its token, enough to find it in the bucket while debugging, and never logs the
-link. The page has no scripts, analytics or outside requests, and asks search engines not to
-index it.
+link. The page has no analytics or outside requests, and asks search engines not to index it. Its
+one small script only fetches the photo beside it.
+
+**Saving to the phone's photos.** A plain download lands in Files on an iPhone, never in Photos,
+so on an iPhone the button reads **Save to Photos** and opens the share sheet, where *Save Image*
+puts it in Photos. Android keeps the plain download: it goes to Downloads and shows in the Gallery
+app. Pages uploaded before this change keep the old button and hint until they are deleted.
 
 ### A name instead of an IP
 
@@ -1292,9 +1300,10 @@ that a better camera bought nothing at all.
 | | | |
 | --- | --- | --- |
 | what the camera is asked for | `1280x720` → **`3840x2160`** | `ideal`, so a 720p camera still returns 720p — it never fails, it only settles |
-| `CAPTURE_EDGE` | 1400 wide → **2600 longest edge** | what is kept of the stream; the source for everything below |
-| `VIEW_EDGE` | 1000 wide → **1600 longest edge** | what every slider redraw works on, so the one number with a per-frame cost |
-| `WALL_EDGE` | 2600 → **1200 longest edge** | what a shared picture is kept at, on the wall and in the archive |
+| `CAPTURE_EDGE` | 1400 wide → 2600 → **3840 longest edge** | what is kept of the stream — all of a 4K camera's picture; the source for everything below, and the take-home photo |
+| `detailEdge()` | **as large as the screen ever shows it** | what every picture is drawn from when nothing is being dragged: about 2300 on the 4K kiosk |
+| `VIEW_EDGE` | 1000 wide → **1600 longest edge** | what a slider redraw works on *during a drag*, so the one number with a per-frame cost |
+| `WALL_EDGE` | 2600 → **1200 longest edge** | what a shared picture is kept at on the wall and in the archive (the take-home copy is full size) |
 | `PILLARS_EDGE` | 900 → 1400 → **removed** | went with the Pillars screen when step 4 became Reality |
 
 **The camera request was the whole of the "every camera looks the same" problem.** `ideal` is a
@@ -1342,11 +1351,23 @@ Pi drives a 4K signal, sRGB, JPEG quality around 85:
 magick mogrify -path resized -auto-orient -colorspace sRGB -resize "1200x1200>" -quality 85 -strip originals/*.jpg
 ```
 
-The sliders are unaffected by any of it: every interactive redraw works on `viewFrame`, never on
-the full capture.
+**Sharp when still, fast when dragged.** The pictures on screen used to be drawn from the 1600px
+editing copy everywhere, but the filter wheel's screen shows an upright photo about 2230 pixels
+tall on the 4K kiosk, so there it was being enlarged. Now every picture is drawn from a copy as
+large as the screen ever shows it (`detailEdge()`), and only a slider drag switches to the 1600px
+copy: about 8ms a redraw instead of 16. A moment after the finger stops (`SHARPEN_AFTER`, 160ms)
+the picture is redrawn sharp.
+
+**All of the camera is kept** (`CAPTURE_EDGE` 3840, up from 2600). The cap was there because the
+wall's JPEG used to be written at this size the moment a visitor pressed Share, in one blocking
+call. Now the wall gets its own 1200px copy, and the full-size picture is written only for the
+take-home link, by `compositeBlob` (the browser's `toBlob`, which encodes off the page's thread).
+Measured on a rotated 4K frame: kept at 2160x3840 in 161ms, inside the flash's 420ms freeze; the
+take-home JPEG, 2160x3840 at 0.95, about 0.8 MB, held the page for 84ms and was ready at 123ms.
+The 2600-pixel figures in the table above are from before.
 
 The performance overlay (<kbd>P</kbd>, or the long press) now carries a **`capture`** line
-reading `camera 3840x2160 -> kept 1463x2600 (3.8 MP)`. That is the quickest way to tell whether
+reading `camera 3840x2160 -> kept 2160x3840 (8.3 MP)`. That is the quickest way to tell whether
 a camera is really being used or is quietly handing back 720p — which is exactly the symptom
 this was.
 

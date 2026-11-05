@@ -53,9 +53,17 @@ const escapeHtml = (text) =>
   String(text).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c])
 
 /**
- * The download page. Self-contained — inline styles, no scripts, nothing fetched from anywhere
- * but the photo beside it, which is referenced by relative path so the page works wherever the
- * bucket is served from.
+ * The download page. Self-contained — inline styles and one small inline script, nothing fetched
+ * from anywhere but the photo beside it, which is referenced by relative path so the page works
+ * wherever the bucket is served from.
+ *
+ * Saving to the photo library. A `download` link always lands in Files on an iPhone and in
+ * Downloads on Android — never in Photos. On an iPhone the way into Photos is the share sheet,
+ * whose "Save Image" does exactly that, so there the button opens the share sheet instead. The
+ * photo is fetched as the page loads, because Safari only allows the share sheet straight from the
+ * tap, with nothing awaited in between. Android's share sheet has no dependable "save to gallery",
+ * and its downloads show up in the Gallery app anyway, so Android keeps the plain download. Without
+ * the script, or if anything in it fails, the plain download link is what remains.
  */
 export function buildPage({ token, exhibit = EXHIBIT_NAME, keptFor = KEPT_FOR }) {
   const photo = `./${encodeURIComponent(token)}.jpg`
@@ -89,8 +97,6 @@ export function buildPage({ token, exhibit = EXHIBIT_NAME, keptFor = KEPT_FOR })
     height: auto;
     border-radius: 14px;
     box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.12);
-    /* Long-press to save on iPhone needs the browser's own image menu, so nothing blocks it. */
-    -webkit-touch-callout: default;
   }
   .download {
     display: block;
@@ -104,6 +110,7 @@ export function buildPage({ token, exhibit = EXHIBIT_NAME, keptFor = KEPT_FOR })
     text-decoration: none;
   }
   .hint { margin: 0 0 22px; font-size: 1rem; color: #dfe3ea; }
+  .hint:empty { display: none; }
   .note { margin: 0; font-size: 0.85rem; color: #949aa6; line-height: 1.5; }
 </style>
 </head>
@@ -112,10 +119,43 @@ export function buildPage({ token, exhibit = EXHIBIT_NAME, keptFor = KEPT_FOR })
   <h1>${name}</h1>
   <p class="sub">Your photo from the exhibit</p>
   <img src="${photo}" alt="Your photo from ${name}">
-  <a class="download" href="${photo}" download="share-your-sky.jpg">Download</a>
-  <p class="hint">Or press and hold the photo to save</p>
+  <a class="download" id="save" href="${photo}" download="share-your-sky.jpg">Download</a>
+  <p class="hint" id="hint"></p>
   <p class="note">This photo is deleted automatically after ${escapeHtml(keptFor)}.<br>${name}</p>
 </main>
+<script>
+(function () {
+  var save = document.getElementById('save')
+  var hint = document.getElementById('hint')
+  var ua = navigator.userAgent
+  var ios = /iPhone|iPad|iPod/.test(ua) || (ua.indexOf('Macintosh') > -1 && navigator.maxTouchPoints > 1)
+  if (/Android/.test(ua)) {
+    hint.textContent = 'It goes to Downloads, and shows in your Gallery.'
+    return
+  }
+  if (!ios || !navigator.canShare || !window.File || !window.fetch) return
+  var file = null
+  fetch(save.getAttribute('href'))
+    .then(function (res) { return res.ok ? res.blob() : null })
+    .then(function (blob) {
+      if (!blob) return
+      var f = new File([blob], 'share-your-sky.jpg', { type: 'image/jpeg' })
+      if (!navigator.canShare({ files: [f] })) return
+      file = f
+      save.textContent = 'Save to Photos'
+      hint.textContent = 'Then choose “Save Image”.'
+    })
+    .catch(function () {})
+  save.addEventListener('click', function (e) {
+    if (!file) return
+    e.preventDefault()
+    navigator.share({ files: [file] }).catch(function (err) {
+      // Closing the sheet is a choice, not a failure; anything else falls back to the download.
+      if (err && err.name !== 'AbortError') window.location.href = save.getAttribute('href')
+    })
+  })
+})()
+</script>
 </body>
 </html>
 `

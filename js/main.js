@@ -13,7 +13,7 @@ import { startCamera, CameraSetupError, reportCameras, sizeFor } from './camera.
 import {
   CHANNELS, captureFrame, frameFromImage, downscaleFrame, levelsLut, hueTint, ZERO_LUT,
   stackFrames, denoiseFrame, ensureStats, levelsGain,
-  drawComposite, compositeURL,
+  drawComposite, compositeURL, compositeBlob,
 } from './imaging.js'
 import { createLevels } from './levels.js'
 import { createFrameGuard } from './frameguard.js'
@@ -82,17 +82,26 @@ const TIMELINE = {
   cameraRetryAt: 15000, // a camera that will not open is retried until it does
 }
 
-// Longest edge, not width — see captureFrame. The camera is asked for 4K, and this is what is
-// kept of it: about 3.8 megapixels, four times what the old 1280x720 request produced. The cap
-// exists because the whole cost of a bigger picture lands in one place — the JPEG written when
-// a visitor shares — and beyond this it becomes a pause they can see.
-const CAPTURE_EDGE = 2600
+// Longest edge, not width — see captureFrame. The camera is asked for 4K, and this keeps all of
+// it: 3840 is 4K's long edge, so nothing the sensor delivered is thrown away. It used to be 2600,
+// because the wall's JPEG was written at this size, in one blocking call, the moment a visitor
+// pressed Share. Neither is true now: the wall gets its own 1200px copy, and the full-size picture
+// is written only for the take-home link, in the background (see compositeBlob).
+const CAPTURE_EDGE = 3840
 
 // What every redraw works on while the sliders move, so this is the one number here with a
 // per-frame cost. 1600 on the longest edge is 1200 across for an upright photo, which covers
 // the ~1100px the picture is actually shown at on the kiosk — under that it was being upscaled
 // on screen, which is its own kind of soft.
 const VIEW_EDGE = 1600
+// ...and what the picture is drawn from whenever nothing is being dragged: as large as it is ever
+// shown on this screen, in real pixels. The largest place is the filter wheel's screen, at 58% of
+// the height for an upright photo (74% of the width for a wide one), which on the 4K kiosk is
+// about 2230 pixels — more than VIEW_EDGE, so drawn from that copy it was being enlarged. A slider
+// drag still draws from the VIEW_EDGE copy, which costs half as much a frame, and the picture is
+// redrawn sharp a moment after the finger stops.
+const detailEdge = () => Math.ceil(Math.max(innerHeight * 0.6, innerWidth * 0.76) * (devicePixelRatio || 1))
+const SHARPEN_AFTER = 160 // ms with no drag before the sharp redraw
 // The three channel layers beside it are a fifth of the width and never redraw, so they can be
 // a fifth of the pixels.
 const THUMB_EDGE = 340
@@ -243,6 +252,12 @@ let timers = []
 
 let frame = null // { width, height, planes, histograms, rest } — written once, read-only after
 let viewFrame = null // the same photo, small enough to redraw on every pointermove
+let detailFrame = null // ...and as large as it is ever shown, for every draw that is not a drag
+// True only inside a drag's redraw, when the fast copy is wanted over the sharp one.
+let dragging = false
+let sharpenTimer = 0
+/** What to draw the picture from now: the fast copy mid-drag, the sharp one otherwise. */
+const pictureFrame = () => (dragging ? viewFrame : detailFrame) ?? viewFrame ?? frame
 let thumbFrame = null // ...and smaller still, for the three channel layers on step 2
 let levels = null // [{black, white} x3] — the only thing the visitor changes
 
@@ -1355,11 +1370,22 @@ function runQueuedDraw() {
   if (!frame || !levels) return
 
   count('draws')
+  dragging = true
   measure('levels', () => {
     bigEditors.forEach((e, i) => (only === -1 || only === i) && e.redraw())
     if (step() === 'adjust') drawAdjust()
     else drawUpTo(lit)
   })
+  dragging = false
+  // Sharp again once the hand has stopped. Only when there is a sharper copy to draw from.
+  clearTimeout(sharpenTimer)
+  if (detailFrame && detailFrame !== viewFrame) {
+    sharpenTimer = setTimeout(() => {
+      if (!frame || !levels) return
+      if (step() === 'adjust') drawAdjust()
+      else drawUpTo(lit)
+    }, SHARPEN_AFTER)
+  }
 }
 
 /** A handle moved: mark it and let the next frame draw it. */
@@ -1853,8 +1879,8 @@ const STEP_ENTER = {
       btn.disabled = false
       btn.classList.add('waiting')
     }
-    drawComposite(confirmCanvas, viewFrame ?? frame, lutsNow(), tints())
-    drawComposite(originalCanvas, viewFrame ?? frame, originalLuts(), ORIGINAL_TINTS)
+    drawComposite(confirmCanvas, pictureFrame(), lutsNow(), tints())
+    drawComposite(originalCanvas, pictureFrame(), originalLuts(), ORIGINAL_TINTS)
     // Hidden until it arrives, so the edited one spins in alone.
     originalPic.style.visibility = 'hidden'
 
@@ -2031,6 +2057,7 @@ async function takePhoto() {
   // The histograms and resting points come from the full capture; everything that redraws on
   // every pointermove works on this copy instead.
   viewFrame = downscaleFrame(frame, VIEW_EDGE)
+  detailFrame = downscaleFrame(frame, Math.max(VIEW_EDGE, detailEdge()))
   thumbFrame = downscaleFrame(frame, THUMB_EDGE)
   // The *camera's* dimensions, not the frame's: captureFrame has already applied the rotation
   // to the frame, and setAspect applies it again — feeding it the rotated size inverts the
@@ -2619,7 +2646,7 @@ function writeSegments(el, segments) {
 function drawUpTo(n) {
   if (!frame || !levels) return
   const luts = levels.map((l, i) => (i <= n ? levelsLut(l.black, l.white) : ZERO_LUT))
-  paint((c) => drawComposite(c, viewFrame ?? frame, luts, tints()))
+  paint((c) => drawComposite(c, pictureFrame(), luts, tints()))
 }
 
 /**
@@ -3151,7 +3178,7 @@ function buildEditors(host, source, store, { onFirstTouch, hueFor } = {}) {
 
 /** The picture as it currently stands, colours and all. */
 function drawAdjust() {
-  if (frame) drawComposite(adjustCanvas, viewFrame ?? frame, lutsNow(), tints())
+  if (frame) drawComposite(adjustCanvas, pictureFrame(), lutsNow(), tints())
 }
 
 /**
@@ -3556,8 +3583,10 @@ async function onShare(pick) {
   const luts = edited ? lutsNow() : originalLuts()
   const shownTints = edited ? tints() : ORIGINAL_TINTS
   const image = compositeURL(downscaleFrame(frame, WALL_EDGE), luts, shownTints)
-  // The same picture, uploaded for the visitor to take home. Not awaited: see takeHome below.
-  startTakeHome(image)
+  // The same picture for the visitor to take home — but all of it: the full capture rather than
+  // the wall's 1200px copy, written as a JPEG in the background so the press is not held up. Not
+  // awaited: see takeHome below.
+  startTakeHome(compositeBlob(frame, luts, shownTints))
   publishToWall({
     image,
     levels: edited ? levels.map((l) => ({ ...l })) : frame.rest.map((l) => ({ black: l.black, white: l.white })),
@@ -3754,6 +3783,7 @@ const takeHomeFail = $('takehomeFail')
 // state: 'none' (nothing shared) | 'off' (no R2 here) | 'pending' | 'ready' | 'failed'
 let takeHome = { state: 'none', run: 0 }
 
+/** `image` is the JPEG as a Blob, or a promise of one — it is still being written when this starts. */
 async function startTakeHome(image, { open = false } = {}) {
   const run = takeHome.run + 1
   takeHome = { state: 'pending', run, image }
@@ -3762,10 +3792,14 @@ async function startTakeHome(image, { open = false } = {}) {
   const alive = () => takeHome.run === run
   const began = performance.now()
   try {
+    const blob = await image
+    if (!alive()) return
+    if (!blob) throw new Error('the picture could not be written')
+    // The JPEG itself, not a data URL: at 4K the text version is a third bigger for nothing.
     const res = await fetch('api/share', {
       method: 'POST',
-      headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ image }),
+      headers: { 'content-type': 'image/jpeg' },
+      body: blob,
     })
     const answer = await res.json().catch(() => ({}))
     if (!alive()) return
@@ -3850,6 +3884,8 @@ function reset() {
   sharedPick = null
   clearTakeHome()
   viewFrame = null
+  detailFrame = null
+  clearTimeout(sharpenTimer)
   thumbFrame = null
   levels = null
   destroyEditors()

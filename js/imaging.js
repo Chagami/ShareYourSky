@@ -526,6 +526,23 @@ export function drawComposite(canvas, frame, luts, tints = RGB_TINTS) {
  * way to 1.0 nearly triples the file for no visible gain, and the wall loads forty of these at
  * once; 0.95 is the point where the artefacts stop and the size has not run away.
  */
+/**
+ * The same, as a JPEG Blob, encoded by the browser away from the page's own thread. For the
+ * full-size picture: at 4K, toDataURL holds everything up for some 400ms, toBlob for none of it.
+ * Resolves to null if the browser could not make one.
+ */
+export function compositeBlob(frame, luts, tints = RGB_TINTS, quality = 0.95) {
+  const canvas = document.createElement('canvas')
+  drawComposite(canvas, frame, luts, tints)
+  return new Promise((done) => {
+    canvas.toBlob((blob) => {
+      done(blob)
+      // A 4K canvas is 33MB of pixels; give them back now rather than whenever.
+      canvas.width = canvas.height = 0
+    }, 'image/jpeg', quality)
+  })
+}
+
 export function compositeURL(frame, luts, tints = RGB_TINTS, quality = 0.95) {
   const canvas = document.createElement('canvas')
   drawComposite(canvas, frame, luts, tints)

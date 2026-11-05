@@ -1,7 +1,8 @@
 // Take-home photos, as the kiosk asks for them. See server/share.js for what is uploaded and why.
 //
-//   POST api/share       { image: jpeg data URL }  start uploading in the background; answers at
-//                                                 once with { id }, never waiting on the upload
+//   POST api/share       the JPEG itself (content-type image/jpeg), or { image: jpeg data URL };
+//                        starts uploading in the background and answers at once with { id },
+//                        never waiting on the upload
 //   GET  api/share/<id>                           { state: 'pending' }
 //                                                 { state: 'ready', url, qr }   qr is an SVG
 //                                                 { state: 'failed' }
@@ -33,7 +34,7 @@ export function shareApi({ upload = uploadShare, config = () => configFromEnv() 
     res.end(JSON.stringify(body))
   }
 
-  function readBody(req) {
+  function readBody(req, { raw = false } = {}) {
     return new Promise((ok, fail) => {
       let size = 0
       const parts = []
@@ -46,7 +47,10 @@ export function shareApi({ upload = uploadShare, config = () => configFromEnv() 
         }
         parts.push(chunk)
       })
-      req.on('end', () => ok(Buffer.concat(parts).toString('utf8')))
+      req.on('end', () => {
+        const all = Buffer.concat(parts)
+        ok(raw ? all : all.toString('utf8'))
+      })
       req.on('error', fail)
     })
   }
@@ -79,16 +83,21 @@ export function shareApi({ upload = uploadShare, config = () => configFromEnv() 
     try {
       if (path === 'api/share') {
         if (req.method !== 'POST') return json(res, 405, { error: `${req.method} not allowed here` })
-        let body
+        let bytes
         try {
-          body = JSON.parse(await readBody(req))
+          if (/^image\/jpeg(;|$)/i.test(req.headers?.['content-type'] ?? '')) {
+            bytes = await readBody(req, { raw: true })
+          } else {
+            const match = /^data:image\/jpeg;base64,(.+)$/s.exec(JSON.parse(await readBody(req))?.image ?? '')
+            if (match) bytes = Buffer.from(match[1], 'base64')
+          }
         } catch (err) {
           return json(res, 400, { error: `unreadable body: ${err.message}` })
         }
-        const match = /^data:image\/jpeg;base64,(.+)$/s.exec(body?.image ?? '')
-        if (!match) return json(res, 400, { error: 'image must be a jpeg data URL' })
+        // Every JPEG starts FF D8. Anything else is not one, whatever it says it is.
+        if (!bytes || bytes[0] !== 0xff || bytes[1] !== 0xd8) return json(res, 400, { error: 'image must be a JPEG' })
         if (!config().ok) return json(res, 200, { state: 'off' })
-        return json(res, 202, { id: start(Buffer.from(match[1], 'base64')) })
+        return json(res, 202, { id: start(bytes) })
       }
 
       if (req.method !== 'GET') return json(res, 405, { error: `${req.method} not allowed here` })
