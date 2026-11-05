@@ -192,6 +192,7 @@ const noBtn = $('noBtn')
 const yesBtn = $('yesBtn')
 const originalBtn = $('originalBtn')
 const resetBtn = $('resetBtn')
+const downloadBtn = $('downloadBtn')
 const slidersTitle = $('slidersTitle')
 const filterWheel = $('filterWheel')
 const verdictBlock = $('verdict')
@@ -207,7 +208,7 @@ const editedCol = $('editedCol')
 const liveCrop = $('liveCrop')
 const standIn = $('standIn')
 const reelTop = $('reelTop')
-const DOCK = [shutter, nextBtn, coloursBtn, submitBtn, noBtn, yesBtn, originalBtn, resetBtn]
+const DOCK = [shutter, nextBtn, coloursBtn, submitBtn, noBtn, yesBtn, originalBtn, downloadBtn, resetBtn]
 // The three answers to the share question, in the order they sit in the dock.
 const SHARE_BTNS = [noBtn, yesBtn, originalBtn]
 
@@ -231,7 +232,7 @@ const STEPS = [
   { id: 'edit', action: ['nextBtn'], mark: 0 },
   { id: 'adjust', action: ['coloursBtn', 'submitBtn'], mark: 1 },
   { id: 'confirm', action: ['noBtn', 'yesBtn', 'originalBtn'], mark: 2 },
-  { id: 'reality', action: ['resetBtn'], mark: 3 },
+  { id: 'reality', action: ['downloadBtn', 'resetBtn'], mark: 3 },
 ]
 const STEP_IDS = STEPS.map((s) => s.id)
 
@@ -1887,6 +1888,8 @@ const STEP_ENTER = {
   async reality() {
     clearBeats()
     resetBtn.classList.add('waiting')
+    downloadBtn.classList.add('waiting')
+    syncTakeHome()
     const alive = () => step() === 'reality'
 
     await fadeIn(realityLead, REALITY_LEAD)
@@ -1899,6 +1902,8 @@ const STEP_ENTER = {
 
     resetBtn.classList.remove('waiting')
     rise(resetBtn)
+    downloadBtn.classList.remove('waiting')
+    if (!downloadBtn.hidden) rise(downloadBtn)
   },
 
 }
@@ -3550,8 +3555,11 @@ async function onShare(pick) {
   const edited = pick === 'edited'
   const luts = edited ? lutsNow() : originalLuts()
   const shownTints = edited ? tints() : ORIGINAL_TINTS
+  const image = compositeURL(downscaleFrame(frame, WALL_EDGE), luts, shownTints)
+  // The same picture, uploaded for the visitor to take home. Not awaited: see takeHome below.
+  startTakeHome(image)
   publishToWall({
-    image: compositeURL(downscaleFrame(frame, WALL_EDGE), luts, shownTints),
+    image,
     levels: edited ? levels.map((l) => ({ ...l })) : frame.rest.map((l) => ({ black: l.black, white: l.white })),
     shownHue: edited ? [...shownHue] : CHANNELS.map((c) => c.hue),
   }).then(
@@ -3725,6 +3733,107 @@ function showShares(shared) {
 
 // ── reset ───────────────────────────────────────────────────────────────────
 
+// ── taking the photo home ───────────────────────────────────────────────────
+//
+// A visitor who shares gets a link to their picture: server/shareapi.js uploads it to Cloudflare
+// R2 with a small download page, and the results screen offers "Download Your Photo", which shows
+// a QR code to that page. Nothing here may hold up or break the exhibit: the upload is started
+// and not waited for, the server answers at once and does the work on its own, and every way it
+// can go wrong ends in the same friendly "try again", never a broken code.
+//
+// The picture is kept in memory only until the next visitor, so "try again" has something to
+// send. Nothing is stored about the visitor; the link itself is only ever on screen.
+const TAKE_HOME_POLL = 1000
+const TAKE_HOME_GIVE_UP = 45000
+
+const takeHomeEl = $('takehome')
+const takeHomeQr = $('takehomeQr')
+const takeHomeWait = $('takehomeWait')
+const takeHomeFail = $('takehomeFail')
+
+// state: 'none' (nothing shared) | 'off' (no R2 here) | 'pending' | 'ready' | 'failed'
+let takeHome = { state: 'none', run: 0 }
+
+async function startTakeHome(image, { open = false } = {}) {
+  const run = takeHome.run + 1
+  takeHome = { state: 'pending', run, image }
+  showTakeHome()
+  if (open) openTakeHome()
+  const alive = () => takeHome.run === run
+  const began = performance.now()
+  try {
+    const res = await fetch('api/share', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ image }),
+    })
+    const answer = await res.json().catch(() => ({}))
+    if (!alive()) return
+    if (answer.state === 'off') return setTakeHome('off')
+    if (!res.ok || !answer.id) throw new Error(answer.error ?? `answered ${res.status}`)
+    while (alive() && performance.now() - began < TAKE_HOME_GIVE_UP) {
+      await after(TAKE_HOME_POLL)
+      if (!alive()) return
+      const poll = await fetch(`api/share/${answer.id}`, { cache: 'no-store' }).then((r) => r.json())
+      if (!alive()) return
+      if (poll.state === 'ready' && poll.qr) return setTakeHome('ready', poll.qr)
+      if (poll.state === 'failed') throw new Error('upload failed')
+    }
+    if (alive()) throw new Error('timed out')
+  } catch (err) {
+    if (!alive()) return
+    setInfo('take home', `failed: ${err?.message ?? err}`)
+    setTakeHome('failed')
+  }
+}
+
+function setTakeHome(state, qr = null) {
+  takeHome.state = state
+  // The server drew the SVG from the link; it is ours, not something a visitor typed.
+  takeHomeQr.innerHTML = state === 'ready' ? qr : ''
+  if (state === 'ready') setInfo('take home', 'link ready')
+  if (state === 'off') setInfo('take home', 'off - no R2 settings on the server')
+  showTakeHome()
+}
+
+/** Whether the results screen offers the button, and what the panel shows. */
+function syncTakeHome() {
+  downloadBtn.hidden = step() !== 'reality' || takeHome.state === 'none' || takeHome.state === 'off'
+}
+// The heading says what is on the panel: a code to scan, one on its way, or neither.
+const TAKE_HOME_TITLE = { ready: 'Scan to download your photo', pending: 'Getting your photo ready…', failed: 'Your photo link' }
+
+function showTakeHome() {
+  const s = takeHome.state
+  $('takehomeTitle').textContent = TAKE_HOME_TITLE[s] ?? TAKE_HOME_TITLE.ready
+  // "Point your phone at the code" only when there is a code to point it at.
+  $('takehomeNote').hidden = s !== 'ready'
+  takeHomeQr.hidden = s !== 'ready'
+  takeHomeWait.hidden = s !== 'pending'
+  takeHomeFail.hidden = s !== 'failed'
+  // Pressable while it is being made too: the panel says so, and the code appears when it can.
+  downloadBtn.textContent = s === 'pending' ? 'Preparing your photo…' : 'Download Your Photo'
+  syncTakeHome()
+  if (s === 'off') closeTakeHome()
+}
+
+function openTakeHome() {
+  if (takeHome.state === 'none' || takeHome.state === 'off') return
+  showTakeHome()
+  takeHomeEl.hidden = false
+  pop(takeHomeEl.firstElementChild)
+}
+function closeTakeHome() {
+  takeHomeEl.hidden = true
+}
+
+function clearTakeHome() {
+  takeHome = { state: 'none', run: takeHome.run + 1 }
+  takeHomeQr.innerHTML = ''
+  closeTakeHome()
+  showTakeHome()
+}
+
 function reset() {
   // Starting again is leaving the share screen too, and its answers count — sent before
   // clearBeats puts both scales back to untouched.
@@ -3739,6 +3848,7 @@ function reset() {
   answered.unedited = null
   answered.edited = null
   sharedPick = null
+  clearTakeHome()
   viewFrame = null
   thumbFrame = null
   levels = null
@@ -3903,5 +4013,8 @@ originalBtn.addEventListener('click', () => onShare('original'))
 // Don't share keeps nothing: neither picture is published, and the next visitor starts clean.
 noBtn.addEventListener('click', onNo)
 resetBtn.addEventListener('click', reset)
+downloadBtn.addEventListener('click', openTakeHome)
+$('takehomeClose').addEventListener('click', closeTakeHome)
+$('takehomeRetry').addEventListener('click', () => takeHome.image && startTakeHome(takeHome.image, { open: true }))
 
 boot()

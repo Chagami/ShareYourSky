@@ -6,6 +6,14 @@ import { galleryAllocator } from './server/gallery.js'
 import { answerLog } from './server/answers.js'
 import { kioskControl } from './server/kiosk.js'
 import { cameraControl } from './server/camera.js'
+import { shareApi } from './server/shareapi.js'
+import { fileURLToPath } from 'node:url'
+
+// The take-home photo's Cloudflare R2 settings, from .env beside this file (see .env.example).
+// Read into the server's own environment only: Vite hands the browser nothing but VITE_-prefixed
+// variables, and these are not. No file, no take-home link — the kiosk simply does not offer one.
+const ENV_FILE = fileURLToPath(new URL('.env', import.meta.url))
+if (existsSync(ENV_FILE)) process.loadEnvFile(ENV_FILE)
 
 // Where the exhibit answers, and how. The defaults are the developer's; the exhibit machine
 // sets these in scripts/exhibit.env, so the address on the kiosk shortcut can be a bare name
@@ -75,8 +83,9 @@ export default defineConfig({
   // four gallery screens so that no two of them show the same thing.
   // basicSsl only when there is no real certificate to use — the two fight over the same job.
   // kioskControl takes the kiosk browser out of full screen and back, from the debug menu, and
-  // cameraControl sets the camera's exposure from it.
-  plugins: [...(selfSigned ? [basicSsl()] : []), wallStore(), galleryAllocator(), answerLog(), kioskControl(), cameraControl()],
+  // cameraControl sets the camera's exposure from it. shareApi uploads a shared photo to R2 for
+  // the visitor to take home.
+  plugins: [...(selfSigned ? [basicSsl()] : []), wallStore(), galleryAllocator(), answerLog(), kioskControl(), cameraControl(), shareApi()],
   // Nothing to pre-bundle: this project has no runtime dependencies and every import in js/ is
   // relative, so the dependency optimizer scans the whole tree and renames a directory into
   // place to produce an empty result. On Windows that rename fails outright if anything is

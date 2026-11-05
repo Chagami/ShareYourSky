@@ -15,3 +15,8 @@ scripts/exhibit.env
 # What visitors answered to "Is this image real?". Data, not source, and it belongs to the
 # machine that collected it — see server/answers.js, and GET api/answer to take a copy.
 data/
+
+# Cloudflare R2 credentials for take-home photos. Copied from .env.example on each machine;
+# never committed. cloudflare.env is an earlier name for the same file.
+.env
+cloudflare.env

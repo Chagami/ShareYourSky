@@ -6,10 +6,15 @@
   "scripts": {
     "dev": "vite",
     "build": "vite build",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "r2:test": "node scripts/r2-test.mjs"
   },
   "devDependencies": {
     "@vitejs/plugin-basic-ssl": "^2.3.0",
     "vite": "^8.2.1"
+  },
+  "dependencies": {
+    "aws4fetch": "^1.0.20",
+    "qrcode-generator": "^2.0.4"
   }
 }

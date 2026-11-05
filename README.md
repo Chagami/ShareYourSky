@@ -132,6 +132,63 @@ If the service does not come back within three seconds of the restart it prints 
 journal lines and exits non-zero, so a broken deploy fails the ssh command rather than looking
 like a success.
 
+### Take-home photos (Cloudflare R2)
+
+A visitor who presses **Share Edited** or **Share Original** can take that picture home. The
+results screen then offers **Download Your Photo** beside *Start again*; it opens a large QR
+code, and the phone that scans it gets a small page with the photo, a **Download** button and
+"Or press and hold the photo to save" for iPhones. Visitors who choose *Don't share* get nothing,
+and nothing of theirs leaves the machine.
+
+How it works: `server/share.js` uploads two objects to an R2 bucket through R2's S3-compatible
+API — `<token>.jpg` and `<token>.html`, named by a fresh random token per photo (16 random
+bytes, URL-safe) — and makes the QR code. `server/shareapi.js` runs that in the background for
+the kiosk: the upload never holds up or crashes the exhibit, each request times out after 10s and
+is tried three times, and if it still fails the panel says "Couldn't make a link for your photo
+just now" with **Try again**. With no R2 settings at all, the button simply isn't offered.
+
+**Setting it up, once:**
+
+1. In the Cloudflare dashboard, **R2 → Create bucket**.
+2. In the bucket's **Settings**, turn on public access: either the **r2.dev subdomain** or a
+   **custom domain**. That address is `R2_PUBLIC_BASE_URL`, with no trailing slash.
+3. Still in **Settings**, add an **Object lifecycle rule** that deletes objects **1 day** after
+   upload. The download page tells visitors their photo is deleted after 24 hours; this rule is
+   what makes that true.
+4. **R2 → Manage R2 API Tokens → Create API token**: permission **Object Read & Write**, scoped
+   to **this bucket only**. It shows an Access Key ID and a Secret Access Key once — copy both.
+5. Copy `.env.example` to `.env` in the project folder and fill in all five values. `.env` is in
+   `.gitignore`; never commit it. Do this on the dev machine and on the exhibit machine
+   (`~/ShareYourSky/.env`), then restart the service there: `sudo systemctl restart sharedsky`.
+6. Check it without running the booth:
+
+   ```bash
+   npm run r2:test                       # uploads img/sky/01-ChabotEvents.jpg
+   npm run r2:test -- path/to/photo.jpg  # or any JPEG
+   ```
+
+   It prints the page's address and where it wrote the QR code. Open the address on a phone.
+
+| variable | what |
+| --- | --- |
+| `R2_ACCOUNT_ID` | the Cloudflare account ID; the API endpoint is `https://<R2_ACCOUNT_ID>.r2.cloudflarestorage.com`, region `auto` |
+| `R2_ACCESS_KEY_ID` | from the R2 API token |
+| `R2_SECRET_ACCESS_KEY` | from the R2 API token |
+| `R2_BUCKET` | the bucket's name |
+| `R2_PUBLIC_BASE_URL` | the bucket's public address, e.g. `https://pub-….r2.dev` |
+
+The server reads `.env` itself at startup (`vite.config.js`), into its own environment only; the
+browser never sees these values. On the kiosk, the debug overlay's `take home` line says how the
+last link went.
+
+**Privacy.** Nothing about the visitor is asked for or kept: no names, no emails. The photo and
+page sit in the bucket under a random name until the lifecycle rule deletes them. The kiosk holds
+the picture in memory only until the next visitor, so *Try again* has something to send, and the
+server forgets the job within half an hour. The server's log names an upload by the first six
+characters of its token, enough to find it in the bucket while debugging, and never logs the
+link. The page has no scripts, analytics or outside requests, and asks search engines not to
+index it.
+
 ### A name instead of an IP
 
 `exhibits` works on this network because somebody made a DNS record for it. It is not a machine

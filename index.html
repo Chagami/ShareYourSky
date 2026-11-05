@@ -293,6 +293,9 @@
     <button id="noBtn" class="btn ghost btn-lg">Don’t share</button>
     <button id="yesBtn" class="btn btn-lg">Share Edited</button>
     <button id="originalBtn" class="btn btn-lg">Share Original</button>
+    <!-- Only for a visitor who shared: opens the QR to take their photo home. js/main.js runs
+         it, server/shareapi.js makes the link. -->
+    <button id="downloadBtn" class="btn">Download Your Photo</button>
     <button id="resetBtn" class="btn ghost">Start again</button>
   </div>
 
@@ -307,6 +310,22 @@
 </footer>
 
 <div class="flash" id="flash" aria-hidden="true"></div>
+
+<!-- The take-home QR, over the results screen. One of three states at a time, set by js/main.js:
+     waiting for the link, the link, or the link could not be made. -->
+<div class="takehome" id="takehome" hidden>
+  <div class="takehome-card" role="dialog" aria-modal="true" aria-labelledby="takehomeTitle">
+    <h2 class="takehome-title" id="takehomeTitle">Scan to download your photo</h2>
+    <div class="takehome-qr" id="takehomeQr" aria-label="QR code for your photo"></div>
+    <p class="takehome-wait" id="takehomeWait">Making your link…</p>
+    <div class="takehome-fail" id="takehomeFail" hidden>
+      <p>Couldn’t make a link for your photo just now.</p>
+      <button id="takehomeRetry" class="btn">Try again</button>
+    </div>
+    <p class="takehome-note" id="takehomeNote">Point your phone’s camera at the code. The photo is deleted after 24 hours.</p>
+    <button id="takehomeClose" class="btn ghost">Close</button>
+  </div>
+</div>
 
 <script type="module" src="js/main.js"></script>
 </body>

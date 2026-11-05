@@ -1611,6 +1611,82 @@ body[data-step="confirm"] .dock .btn-lg { padding-inline: 1.6em; }
   border: 2px solid rgba(255, 255, 255, 0.35);
 }
 
+/* ─── taking the photo home ───
+
+   "Download Your Photo" sits beside "Start again" on the results screen, in the progress orange
+   so it reads as the thing on offer. It opens a panel with the QR: black on white with a wide
+   white border, as large as the screen allows, because it is read by a phone held at arm's length
+   from a dark screen. */
+#downloadBtn {
+  background: var(--hot);
+  color: #2a1002;
+  white-space: nowrap;
+}
+/* The pair needs room between them; the dock's own gap is set for one button at a time. */
+body[data-step="reality"] .dock-action { gap: 3vw; }
+
+.takehome {
+  position: fixed;
+  inset: 0;
+  z-index: 50;
+  display: grid;
+  place-items: center;
+  padding: 4vh 5vw;
+  background: rgba(4, 4, 8, 0.97);
+}
+.takehome[hidden],
+.takehome-note[hidden] { display: none; }
+.takehome-card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2.4vh;
+  max-width: min(92vw, 1400px);
+  text-align: center;
+}
+.takehome-title {
+  margin: 0;
+  font-size: clamp(1.6rem, 4.6vw, 4.6rem);
+  font-weight: 700;
+  letter-spacing: -0.02em;
+}
+/* White all round, then the code's own four-module border inside the SVG: a quiet zone wide
+   enough for any phone's reader. */
+.takehome-qr {
+  width: min(62vw, 46vh);
+  aspect-ratio: 1;
+  padding: min(2.4vw, 1.8vh);
+  border-radius: 18px;
+  background: #fff;
+}
+.takehome-qr svg { display: block; width: 100%; height: 100%; }
+.takehome-qr[hidden],
+.takehome-wait[hidden],
+.takehome-fail[hidden] { display: none; }
+/* While waiting, and on failure, the same space the code would take, so nothing jumps. */
+.takehome-wait,
+.takehome-fail {
+  display: grid;
+  place-items: center;
+  align-content: center;
+  gap: 2.4vh;
+  width: min(62vw, 46vh);
+  aspect-ratio: 1;
+  margin: 0;
+  border-radius: 18px;
+  border: 2px dashed rgba(255, 255, 255, 0.25);
+  font-size: clamp(1.1rem, 2.8vw, 2.6rem);
+  color: var(--ink);
+}
+.takehome-fail p { margin: 0; padding: 0 1.2em; }
+.takehome-note {
+  margin: 0;
+  max-width: 34ch;
+  font-size: clamp(1rem, 2.4vw, 2.2rem);
+  color: var(--muted);
+  line-height: 1.35;
+}
+
 /* ─── the step indicator ───
 
    Across the top: four numbered stations with a rule drawn through them, and one orange blob
