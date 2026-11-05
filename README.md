@@ -40,7 +40,7 @@ Open items, all on the hardware side, are under [Still to do](#still-to-do).
 ## Run
 
 ```bash
-cd IsItReal-experiment
+cd ShareYourSky
 npm install
 npm run dev
 ```
@@ -65,8 +65,8 @@ nothing installed. Work happens on a dev machine, is pushed to GitHub, and the e
 only ever pulls.
 
 ```bash
-git clone https://github.com/Chagami/IsItReal-experiment.git
-cd IsItReal-experiment
+git clone https://github.com/Chagami/ShareYourSky.git
+cd ShareYourSky
 npm ci
 sudo scripts/install-service.sh
 ```
@@ -113,7 +113,7 @@ Everything is pushed to GitHub from wherever it was written; the exhibit machine
 pulls. One line, over ssh:
 
 ```bash
-ssh exhibit@sharedsky '~/IsItReal-experiment/scripts/update.sh'
+ssh exhibits@sharedsky '~/ShareYourSky/scripts/update.sh'
 ```
 
 `update.sh` fetches, fast-forwards, and restarts the service, printing what it did at each step

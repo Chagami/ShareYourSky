@@ -61,7 +61,7 @@ chmod +x "$REPO/scripts/session-watchdog.sh"
 cat > "$SYS/sharedsky-session-watchdog.service" <<EOF
 [Unit]
 Description=Share Your Sky: bring the kiosk's desktop session back if it disappears
-Documentation=https://github.com/Chagami/IsItReal-experiment
+Documentation=https://github.com/Chagami/ShareYourSky
 After=display-manager.service
 
 [Service]

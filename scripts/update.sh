@@ -5,7 +5,7 @@
 # Meant to be run over ssh from the dev machine, so it prints what it did and fails loudly
 # rather than half-succeeding in silence:
 #
-#   ssh exhibit@sharedsky '~/IsItReal-experiment/scripts/update.sh'
+#   ssh exhibits@sharedsky '~/ShareYourSky/scripts/update.sh'
 #
 # Nothing here needs a password if install-service.sh was used: it leaves a sudoers rule
 # allowing exactly `systemctl restart sharedsky` and nothing else.

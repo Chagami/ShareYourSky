@@ -58,7 +58,7 @@ chmod +x "$REPO/scripts/exhibit.sh" "$REPO/scripts/update.sh" "$REPO/scripts/ins
 cat > "$UNIT" <<UNIT_EOF
 [Unit]
 Description=Share Your Sky exhibit
-Documentation=https://github.com/Chagami/IsItReal-experiment
+Documentation=https://github.com/Chagami/ShareYourSky
 After=network-online.target
 Wants=network-online.target
 

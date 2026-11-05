@@ -104,6 +104,8 @@ run systemctl --user cat "$KIOSK"
 run systemctl cat "$SERVICE"
 # Piped over ssh the script has no folder of its own, so the usual install place is the fallback.
 ENV_FILE="$(dirname "$(readlink -f "${BASH_SOURCE[0]:-/dev/null}")")/exhibit.env"
+# The checkout was called IsItReal-experiment before it was ShareYourSky.
+[ -f "$ENV_FILE" ] || ENV_FILE="$HOME/ShareYourSky/scripts/exhibit.env"
 [ -f "$ENV_FILE" ] || ENV_FILE="$HOME/IsItReal-experiment/scripts/exhibit.env"
 run cat "$ENV_FILE"
 run gsettings get org.gnome.desktop.session idle-delay
