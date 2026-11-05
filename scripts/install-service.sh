@@ -15,6 +15,8 @@ set -euo pipefail
 SERVICE="${SKY_SERVICE:-sharedsky}"
 UNIT="/etc/systemd/system/$SERVICE.service"
 SUDOERS="/etc/sudoers.d/$SERVICE"
+# The camera reset, as a root-owned copy outside the checkout (see scripts/reset-camera.sh).
+RESET_CAMERA="/usr/local/sbin/sharedsky-reset-camera"
 
 if [ "$(id -u)" -ne 0 ]; then
   echo "This needs root: sudo scripts/install-service.sh" >&2
@@ -34,7 +36,7 @@ fi
 
 if [ "${1:-}" = "--remove" ]; then
   systemctl disable --now "$SERVICE" 2>/dev/null || true
-  rm -f "$UNIT" "$SUDOERS"
+  rm -f "$UNIT" "$SUDOERS" "$RESET_CAMERA"
   systemctl daemon-reload
   echo "Removed $SERVICE. It will not start at boot."
   exit 0
@@ -54,6 +56,10 @@ case "$NODE" in
 esac
 
 chmod +x "$REPO/scripts/exhibit.sh" "$REPO/scripts/update.sh" "$REPO/scripts/install-service.sh"
+
+# Copied, not linked, and owned by root: the exhibit account may run it as root, so it must not be
+# able to change it. Run install-service.sh again after pulling a change to reset-camera.sh.
+install -o root -g root -m 0755 "$REPO/scripts/reset-camera.sh" "$RESET_CAMERA"
 
 cat > "$UNIT" <<UNIT_EOF
 [Unit]
@@ -83,13 +89,14 @@ StandardError=journal
 WantedBy=multi-user.target
 UNIT_EOF
 
-# So update.sh can restart the service over ssh without a password prompt it cannot answer.
-# Scoped to this one unit and these verbs: it is not general sudo.
+# So update.sh can restart the service over ssh without a password prompt it cannot answer, and the
+# server can reset a jammed camera from the debug menu. Scoped to this one unit and these verbs,
+# and to that one root-owned script with no arguments: it is not general sudo.
 SYSTEMCTL="$(command -v systemctl)"
 TMP_SUDO="$(mktemp)"
 cat > "$TMP_SUDO" <<SUDO_EOF
 # Installed by $REPO/scripts/install-service.sh
-$RUN_AS ALL=(root) NOPASSWD: $SYSTEMCTL restart $SERVICE, $SYSTEMCTL start $SERVICE, $SYSTEMCTL stop $SERVICE, $SYSTEMCTL status $SERVICE
+$RUN_AS ALL=(root) NOPASSWD: $SYSTEMCTL restart $SERVICE, $SYSTEMCTL start $SERVICE, $SYSTEMCTL stop $SERVICE, $SYSTEMCTL status $SERVICE, $RESET_CAMERA ""
 SUDO_EOF
 
 # A malformed file in sudoers.d breaks sudo for everyone, so it is checked before it is put

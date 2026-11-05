@@ -8,13 +8,15 @@
 //   GET  api/camera/exposure                  { device, mode: 'auto'|'manual', time: {min,max,value} }
 //   POST api/camera/exposure { mode }         switch auto / manual, answers as GET does
 //   POST api/camera/exposure { time }         set the exposure time, in the camera's own units
+//   POST api/camera/reset                     unplug the camera and plug it back in, in software
 //
 // The time is in the camera's units, which for UVC cameras is tenths of a millisecond. Names are
 // read from the camera rather than assumed: kernels before 5.x call these exposure_auto and
 // exposure_absolute, later ones auto_exposure and exposure_time_absolute, and the menu numbers
 // for "manual" and "automatic" are whatever the camera says they are.
 //
-//   SKY_CAMERA_DEVICE  which camera, in scripts/exhibit.env   (/dev/video0)
+//   SKY_CAMERA_DEVICE  which camera, in scripts/exhibit.env
+//                      (default: the first camera's permanent name, /dev/v4l/by-id/*-video-index0)
 //                      v4l2-ctl --list-devices says which is which
 //
 // No authentication, as with the rest of the server: the worst a stranger on the exhibit's
@@ -23,12 +25,46 @@
 // restarts.
 
 import { execFile } from 'node:child_process'
+import { readdirSync } from 'node:fs'
 
-const DEVICE = process.env.SKY_CAMERA_DEVICE || '/dev/video0'
+// Which camera, looked up every time rather than once. Its /dev/videoN number is handed out when
+// it is plugged in and changes when it is replugged — /dev/video0 became /dev/video1 after one
+// replug, and exposure stopped working — so the default is the permanent name udev gives every
+// camera under /dev/v4l/by-id, which follows it wherever it lands. index0 is the node with the
+// controls; index1 is metadata.
+function cameraDevice() {
+  if (process.env.SKY_CAMERA_DEVICE) return process.env.SKY_CAMERA_DEVICE
+  try {
+    const byId = readdirSync('/dev/v4l/by-id').filter((n) => n.endsWith('-video-index0')).sort()
+    if (byId.length) return `/dev/v4l/by-id/${byId[0]}`
+  } catch {}
+  return '/dev/video0'
+}
+
+// The camera reset: a root-owned script install-service.sh puts here, which the exhibit account
+// may run through sudo and nothing else (see scripts/reset-camera.sh). One at a time, and not more
+// often than this, so a page that keeps asking cannot keep the camera permanently unplugged.
+const RESET_CAMERA = '/usr/local/sbin/sharedsky-reset-camera'
+const RESET_GAP = 20000
+let resetting = false
+let lastReset = 0
+
+function resetCamera() {
+  return new Promise((done, fail) => {
+    // -n: never ask for a password. Without the sudoers rule this fails at once, with a reason.
+    execFile('sudo', ['-n', RESET_CAMERA], { timeout: 30000 }, (err, stdout, stderr) => {
+      if (!err) return done(String(stdout).trim())
+      const why = (stderr || err.message).trim()
+      fail(new Error(/password is required|not allowed|no such file|command not found/i.test(why)
+        ? `the reset is not installed — run: sudo scripts/install-service.sh (${why})`
+        : why))
+    })
+  })
+}
 
 function v4l2(args) {
   return new Promise((done, fail) => {
-    execFile('v4l2-ctl', ['-d', DEVICE, ...args], { timeout: 8000 }, (err, stdout, stderr) => {
+    execFile('v4l2-ctl', ['-d', cameraDevice(), ...args], { timeout: 8000 }, (err, stdout, stderr) => {
       if (!err) return done(String(stdout))
       if (err.code === 'ENOENT') return fail(new Error('v4l2-ctl is not installed: sudo apt install v4l-utils'))
       fail(new Error((stderr || err.message).trim()))
@@ -66,7 +102,7 @@ async function exposure() {
   const all = await controls()
   const mode = all.auto_exposure ?? all.exposure_auto
   const time = all.exposure_time_absolute ?? all.exposure_absolute
-  if (!mode || !time) throw new Error(`this camera (${DEVICE}) has no exposure controls`)
+  if (!mode || !time) throw new Error(`this camera (${cameraDevice()}) has no exposure controls`)
   const entries = Object.entries(mode.menu).map(([v, label]) => [Number(v), label])
   const manual = entries.find(([, label]) => /manual/i.test(label))?.[0] ?? 1
   // A UVC camera's automatic mode is usually called Aperture Priority. Any non-manual entry will do.
@@ -80,7 +116,7 @@ async function exposure() {
 async function state() {
   const { mode, time, manual } = await exposure()
   return {
-    device: DEVICE,
+    device: cameraDevice(),
     mode: mode.value === manual ? 'manual' : 'auto',
     time: { min: time.min, max: time.max, step: time.step || 1, value: time.value },
   }
@@ -96,8 +132,27 @@ export function cameraControl() {
 
   async function handle(req, res, next) {
     const path = new URL(req.url, 'http://x').pathname.replace(/^\/+/, '')
-    if (path !== 'api/camera/exposure') return next()
+    if (path !== 'api/camera/exposure' && path !== 'api/camera/reset') return next()
     if (process.platform !== 'linux') return json(res, 501, { error: 'only on the exhibit machine' })
+
+    if (path === 'api/camera/reset') {
+      if (req.method !== 'POST') return json(res, 405, { error: `${req.method} not allowed here` })
+      req.resume()
+      if (resetting) return json(res, 409, { error: 'already resetting' })
+      if (Date.now() - lastReset < RESET_GAP) return json(res, 429, { error: 'reset a moment ago — give it time' })
+      resetting = true
+      lastReset = Date.now()
+      try {
+        const said = await resetCamera()
+        console.log(`[camera] reset: ${said.replace(/\s+/g, ' ')}`)
+        return json(res, 200, { ok: true })
+      } catch (err) {
+        console.error(`[camera] reset failed: ${err.message}`)
+        return json(res, 500, { error: err.message })
+      } finally {
+        resetting = false
+      }
+    }
 
     try {
       if (req.method === 'GET') return json(res, 200, await state())

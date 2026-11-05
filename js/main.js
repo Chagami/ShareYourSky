@@ -1269,6 +1269,12 @@ function registerDebugActions() {
     run: () => setGuard(guardAt + 1),
   })
   addDebugAction({
+    label: 'Reset camera',
+    hint: 'unplugs the camera and plugs it back in, in software — for when the picture is black or frozen after changing the resolution; also happens on its own when the camera opens and sends nothing',
+    state: () => resetNote,
+    run: () => resetCamera('debug menu'),
+  })
+  addDebugAction({
     label: 'Exposure',
     hint: 'the camera’s own exposure, as qv4l2 sets it — auto, or manual with the time below; done by the server on the exhibit machine, and forgotten if the camera is unplugged',
     state: () => exposure?.mode ?? exposureNote,
@@ -1615,6 +1621,48 @@ function dropStandIn() {
 // assigning a new srcObject does not stop the old tracks, it only stops showing them.
 let camHandle = null
 
+// ── a jammed camera, unplugged without anyone going behind the computer ──
+//
+// The Arducam sometimes jams after its resolution is changed: connected, openable, and sending
+// nothing until it is unplugged. The server can do the unplug (POST api/camera/reset, see
+// server/camera.js and scripts/reset-camera.sh). From the debug menu on demand, and on its own when
+// the camera opens and sends no picture — at most once in ten minutes, so a camera that is truly
+// broken is not reset over and over while someone is trying to look at it.
+const AUTO_RESET_GAP = 10 * 60 * 1000
+let lastAutoReset = -Infinity
+let resetNote = ''
+
+async function resetCamera(why) {
+  resetNote = 'resetting…'
+  refreshDebug()
+  setInfo('camera reset', `${why}: resetting`)
+  // Let go of it first: the reset unplugs it from under whatever has it open.
+  await queueCamera(async () => {
+    camHandle?.stop()
+    camHandle = null
+    feed.srcObject = null
+  })
+  try {
+    const res = await fetch('api/camera/reset', { method: 'POST' })
+    const body = await res.json().catch(() => ({}))
+    if (!res.ok) throw new Error(body.error ?? res.status)
+    resetNote = 'done'
+    setInfo('camera reset', `${why}: done at ${new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`)
+  } catch (err) {
+    resetNote = 'failed'
+    setInfo('camera reset', `${why}: failed - ${err?.message ?? err}`)
+  }
+  refreshDebug()
+  // Open it again either way: a reset that failed has at least put back the stream it stopped.
+  await queueCamera(openCamera)
+}
+
+function autoResetCamera() {
+  if (performance.now() - lastAutoReset < AUTO_RESET_GAP) return
+  lastAutoReset = performance.now()
+  resetCamera('no picture from the camera')
+}
+
 async function openCamera() {
   try {
     camHandle?.stop()
@@ -1636,6 +1684,9 @@ async function openCamera() {
     // Deliberately not awaited before the retry is queued: borrowing a picture involves the
     // network, and the retry should not wait on it.
     useStandIn()
+    // A camera that opens and sends nothing is jammed, and retrying never frees it — only an
+    // unplug does. So unplug it, in software, and the retry below opens it fresh.
+    if (err?.name === 'NoFramesError') autoResetCamera()
     setTimeout(openCamera, TIMELINE.cameraRetryAt)
   }
 }
