@@ -1102,6 +1102,36 @@ async function askKiosk(action) {
 // v4l2-ctl, the way qv4l2 does. What the camera last said, for the menu to show; null until it
 // has answered, with the reason in `exposureNote` if it will not.
 let exposure = null
+
+// What it was last set to from the menu, remembered on this machine like every other setting —
+// and given back to the camera each time the camera is opened, because the camera itself forgets
+// it whenever it is unplugged or the machine restarts. Null until somebody has set it, and then
+// the camera is left as it comes.
+const EXPOSURE_KEY = 'sharedsky.exposure'
+let exposureSaved = (() => {
+  try {
+    const saved = JSON.parse(localStorage.getItem(EXPOSURE_KEY) ?? 'null')
+    if (saved?.mode === 'auto') return { mode: 'auto' }
+    if (saved?.mode === 'manual' && Number.isFinite(saved.time)) return { mode: 'manual', time: saved.time }
+  } catch {}
+  return null
+})()
+
+function saveExposure(next) {
+  exposureSaved = next
+  try {
+    localStorage.setItem(EXPOSURE_KEY, JSON.stringify(next))
+  } catch {
+    // Not being able to remember it is no reason to refuse to do it.
+  }
+}
+
+/** Put the camera back to the saved exposure. Quietly does nothing where there is none to set. */
+async function restoreExposure() {
+  if (!exposureSaved) return
+  await exposureAsk(exposureSaved.mode === 'manual' ? { time: exposureSaved.time } : { mode: 'auto' })
+  setInfo('exposure restored', exposure ? `${exposureSaved.mode}${exposureSaved.mode === 'manual' ? ' ' + exposureMs(exposureSaved.time) : ''}` : 'could not reach the camera')
+}
 let exposureNote = '…'
 
 async function exposureAsk(body) {
@@ -1244,7 +1274,10 @@ function registerDebugActions() {
     state: () => exposure?.mode ?? exposureNote,
     run: async () => {
       // Not heard from the camera yet: ask again, rather than switch blind.
-      if (exposure) await exposureAsk({ mode: exposure.mode === 'manual' ? 'auto' : 'manual' })
+      if (exposure) {
+        await exposureAsk({ mode: exposure.mode === 'manual' ? 'auto' : 'manual' })
+        if (exposure) saveExposure(exposure.mode === 'manual' ? { mode: 'manual', time: exposure.time.value } : { mode: 'auto' })
+      }
       else await exposureAsk()
       refreshDebug()
     },
@@ -1262,6 +1295,7 @@ function registerDebugActions() {
       // Kept here as well, so a redraw of the menu mid-drag puts the slider where the finger is.
       exposure.time.value = units
       sendExposureTime(units)
+      saveExposure({ mode: 'manual', time: units })
     },
     format: (p) => exposureMs(exposureFromSlider(p)),
   })
@@ -1594,6 +1628,8 @@ async function openCamera() {
     setInfo('camera error', null)
     if (camAttempt) setInfo('camera', `recovered on attempt ${camAttempt + 1}`)
     camAttempt = 0
+    // The camera forgets its exposure on a restart or an unplug; give it back what was chosen.
+    restoreExposure()
   } catch (err) {
     camAttempt++
     showCameraFault(err)
