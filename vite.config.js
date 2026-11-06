@@ -7,6 +7,7 @@ import { answerLog } from './server/answers.js'
 import { kioskControl } from './server/kiosk.js'
 import { cameraControl } from './server/camera.js'
 import { shareApi } from './server/shareapi.js'
+import { visitLog } from './server/visits.js'
 import { fileURLToPath } from 'node:url'
 
 // The take-home photo's Cloudflare R2 settings, from .env beside this file (see .env.example).
@@ -84,8 +85,9 @@ export default defineConfig({
   // basicSsl only when there is no real certificate to use — the two fight over the same job.
   // kioskControl takes the kiosk browser out of full screen and back, from the debug menu, and
   // cameraControl sets the camera's exposure from it. shareApi uploads a shared photo to R2 for
-  // the visitor to take home.
-  plugins: [...(selfSigned ? [basicSsl()] : []), wallStore(), galleryAllocator(), answerLog(), kioskControl(), cameraControl(), shareApi()],
+  // the visitor to take home. visitLog writes down when each photo was taken and how the turn
+  // ended, for the admin page's charts.
+  plugins: [...(selfSigned ? [basicSsl()] : []), wallStore(), galleryAllocator(), answerLog(), kioskControl(), cameraControl(), shareApi(), visitLog()],
   // Nothing to pre-bundle: this project has no runtime dependencies and every import in js/ is
   // relative, so the dependency optimizer scans the whole tree and renames a directory into
   // place to produce an empty result. On Windows that rename fails outright if anything is

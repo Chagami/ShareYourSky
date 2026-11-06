@@ -194,3 +194,155 @@ body.admin {
 }
 /* On the wall right now, as against kept but scrolled off it. */
 .tag.on { border-color: rgba(255, 138, 43, 0.5); color: var(--hot); }
+
+/* ── Photos / Visitors ─────────────────────────────────────────────────────── */
+
+body.admin[data-view="visits"] .photos-only { display: none; }
+
+.admin-views { display: flex; gap: 0.3rem; }
+.admin-views button {
+  padding: 0.25em 0.7em;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--muted);
+  font: inherit;
+  font-size: clamp(1.1rem, 2vw, 1.6rem);
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  cursor: pointer;
+}
+.admin-views button:first-child { padding-left: 0; }
+.admin-views button[aria-pressed="true"] { color: var(--ink); }
+.admin-views button:hover { color: var(--ink); }
+
+/* The data colours. Validated as a set against this page's dark surface (adjacent CVD ΔE 9.4,
+   normal-vision 26.5, all >= 3:1): shared, didn't share, didn't finish — in that stack order. */
+.visits {
+  --v-surface: #0f1117;
+  --v-shared: #3987e5;
+  --v-declined: #d95926;
+  --v-abandoned: #199e70;
+  --v-downloaded: #9085e9;
+  display: grid;
+  gap: 1.2rem;
+  padding: 1.4rem clamp(1rem, 3vw, 2.5rem) 0;
+  max-width: 1400px;
+}
+.visits[hidden] { display: none; }
+
+.k-shared { --c: var(--v-shared); }
+.k-declined { --c: var(--v-declined); }
+.k-abandoned { --c: var(--v-abandoned); }
+.k-downloaded { --c: var(--v-downloaded); }
+.key {
+  display: inline-block;
+  width: 0.7em;
+  height: 0.7em;
+  margin-right: 0.45em;
+  border-radius: 2px;
+  background: var(--c);
+  vertical-align: -0.02em;
+}
+
+/* Filters: one row above everything they change. */
+.vfilters { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 0.8rem 1.6rem; }
+.vfield {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  color: var(--muted);
+  font-size: 0.78rem;
+  font-weight: 600;
+}
+.vrow { display: flex; flex-wrap: wrap; gap: 0.3rem; }
+.vtools { flex-direction: row; margin-left: auto; gap: 0.6rem; }
+.vfield select {
+  padding: 0.5em 0.7em;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #14171e;
+  color: var(--ink);
+  font: inherit;
+  font-size: 0.88rem;
+}
+.chips { display: flex; gap: 0.3rem; }
+.chip, .seg button {
+  padding: 0.45em 0.75em;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: transparent;
+  color: var(--muted);
+  font: inherit;
+  font-size: 0.82rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+.chip.on, .seg button[aria-pressed="true"] { background: rgba(255, 255, 255, 0.13); color: var(--ink); border-color: rgba(255, 255, 255, 0.22); }
+.chip.ghost { border-style: dashed; }
+.seg { display: flex; gap: 0.3rem; }
+
+/* The numbers. */
+.vtiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 0.8rem; }
+.vnote { margin: 0; max-width: 72ch; color: var(--muted); font-size: 0.8rem; line-height: 1.45; }
+.vtile {
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+  padding: 0.9rem 1rem;
+  border-radius: 10px;
+  background: var(--v-surface);
+  box-shadow: inset 0 0 0 1px var(--line);
+}
+.vtile-label { color: var(--muted); font-size: 0.8rem; font-weight: 600; }
+.vtile-value { font-size: 1.9rem; font-weight: 700; letter-spacing: -0.02em; font-variant-numeric: tabular-nums; }
+.vtile-sub { color: var(--muted); font-size: 0.78rem; }
+
+/* The charts. */
+.vchart {
+  position: relative;
+  margin: 0;
+  padding: 1rem 1.1rem 0.8rem;
+  border-radius: 10px;
+  background: var(--v-surface);
+  box-shadow: inset 0 0 0 1px var(--line);
+}
+.vchart figcaption { display: flex; flex-wrap: wrap; align-items: baseline; gap: 0.2rem 1.2rem; margin-bottom: 0.6rem; }
+.vchart h2 { margin: 0; font-size: 1.05rem; font-weight: 700; }
+.vsub { flex-basis: 100%; order: 3; margin: 0; color: var(--muted); font-size: 0.8rem; }
+.vlegend { display: flex; flex-wrap: wrap; gap: 0.3rem 1rem; margin: 0; padding: 0; list-style: none; color: var(--ink); font-size: 0.82rem; }
+.vplot { position: relative; width: 100%; }
+.vplot svg { display: block; width: 100%; height: auto; overflow: visible; }
+.vplot .grid { stroke: rgba(255, 255, 255, 0.07); stroke-width: 1; }
+.vplot .base { stroke: rgba(255, 255, 255, 0.28); stroke-width: 1; }
+.vplot .tick { fill: var(--muted); font-size: 11px; font-variant-numeric: tabular-nums; }
+.vplot .empty { fill: var(--muted); font-size: 13px; }
+.vplot .mark { fill: var(--c); }
+.vplot .hit { fill: transparent; cursor: default; }
+.vplot .hit.on { fill: rgba(255, 255, 255, 0.05); }
+
+.vtip {
+  position: absolute;
+  top: 3.2rem;
+  z-index: 2;
+  min-width: 11rem;
+  padding: 0.6rem 0.75rem;
+  border-radius: 8px;
+  background: #1c2029;
+  box-shadow: 0 6px 24px rgba(0, 0, 0, 0.5), inset 0 0 0 1px var(--line);
+  font-size: 0.8rem;
+  pointer-events: none;
+}
+.vtip[hidden] { display: none; }
+.vtip-head { margin-bottom: 0.35rem; color: var(--muted); font-weight: 600; }
+.vtip div:not(.vtip-head):not(.vtip-note) { display: flex; align-items: center; gap: 0.2rem; }
+.vtip b { margin-left: auto; padding-left: 1rem; font-variant-numeric: tabular-nums; }
+.vtip .sum { margin-top: 0.25rem; padding-top: 0.25rem; border-top: 1px solid var(--line); }
+.vtip-note { margin-top: 0.3rem; color: var(--muted); }
+
+.vchart details { margin-top: 0.5rem; font-size: 0.8rem; color: var(--muted); }
+.vchart summary { cursor: pointer; width: max-content; }
+.vchart table { margin-top: 0.5rem; border-collapse: collapse; font-variant-numeric: tabular-nums; color: var(--ink); }
+.vchart th, .vchart td { padding: 0.3em 0.9em 0.3em 0; text-align: right; border-bottom: 1px solid var(--line); }
+.vchart th:first-child, .vchart td:first-child { text-align: left; }
+.vchart th { color: var(--muted); font-weight: 600; }

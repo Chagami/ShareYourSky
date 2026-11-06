@@ -2091,6 +2091,8 @@ async function runCountdown() {
 }
 
 async function takePhoto() {
+  // A visit begins at the shutter. Retaking keeps the first time: it is the same person's turn.
+  if (!visit) visit = { taken: new Date().toISOString(), outcome: null, downloaded: false }
   // The photograph waits for the switch up to its size, if it has not finished — usually it
   // has, a countdown being long enough to reopen a camera in.
   if (!standingIn) await primePhotoSize()
@@ -3684,6 +3686,7 @@ async function onShare(pick) {
   )
   sharedPick = pick
   sendAnswer({ stage: 'shared', value: edited ? 1 : 0 })
+  if (visit) visit.outcome = 'shared'
 
   // The other picture, the scales and the question step back, so the one going on the wall is
   // the only thing moving.
@@ -3710,6 +3713,7 @@ async function onShare(pick) {
 async function onNo() {
   if (step() !== 'confirm') return
   SHARE_BTNS.forEach((b) => (b.disabled = true))
+  if (visit) visit.outcome = 'declined'
   await Promise.all([featherDown(confirmPic, TIMELINE.feather), featherDown(originalPic, TIMELINE.feather)])
   reset()
 }
@@ -3915,6 +3919,7 @@ function setTakeHome(state, qr = null) {
   if (state === 'ready') setInfo('take home', 'link ready')
   if (state === 'off') setInfo('take home', 'off - no R2 settings on the server')
   showTakeHome()
+  noteDownload()
 }
 
 /** Whether the results screen offers the button, and what the panel shows. */
@@ -3943,6 +3948,12 @@ function openTakeHome() {
   showTakeHome()
   takeHomeEl.hidden = false
   pop(takeHomeEl.firstElementChild)
+  noteDownload()
+}
+
+/** A visitor counts as downloading once the code is on screen in front of them, ready to scan. */
+function noteDownload() {
+  if (visit && takeHome.state === 'ready' && !takeHomeEl.hidden) visit.downloaded = true
 }
 function closeTakeHome() {
   takeHomeEl.hidden = true
@@ -3955,7 +3966,27 @@ function clearTakeHome() {
   showTakeHome()
 }
 
+// ── the visit log ───────────────────────────────────────────────────────────
+//
+// One row per turn for the admin page's charts (server/visits.js): when the photo was taken, and
+// whether the visitor shared it, chose not to, or left before choosing — and whether they opened
+// the take-home code. Written when the turn ends: Start again, the idle start-over, or the page
+// going away mid-turn (a reload, a crash recovery), which is what the beacon is for.
+let visit = null
+
+function endVisit({ beacon = false } = {}) {
+  if (!visit) return
+  const body = JSON.stringify({ ...visit, outcome: visit.outcome ?? 'abandoned' })
+  visit = null
+  if (beacon && navigator.sendBeacon?.('api/visit', body)) return
+  fetch('api/visit', { method: 'POST', headers: { 'content-type': 'application/json' }, body, keepalive: true }).catch(
+    () => {} // a lost row is a gap in a chart, never a reason to trouble the visitor
+  )
+}
+addEventListener('pagehide', () => endVisit({ beacon: true }))
+
 function reset() {
+  endVisit()
   // Starting again is leaving the share screen too, and its answers count — sent before
   // clearBeats puts both scales back to untouched.
   if (step() === 'confirm') sendVerdicts()

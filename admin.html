@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Share Your Sky — Photos</title>
+<title>Share Your Sky — Admin</title>
 <link rel="stylesheet" href="css/app.css">
 <link rel="stylesheet" href="css/admin.css">
 </head>
@@ -13,10 +13,14 @@
 
 <header class="admin-head">
   <div>
-    <h1>Photos</h1>
-    <p class="admin-count" id="count">Loading…</p>
+    <!-- Two views of the same exhibit: the pictures, and who took them when. -->
+    <nav class="admin-views" aria-label="View">
+      <button type="button" data-view="photos" aria-pressed="true">Photos</button>
+      <button type="button" data-view="visits" aria-pressed="false">Visitors</button>
+    </nav>
+    <p class="admin-count photos-only" id="count">Loading…</p>
   </div>
-  <div class="admin-tools">
+  <div class="admin-tools photos-only">
     <!-- What visitors answered to "Is this image real?", one row per visitor per question.
          Written by server/answers.js; a plain link, because the browser saves it as a file —
          and the button beside it throws the file away, so they are kept together. -->
@@ -35,7 +39,75 @@
 
 <p class="admin-note" id="note" hidden></p>
 
-<div class="admin-grid" id="grid"></div>
+<div class="admin-grid photos-only" id="grid"></div>
+
+<!-- Every turn at the exhibit, from server/visits.js: when the photo was taken, how it ended. -->
+<section class="visits" id="visits" hidden>
+  <div class="vfilters">
+    <label class="vfield">Period
+      <select id="vMonth"></select>
+    </label>
+    <div class="vfield">Days
+      <div class="vrow">
+        <div class="chips" id="vDays"></div>
+        <button type="button" class="chip ghost" id="vAllDays">All</button>
+      </div>
+    </div>
+    <div class="vfield">Show
+      <div class="seg" id="vMeasure">
+        <button type="button" data-measure="total" aria-pressed="true">Total</button>
+        <button type="button" data-measure="avg" aria-pressed="false">Average per day</button>
+      </div>
+    </div>
+    <div class="vfield vtools">
+      <a class="abtn" href="api/visit.csv" download>Visits (CSV)</a>
+      <button class="abtn danger ghost" id="vClear">Clear visits</button>
+    </div>
+  </div>
+
+  <div class="vtiles" id="vTiles"></div>
+  <p class="vnote" id="vNote" hidden></p>
+
+  <figure class="vchart" id="vWhen">
+    <figcaption>
+      <h2>When photos are taken</h2>
+      <p class="vsub" id="vWhenSub"></p>
+      <ul class="vlegend">
+        <li><i class="key k-shared"></i>Shared</li>
+        <li><i class="key k-declined"></i>Didn’t share</li>
+        <li><i class="key k-abandoned"></i>Didn’t finish</li>
+      </ul>
+    </figcaption>
+    <div class="vplot"></div>
+    <div class="vtip" hidden></div>
+    <details><summary>Table</summary><div id="vWhenTable"></div></details>
+  </figure>
+
+  <figure class="vchart" id="vDownloads">
+    <figcaption>
+      <h2>Who downloads their photo</h2>
+      <p class="vsub" id="vDownloadsSub"></p>
+    </figcaption>
+    <div class="vplot"></div>
+    <div class="vtip" hidden></div>
+    <details><summary>Table</summary><div id="vDownloadsTable"></div></details>
+  </figure>
+
+  <figure class="vchart" id="vDaily">
+    <figcaption>
+      <h2>Day by day</h2>
+      <p class="vsub" id="vDailySub"></p>
+      <ul class="vlegend">
+        <li><i class="key k-shared"></i>Shared</li>
+        <li><i class="key k-declined"></i>Didn’t share</li>
+        <li><i class="key k-abandoned"></i>Didn’t finish</li>
+      </ul>
+    </figcaption>
+    <div class="vplot"></div>
+    <div class="vtip" hidden></div>
+    <details><summary>Table</summary><div id="vDailyTable"></div></details>
+  </figure>
+</section>
 
 <script type="module" src="js/admin.js"></script>
 </body>

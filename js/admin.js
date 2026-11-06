@@ -8,6 +8,8 @@
 // a modal: an operator standing at a kiosk dismisses those without reading them. The button
 // itself changes to say exactly what is about to happen and has to be pressed again.
 
+import { showVisits, refreshVisits } from './adminvisits.js'
+
 const API = 'api/wall'
 
 const grid = document.getElementById('grid')
@@ -324,5 +326,23 @@ function size(bytes) {
     ? `${(bytes / 1024 / 1024).toFixed(1)} MB`
     : `${Math.round(bytes / 1024)} KB`
 }
+
+// ── which view ──────────────────────────────────────────────────────────────
+//
+// Photos or Visitors. Kept in the address (#visits), so a bookmark or a reload lands on the same one.
+function setView(view) {
+  const visits = view === 'visits'
+  document.body.dataset.view = visits ? 'visits' : 'photos'
+  document.getElementById('visits').hidden = !visits
+  document.querySelectorAll('.admin-views button').forEach((b) => b.setAttribute('aria-pressed', b.dataset.view === view))
+  history.replaceState(null, '', visits ? '#visits' : location.pathname + location.search)
+  if (visits) showVisits({ arm, say })
+}
+document.querySelectorAll('.admin-views button').forEach((b) => b.addEventListener('click', () => setView(b.dataset.view)))
+setView(location.hash === '#visits' ? 'visits' : 'photos')
+// Fresh numbers when the operator comes back to the tab.
+addEventListener('visibilitychange', () => {
+  if (!document.hidden && document.body.dataset.view === 'visits') refreshVisits(say)
+})
 
 load()

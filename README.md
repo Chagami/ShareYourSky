@@ -1866,6 +1866,57 @@ It is **linked from nowhere** and **not authenticated**. On a staff LAN with no 
 outside that is the right trade: a password here is a thing for a technician to lose, not a
 defence. If the exhibit ever shares a network with the public, this page needs a door on it.
 
+### The Visitors view
+
+The admin page's second tab (**Visitors**, or `admin.html#visits`) charts every turn at the
+exhibit, from `data/visits.csv` (written by `server/visits.js`). One row per visitor who took a
+photo, written when their turn ends:
+
+| column | meaning |
+|---|---|
+| `taken` | when the shutter fired |
+| `outcome` | `shared` (put a picture on the wall), `declined` ("Don't share"), or `abandoned` (Start again, the idle start-over, or the page reloading before they chose) |
+| `downloaded` | `1` if they opened the take-home QR code once it was ready. The kiosk cannot see whether a phone then scanned it. |
+
+Nobody who never pressed the shutter is counted, and nothing about the visitor is kept.
+
+The view has three charts:
+
+- **When photos are taken.** Each 15 minutes of the day, stacked by outcome.
+- **Who downloads their photo.** The same 15-minute slots, counting visitors who opened the code.
+- **Day by day.** Every day in the period.
+
+The filters apply to all three:
+
+- **Period:** all time, or one month.
+- **Days:** any set of weekdays.
+- **Show:** totals, or the average per day. The average is per day with at least one visitor, so
+  a closed day doesn't drag it down.
+
+Hover a column for its numbers, and open **Table** under a chart for the same figures as text.
+**Visits (CSV)** downloads every visit, with a `source` column saying `logged` or
+`reconstructed`. **Clear visits** (asks twice) starts `data/visits.csv` again; it leaves the
+answers log, and so the reconstructed history, alone. Times are
+binned by the clock of the browser viewing the page. On the exhibit's own network, that's the
+exhibit's clock.
+
+The log starts the day this is deployed. The time before it is rebuilt from what the exhibit
+already kept, so the charts reach back to the first visitor:
+
+- Everyone who reached "Is this image real?" left an `unedited` answer in `data/answers.csv`. Each
+  of those is one visit.
+- A share is the `shared` row written just before the answers. Before that row existed, it's the
+  picture's timestamp in `wall/index.json`. A visit with neither counts as didn't share.
+
+The rebuilt visits are worked out each time the page asks and never written to `visits.csv`. They
+stop where the real log starts. They are rougher than the log, and the page says so above the
+charts:
+
+- **Missing visitors:** anyone who left before the question isn't counted.
+- **Didn't share:** "Don't share" and walking away at the question both count as didn't share.
+- **Times:** each visit is timed when they answered, a minute or two after the photo.
+- **Downloads:** nothing was recorded, so download counts start with the log.
+
 ### When the wall is empty
 
 It says why, in the same quiet register as the camera's service note: which address it is, whether
