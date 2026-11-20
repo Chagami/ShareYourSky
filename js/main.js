@@ -4158,6 +4158,41 @@ addEventListener('pagehide', () => {
   feed.srcObject?.getTracks?.().forEach((t) => t.stop())
 })
 
+// ── a press you can see ─────────────────────────────────────────────────────
+//
+// Every button sinks a little while it is pressed. Not left to :active: on a touchscreen Firefox
+// sets it late or not at all, so a quick tap, which is how most visitors press, showed nothing.
+// Here the `pressed` class goes on as any finger or palm lands on a button and stays at least
+// PRESS_MIN_MS, long enough to be seen, even when the button disables itself on the press.
+const PRESS_MIN_MS = 160
+const pressedButtons = new Map() // button -> { pointers: Set, since }
+
+function pressRelease(button, pointerId) {
+  const held = pressedButtons.get(button)
+  if (!held || !held.pointers.delete(pointerId) || held.pointers.size) return
+  pressedButtons.delete(button)
+  const left = PRESS_MIN_MS - (performance.now() - held.since)
+  if (left > 0) setTimeout(() => !pressedButtons.has(button) && button.classList.remove('pressed'), left)
+  else button.classList.remove('pressed')
+}
+
+addEventListener(
+  'pointerdown',
+  (e) => {
+    const button = e.target.closest?.('button')
+    if (!button || button.disabled) return
+    const held = pressedButtons.get(button) ?? { pointers: new Set(), since: performance.now() }
+    held.pointers.add(e.pointerId)
+    pressedButtons.set(button, held)
+    button.classList.add('pressed')
+  },
+  true
+)
+// Wherever the finger lifts — the button may have captured it, or it may have slid off.
+for (const kind of ['pointerup', 'pointercancel']) {
+  addEventListener(kind, (e) => pressedButtons.forEach((_, b) => pressRelease(b, e.pointerId)), true)
+}
+
 // ── the shutter press ───────────────────────────────────────────────────────
 //
 // Any touch on the shutter takes the picture: one finger, three, a whole palm. A browser makes a
@@ -4177,12 +4212,10 @@ function shutterDown(e) {
   shutterPress.pointers.add(e.pointerId)
   // Keep the pointer's up for the button, even if the hand has moved off it by then.
   try { shutter.setPointerCapture(e.pointerId) } catch {}
-  shutter.classList.add('pressed')
 }
 
 function shutterUp(e) {
   if (!shutterPress.pointers.delete(e.pointerId) || shutterPress.pointers.size) return
-  shutter.classList.remove('pressed')
   shutterPress.liftedAt = performance.now()
   if (shutterPress.liftedAt - shutterPress.since > SHUTTER_HOLD_MAX) return
   runCountdown()

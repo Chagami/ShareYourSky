@@ -1597,7 +1597,8 @@ body[data-step="confirm"] .dock .btn-lg { padding-inline: 1.6em; }
   cursor: pointer;
   transition: transform 200ms var(--ease), background 200ms ease;
 }
-.btn:active { transform: scale(0.97); }
+.btn:active,
+.btn.pressed { transform: scale(0.97); }
 .btn:disabled { opacity: 0.35; cursor: default; }
 /* Not yet offered, but still holding its place. Hiding it outright shortens the dock, and
    because the step above is vertically centred the whole screen then shifts by half of what
