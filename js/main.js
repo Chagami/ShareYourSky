@@ -4158,7 +4158,48 @@ addEventListener('pagehide', () => {
   feed.srcObject?.getTracks?.().forEach((t) => t.stop())
 })
 
-shutter.addEventListener('click', runCountdown)
+// ── the shutter press ───────────────────────────────────────────────────────
+//
+// Any touch on the shutter takes the picture: one finger, three, a whole palm. A browser makes a
+// `click` only from a single-finger tap, so a hand flat on the button used to do nothing at all.
+// Here every pointer that lands on the button is counted, and the press fires when the last of
+// them lifts — wherever it lifts, so a hand that slides a little still counts. A press held longer
+// than SHUTTER_HOLD_MAX is somebody leaning on the button, not choosing to press it, and is let go.
+// `click` stays for the keyboard and anything else that can only click.
+const SHUTTER_HOLD_MAX = 1500
+const shutterPress = { pointers: new Set(), since: 0, liftedAt: -Infinity }
+
+function shutterDown(e) {
+  if (shutter.disabled) return
+  // A touch whose end never arrived must not hold every later press hostage.
+  if (performance.now() - shutterPress.since > 10 * SHUTTER_HOLD_MAX) shutterPress.pointers.clear()
+  if (!shutterPress.pointers.size) shutterPress.since = performance.now()
+  shutterPress.pointers.add(e.pointerId)
+  // Keep the pointer's up for the button, even if the hand has moved off it by then.
+  try { shutter.setPointerCapture(e.pointerId) } catch {}
+  shutter.classList.add('pressed')
+}
+
+function shutterUp(e) {
+  if (!shutterPress.pointers.delete(e.pointerId) || shutterPress.pointers.size) return
+  shutter.classList.remove('pressed')
+  shutterPress.liftedAt = performance.now()
+  if (shutterPress.liftedAt - shutterPress.since > SHUTTER_HOLD_MAX) return
+  runCountdown()
+}
+
+shutter.addEventListener('pointerdown', shutterDown)
+shutter.addEventListener('pointerup', shutterUp)
+// A touch the browser cancels (a palm it decided was not a touch, the screen losing it) still
+// ended on the button, and is counted the same as one lifted.
+shutter.addEventListener('pointercancel', shutterUp)
+shutter.addEventListener('lostpointercapture', shutterUp)
+shutter.addEventListener('click', () => {
+  // The click a browser makes as a touch or mouse lifts — after a tap, which has already pressed,
+  // and after a long hold too, which must not. Only a click with no press before it gets through.
+  if (performance.now() - shutterPress.liftedAt < 1000) return
+  runCountdown()
+})
 nextBtn.addEventListener('click', nextStep)
 coloursBtn.addEventListener('click', onColours)
 submitBtn.addEventListener('click', onSubmit)

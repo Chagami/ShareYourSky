@@ -1570,6 +1570,9 @@ body[data-step="confirm"] .dock .btn-lg { padding-inline: 1.6em; }
   background: rgba(0, 0, 0, 0.25);
   cursor: pointer;
   transition: transform 180ms var(--ease);
+  /* No pan or zoom starting here: a browser that begins one cancels the touch, and a palm or
+     three fingers on the button is a press, not a gesture (js/main.js, "the shutter press"). */
+  touch-action: none;
 }
 .shutter-dot {
   width: 76%;
@@ -1578,7 +1581,8 @@ body[data-step="confirm"] .dock .btn-lg { padding-inline: 1.6em; }
   background: #fff;
   transition: transform 180ms var(--ease);
 }
-.shutter:active .shutter-dot { transform: scale(0.86); }
+.shutter:active .shutter-dot,
+.shutter.pressed .shutter-dot { transform: scale(0.86); }
 .shutter:disabled { opacity: 0.35; cursor: default; }
 
 .btn {
